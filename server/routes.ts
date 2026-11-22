@@ -11,6 +11,7 @@ import { mountCafeControls } from "./cafeControls";
 import { mountMenuLibrary } from "./menuLibrary";
 import { mountAccessControl, getManagedCafe, mediaOwner, authUser } from './accessControl';
 import { mountPlatformControls } from './platformControls';
+import { mountHospitalityRoutes } from './hospitalityRoutes';
 import { insertCategorySchema, registrationSchema, users, restaurants } from "@shared/schema";
 import { db } from './db';
 import { rateLimit } from './httpSecurity';
@@ -28,6 +29,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   mountCafeControls(app);
   mountMenuLibrary(app);
   mountPlatformControls(app);
+  mountHospitalityRoutes(app);
 
   // Only the platform owner can provision a restaurant and its manager.
   app.post('/api/super-admin/restaurants', isSuperAdmin, rateLimit(10, 60 * 60 * 1000, req => req.ip || 'unknown'), async (req, res) => {
@@ -302,8 +304,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found" });
       }
-      const { id, name, theme, currency, timezone, logoUrl, coverMediaUrl, coverMediaType, cuisineType, address, phone, openingHours } = restaurant;
-      res.json({ id, name, theme, currency, timezone, logoUrl, coverMediaUrl, coverMediaType, cuisineType, address, phone, openingHours });
+      const { id, name, slug, theme, brandAccentHex, currency, timezone, logoUrl, coverMediaUrl, coverMediaType, cuisineType, address, phone, openingHours, orderingMode, paymentGateway, googleMapsReviewUrl, reservationsEnabled, waitlistEnabled, driveThruEnabled, pagerMiniGameEnabled, slotIntervalMins, defaultTurnDurationMins, reservationDepositAmount } = restaurant;
+      res.json({ id, name, slug, theme, brandAccentHex, currency, timezone, logoUrl, coverMediaUrl, coverMediaType, cuisineType, address, phone, openingHours, orderingMode, paymentGateway, googleMapsReviewUrl, reservationsEnabled, waitlistEnabled, driveThruEnabled, pagerMiniGameEnabled, slotIntervalMins, defaultTurnDurationMins, reservationDepositAmount });
     } catch (error) {
       console.error("Error fetching restaurant:", safeError(error));
       res.status(500).json({ message: "Failed to fetch restaurant" });
@@ -399,7 +401,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/categories/public/:restaurantId", async (req, res) => {
     try {
       const categories = await storage.getCategoriesByRestaurantId(req.params.restaurantId);
-      res.json(categories);
+      res.json(categories.filter(c => c.isVisible !== false));
     } catch (error) {
       console.error("Error fetching categories:", safeError(error));
       res.status(500).json({ message: "Failed to fetch categories" });
@@ -447,8 +449,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/menu-items/public/:restaurantId", async (req, res) => {
     try {
-      const items = await storage.getMenuItemsByRestaurantId(req.params.restaurantId);
-      res.json(items.filter(item => item.isAvailable));
+      const [cats, items] = await Promise.all([
+        storage.getCategoriesByRestaurantId(req.params.restaurantId),
+        storage.getMenuItemsByRestaurantId(req.params.restaurantId),
+      ]);
+      const visibleCatIds = new Set(cats.filter(c => c.isVisible !== false).map(c => c.id));
+      res.json(items.filter(item => item.isAvailable && visibleCatIds.has(item.categoryId)));
     } catch (error) {
       console.error("Error fetching menu items:", safeError(error));
       res.status(500).json({ message: "Failed to fetch menu items" });

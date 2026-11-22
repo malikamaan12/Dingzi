@@ -10,7 +10,12 @@ import { ObjectStorageService } from './localObjects';
 import { getManagedCafe, mediaOwner } from './accessControl';
 import { mountPricingControls } from './pricingControls';
 import { rateLimit } from './httpSecurity';
-const profileFields = ['name','theme','currency','timezone','logoUrl','coverMediaUrl','coverMediaType','cuisineType','address','phone','openingHours'];
+const profileFields = [
+  'name','slug','theme','brandAccentHex','currency','timezone','logoUrl','coverMediaUrl','coverMediaType',
+  'cuisineType','address','phone','openingHours','orderingMode','paymentGateway','googleMapsReviewUrl',
+  'reservationsEnabled','waitlistEnabled','driveThruEnabled','pagerMiniGameEnabled',
+  'slotIntervalMins','defaultTurnDurationMins','reservationDepositAmount',
+];
 export function mountCafeControls(app: Express) {
   const guarded: RequestHandler = async (req: any, res, next) => {
     try {
@@ -94,7 +99,7 @@ export function mountCafeControls(app: Express) {
       const result = await db.transaction(async tx => {
         const [current] = await tx.select().from(restaurants).where(eq(restaurants.userId, userId)).for('update');
         if (current && expectedUpdatedAt && current.updatedAt?.getTime() !== new Date(expectedUpdatedAt).getTime()) throw Object.assign(new Error('This café profile changed after you opened it. Reload before saving.'), { status: 409 });
-        const [cafe] = current ? await tx.update(restaurants).set({ ...data, updatedAt: new Date() }).where(eq(restaurants.id, current.id)).returning() : await tx.insert(restaurants).values({ ...data, userId }).returning();
+        const [cafe] = current ? await tx.update(restaurants).set({ ...data, version: (current.version || 1) + 1, updatedAt: new Date() }).where(eq(restaurants.id, current.id)).returning() : await tx.insert(restaurants).values({ ...data, userId }).returning();
         return cafe;
       });
       res.json(result);
@@ -154,22 +159,24 @@ export function mountCafeControls(app: Express) {
     } catch(e) { next(e); }
   });
   app.get('/api/cafes', async (_req, res, next) => {
-    try { res.json((await storage.getAllRestaurants()).filter(c => c.status === 'active' && !c.hidden).map(({ id, name, theme, cuisineType, logoUrl }) => ({ id, name, theme, cuisineType, logoUrl }))); } catch(e) { next(e); }
+    try { res.json((await storage.getAllRestaurants()).filter(c => c.status === 'active' && !c.hidden).map(({ id, name, slug, theme, brandAccentHex, cuisineType, logoUrl, orderingMode, reservationsEnabled, waitlistEnabled, driveThruEnabled }) => ({ id, name, slug, theme, brandAccentHex, cuisineType, logoUrl, orderingMode, reservationsEnabled, waitlistEnabled, driveThruEnabled }))); } catch(e) { next(e); }
   });
   app.get('/api/menu/public/:id', async (req, res, next) => {
     try {
       const id = z.string().uuid().parse(req.params.id);
       const restaurant = await storage.getRestaurantById(id);
       if (!restaurant || restaurant.hidden || restaurant.status !== 'active') return res.status(404).json({ message: 'Café unavailable' });
-      const [cats, allItems, allVariants] = await Promise.all([storage.getCategoriesByRestaurantId(id), storage.getMenuItemsByRestaurantId(id), storage.getPriceVariantsByRestaurantId(id)]);
-      const items = allItems.filter(item => item.isAvailable);
+      const [allCats, allItems, allVariants] = await Promise.all([storage.getCategoriesByRestaurantId(id), storage.getMenuItemsByRestaurantId(id), storage.getPriceVariantsByRestaurantId(id)]);
+      const cats = allCats.filter(c => c.isVisible !== false);
+      const visibleCatIds = new Set(cats.map(c => c.id));
+      const items = allItems.filter(item => item.isAvailable && visibleCatIds.has(item.categoryId));
       const visibleIds = new Set(items.map(item => item.id));
-      const { name, theme, currency, timezone, logoUrl, coverMediaUrl, coverMediaType, cuisineType, address, phone, openingHours } = restaurant;
-      res.json({ restaurant: { id, name, theme, currency, timezone, logoUrl, coverMediaUrl, coverMediaType, cuisineType, address, phone, openingHours }, categories: cats, items, variants: allVariants.filter(v => visibleIds.has(v.menuItemId)) });
+      const { name, slug, theme, brandAccentHex, currency, timezone, logoUrl, coverMediaUrl, coverMediaType, cuisineType, address, phone, openingHours, orderingMode, paymentGateway, googleMapsReviewUrl, reservationsEnabled, waitlistEnabled, driveThruEnabled, pagerMiniGameEnabled, slotIntervalMins, defaultTurnDurationMins, reservationDepositAmount } = restaurant;
+      res.json({ restaurant: { id, name, slug, theme, brandAccentHex, currency, timezone, logoUrl, coverMediaUrl, coverMediaType, cuisineType, address, phone, openingHours, orderingMode, paymentGateway, googleMapsReviewUrl, reservationsEnabled, waitlistEnabled, driveThruEnabled, pagerMiniGameEnabled, slotIntervalMins, defaultTurnDurationMins, reservationDepositAmount }, categories: cats, items, variants: allVariants.filter(v => visibleIds.has(v.menuItemId)) });
     } catch (e) { next(e); }
   });
   app.put('/api/categories/:id', isAuthenticated, async (req, res, next) => {
-    try { res.json(await storage.updateCategory(req.params.id, z.object({ title: z.string().trim().min(1), order: z.number().int().min(0).optional() }).parse(req.body))); } catch(e) { next(e); }
+    try { res.json(await storage.updateCategory(req.params.id, z.object({ title: z.string().trim().min(1).optional(), isVisible: z.boolean().optional(), availableFrom: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional(), availableUntil: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional(), order: z.number().int().min(0).optional() }).parse(req.body))); } catch(e) { next(e); }
   });
   app.get('/api/cafe-backup', isAuthenticated, async (req: any, res, next) => {
     try {

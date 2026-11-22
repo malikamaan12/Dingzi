@@ -1,0 +1,552 @@
+import { useEffect, useState } from 'react';
+import { useRoute, Link } from 'wouter';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import {
+  Bell,
+  BellRing,
+  Car,
+  CheckCircle2,
+  Clock,
+  Coffee,
+  ExternalLink,
+  Gamepad2,
+  MapPin,
+  Sparkles,
+  Star,
+  Volume2,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { apiRequest, queryClient } from '@/lib/queryClient';
+import { cafeThemeStyle } from '@/lib/cafeTheme';
+import { MenuLanguageProvider, MenuLanguageSwitch, useMenuLanguage } from '@/lib/menuLanguage';
+import { playPagerReadyAlert, unlockGuestAlerts } from '@/lib/pagerAudio';
+import { useRealtimeStream } from '@/lib/useRealtimeStream';
+
+function BeanCatcherMiniGame() {
+  const [score, setScore] = useState(0);
+  const [targetIdx, setTargetIdx] = useState(4);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setTargetIdx(Math.floor(Math.random() * 9));
+    }, 850);
+    return () => window.clearInterval(id);
+  }, []);
+
+  return (
+    <div className="rounded-2xl border bg-card p-4 shadow-sm">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <Gamepad2 className="w-4 h-4 text-primary" />
+          <span>Barista Reflex Mini-Game</span>
+        </div>
+        <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-primary/10 text-primary" role="status" aria-atomic="true">
+          Score: {score}
+        </span>
+      </div>
+      <div className="grid grid-cols-3 gap-2 max-w-[240px] mx-auto">
+        {Array.from({ length: 9 }, (_, idx) => {
+          const active = idx === targetIdx;
+          return (
+            <button
+              key={idx}
+              type="button"
+              aria-label={active ? 'Tap active coffee cup' : 'Empty tile'}
+              onClick={() => {
+                if (active) {
+                  setScore(s => s + 1);
+                  setTargetIdx(Math.floor(Math.random() * 9));
+                }
+              }}
+              className={`h-14 rounded-xl border flex items-center justify-center transition-all duration-150 cursor-pointer ${
+                active
+                  ? 'bg-primary text-primary-foreground scale-105 shadow-md'
+                  : 'bg-muted/40 text-muted-foreground hover:bg-muted'
+              }`}
+            >
+              {active && <Coffee className="w-6 h-6" />}
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-xs text-center text-muted-foreground mt-2">
+        Tap the espresso cup while your order brews — your pager still rings automatically!
+      </p>
+    </div>
+  );
+}
+
+export default function VirtualPagerPage() {
+  return (
+    <MenuLanguageProvider>
+      <VirtualPagerContent />
+    </MenuLanguageProvider>
+  );
+}
+
+function VirtualPagerContent() {
+  const [, params] = useRoute('/pager/:token');
+  const token = params?.token || '';
+  const { language, dir, t, label } = useMenuLanguage();
+  const [alertsEnabled, setAlertsEnabled] = useState(false);
+  const [showGame, setShowGame] = useState(false);
+  const [rating, setRating] = useState<number>(0);
+  const [comment, setComment] = useState('');
+  const [feedbackSaved, setFeedbackSaved] = useState<{ promptGoogleReview: boolean; googleMapsReviewUrl: string | null } | null>(null);
+  const [bayId, setBayId] = useState('');
+  const [vehicleColor, setVehicleColor] = useState('White');
+  const [vehicleType, setVehicleType] = useState<'Sedan' | 'SUV' | 'Pickup' | 'Coupe' | 'Other'>('SUV');
+  const [licensePlate, setLicensePlate] = useState('');
+  const [flashReady, setFlashReady] = useState(false);
+
+  const pagerQuery = useQuery<any>({
+    enabled: Boolean(token),
+    queryKey: ['/api/public/pager', token],
+    queryFn: async () => {
+      const res = await fetch(`/api/public/pager/${token}`);
+      if (!res.ok) throw new Error('Pager ticket not found');
+      return res.json();
+    },
+    refetchInterval: 4000,
+  });
+
+  const data = pagerQuery.data;
+  const ticket = data?.ticket;
+  const restaurant = data?.restaurant;
+
+  useRealtimeStream(token ? `/api/public/stream/pager/${token}` : null, event => {
+    void queryClient.invalidateQueries({ queryKey: ['/api/public/pager', token] });
+    if (event.type === 'pager.buzzed' || event.data?.ticket?.status === 'ready') {
+      setFlashReady(true);
+      playPagerReadyAlert(
+        `${restaurant?.name || 'Café'} · ${ticket?.ticketCode || ''}`,
+        'Your order is hot and ready for pickup!',
+      );
+      window.setTimeout(() => setFlashReady(false), 4500);
+    }
+  });
+
+  // Also alert if polling transitions ticket to ready
+  const prevStatusKey = `${ticket?.status || ''}:${ticket?.buzzCount || 0}`;
+  const [seenKey, setSeenKey] = useState('');
+  useEffect(() => {
+    if (!ticket) return;
+    if (seenKey && seenKey !== prevStatusKey && ticket.status === 'ready') {
+      setFlashReady(true);
+      playPagerReadyAlert(`${restaurant?.name || 'Café'} · ${ticket.ticketCode}`, 'Your order is ready for pickup!');
+      window.setTimeout(() => setFlashReady(false), 4500);
+    }
+    setSeenKey(prevStatusKey);
+  }, [prevStatusKey, seenKey, ticket, restaurant?.name]);
+
+  const checkinMutation = useMutation({
+    mutationFn: async (etaStatus: '5_mins_away' | 'arrived') => {
+      const res = await apiRequest('POST', '/api/public/curbside/checkin', {
+        trackingToken: token,
+        bayId,
+        etaStatus,
+        vehicleColor,
+        vehicleType,
+        licensePlate,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['/api/public/pager', token] });
+    },
+  });
+
+  const feedbackMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('POST', `/api/public/pager/${token}/feedback`, { rating, comment });
+      return res.json();
+    },
+    onSuccess: res => {
+      setFeedbackSaved(res);
+      void queryClient.invalidateQueries({ queryKey: ['/api/public/pager', token] });
+    },
+  });
+
+  if (pagerQuery.isLoading) {
+    return (
+      <div className="min-h-screen grid place-items-center bg-background text-foreground p-6">
+        <div className="text-center space-y-3">
+          <Coffee className="w-10 h-10 mx-auto text-primary animate-pulse" />
+          <p className="font-medium">Connecting to live virtual pager…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!ticket || !restaurant) {
+    return (
+      <div className="min-h-screen grid place-items-center bg-background text-foreground p-6">
+        <div className="max-w-sm text-center space-y-4">
+          <h1 className="text-2xl font-bold">Pager not found</h1>
+          <p className="text-muted-foreground text-sm">Scan the QR code from the counter or receipt again.</p>
+          <Link href="/">
+            <Button className="cursor-pointer">Browse cafés</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const isReady = ticket.status === 'ready';
+  const isCollected = ticket.status === 'collected';
+  const steps = [
+    { id: 'waiting', label: t('Waiting in Queue') },
+    { id: 'preparing', label: t('Preparing Now') },
+    { id: 'ready', label: t('Ready for Pickup!') },
+    { id: 'collected', label: t('Order Collected') },
+  ];
+  const currentIdx = steps.findIndex(s => s.id === ticket.status);
+
+  return (
+    <div
+      dir={dir}
+      lang={language}
+      style={cafeThemeStyle(restaurant.theme, restaurant.brandAccentHex)}
+      className={`min-h-screen bg-background text-foreground transition-colors duration-300 ${
+        isReady && flashReady ? 'ring-8 ring-inset ring-emerald-500' : ''
+      }`}
+    >
+      <div className="max-w-lg mx-auto px-4 py-6 space-y-5">
+        <header className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            {restaurant.logoUrl ? (
+              <img src={restaurant.logoUrl} alt="" className="w-11 h-11 rounded-xl object-cover border" />
+            ) : (
+              <div className="w-11 h-11 rounded-xl bg-primary text-primary-foreground grid place-items-center shrink-0">
+                <Coffee className="w-5 h-5" />
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
+                {t('Virtual Pager')}
+              </p>
+              <h1 className="font-bold text-lg truncate">{label(restaurant.name)}</h1>
+            </div>
+          </div>
+          <MenuLanguageSwitch />
+        </header>
+
+        {/* Primary Ticket Card */}
+        <section
+          className={`rounded-3xl border-2 p-6 text-center shadow-lg transition-all duration-300 ${
+            isReady
+              ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/40'
+              : 'border-border bg-card'
+          }`}
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-primary/10 text-primary mb-3">
+            {isReady ? <BellRing className="w-4 h-4 animate-bounce" /> : <Clock className="w-4 h-4" />}
+            <span>
+              {isReady
+                ? t('Ready for Pickup!')
+                : isCollected
+                  ? t('Order Collected')
+                  : ticket.status === 'preparing'
+                    ? t('Preparing Now')
+                    : t('Waiting in Queue')}
+            </span>
+          </div>
+
+          <div className="text-5xl font-black tracking-tight my-2 font-mono text-foreground" data-testid="text-pager-code">
+            {ticket.ticketCode}
+          </div>
+          {ticket.customerName && (
+            <p className="text-sm font-medium text-muted-foreground">{ticket.customerName}</p>
+          )}
+
+          {!isReady && !isCollected && (
+            <div className="mt-4 flex items-center justify-center gap-4 text-xs text-muted-foreground">
+              <span className="px-3 py-1.5 rounded-xl bg-muted font-medium">
+                Queue ahead: <strong>{data.queueAhead}</strong>
+              </span>
+              <span className="px-3 py-1.5 rounded-xl bg-muted font-medium">
+                Est. prep: <strong>~{ticket.estimatedPrepMins} min</strong>
+              </span>
+            </div>
+          )}
+
+          {isReady && (
+            <div className="mt-4 p-3 rounded-2xl bg-emerald-600 text-white font-semibold text-sm shadow">
+              Your order is ready at the pickup counter! Show code {ticket.ticketCode}.
+            </div>
+          )}
+
+          {/* Stepper */}
+          <ol className="grid grid-cols-4 gap-2 mt-6 text-xs">
+            {steps.map((step, idx) => {
+              const done = currentIdx >= idx;
+              return (
+                <li key={step.id} className="space-y-1.5">
+                  <div
+                    className={`h-2 rounded-full transition-all ${
+                      done ? (isReady ? 'bg-emerald-600' : 'bg-primary') : 'bg-muted'
+                    }`}
+                  />
+                  <span className={`block leading-tight ${done ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
+                    {step.label}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        </section>
+
+        {/* One-Tap Sound / Vibration / Wake Lock Unlock */}
+        {!isCollected && (
+          <Button
+            type="button"
+            variant={alertsEnabled ? 'secondary' : 'default'}
+            className="w-full min-h-12 rounded-2xl font-semibold cursor-pointer gap-2"
+            onClick={async () => {
+              await unlockGuestAlerts();
+              setAlertsEnabled(true);
+              playPagerReadyAlert(restaurant.name, 'Sound and vibration alerts are armed!');
+            }}
+            data-testid="button-enable-pager-alerts"
+          >
+            {alertsEnabled ? <Volume2 className="w-5 h-5 text-emerald-600" /> : <Bell className="w-5 h-5" />}
+            <span>
+              {alertsEnabled
+                ? t('Alerts Active — Phone will ring when ready')
+                : t('Enable Sound & Vibration Alerts')}
+            </span>
+          </Button>
+        )}
+
+        {/* Order Summary if linked to an In-App Order */}
+        {data.order && (
+          <section className="rounded-2xl border bg-card p-4 space-y-2 text-sm">
+            <div className="flex items-center justify-between font-semibold">
+              <span>{data.order.orderNumber}</span>
+              <span className="px-2.5 py-0.5 rounded-full text-xs bg-muted">
+                {data.order.paymentStatus === 'paid' ? 'Paid' : 'Pay at Venue'} · {data.order.total} {data.order.currency}
+              </span>
+            </div>
+            <ul className="divide-y text-xs text-muted-foreground">
+              {(data.order.lineItems || []).map((line: any, i: number) => (
+                <li key={i} className="py-1.5 flex justify-between gap-2">
+                  <span>
+                    <strong className="text-foreground">{line.quantity}× {label(line.name)}</strong>
+                    {line.variantLabel ? ` (${line.variantLabel})` : ''}
+                    {line.modifiers?.length ? ` · ${line.modifiers.map((m: any) => m.label).join(', ')}` : ''}
+                  </span>
+                  <span className="font-medium text-foreground">{line.lineTotal}</span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
+        {/* Curbside / Drive-Thru Bay Arrival Check-in */}
+        {restaurant.driveThruEnabled && !isCollected && data.bays?.length > 0 && (
+          <section className="rounded-2xl border bg-card p-4 space-y-3">
+            <div className="flex items-center gap-2 font-semibold text-sm">
+              <Car className="w-4 h-4 text-primary" />
+              <span>{t('Curbside & Drive-Thru')}</span>
+              {data.bay && (
+                <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold">
+                  Checked into {data.bay.code}
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">{t('Select Parking Bay')}</Label>
+                <select
+                  className="manager-select w-full h-11 text-sm"
+                  value={bayId || ticket.bayId || ''}
+                  onChange={e => setBayId(e.target.value)}
+                >
+                  <option value="">Select bay…</option>
+                  {data.bays.map((b: any) => (
+                    <option key={b.id} value={b.id}>{b.code} — {b.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label className="text-xs">{t('Vehicle Color')}</Label>
+                <select
+                  className="manager-select w-full h-11 text-sm"
+                  value={vehicleColor}
+                  onChange={e => setVehicleColor(e.target.value)}
+                >
+                  {['White', 'Black', 'Silver', 'Gray', 'Blue', 'Red', 'Sand', 'Green'].map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label className="text-xs">{t('Vehicle Type')}</Label>
+                <select
+                  className="manager-select w-full h-11 text-sm"
+                  value={vehicleType}
+                  onChange={e => setVehicleType(e.target.value as any)}
+                >
+                  {['SUV', 'Sedan', 'Pickup', 'Coupe', 'Other'].map(v => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <Label className="text-xs">{t('License Plate')}</Label>
+                <Input
+                  value={licensePlate}
+                  onChange={e => setLicensePlate(e.target.value)}
+                  placeholder="QAT 48291"
+                  className="h-11"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11 cursor-pointer"
+                disabled={!(bayId || ticket.bayId) || !licensePlate.trim() || checkinMutation.isPending}
+                onClick={() => checkinMutation.mutate('5_mins_away')}
+              >
+                {t('5 Mins Away')}
+              </Button>
+              <Button
+                type="button"
+                className="min-h-11 cursor-pointer"
+                disabled={!(bayId || ticket.bayId) || !licensePlate.trim() || checkinMutation.isPending}
+                onClick={() => checkinMutation.mutate('arrived')}
+              >
+                <MapPin className="w-4 h-4 mr-1.5" />
+                {t("I'm Here — Check In")}
+              </Button>
+            </div>
+          </section>
+        )}
+
+        {/* Post-Pickup Reputation Loop (Google Maps 1-Tap Review) */}
+        {(isCollected || isReady) && (
+          <section className="rounded-2xl border bg-card p-5 space-y-3 text-center">
+            <h2 className="font-semibold text-base">{t('Rate your experience')}</h2>
+            {ticket.rating || feedbackSaved ? (
+              <div className="space-y-3">
+                <div className="inline-flex items-center gap-1.5 text-emerald-700 font-semibold text-sm">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Thank you for your {ticket.rating || rating}-star feedback!</span>
+                </div>
+                {(feedbackSaved?.googleMapsReviewUrl || ((ticket.rating || rating) >= 4 && restaurant.googleMapsReviewUrl)) && (
+                  <div>
+                    <a
+                      href={feedbackSaved?.googleMapsReviewUrl || restaurant.googleMapsReviewUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Button className="w-full min-h-11 cursor-pointer gap-2">
+                        <Star className="w-4 h-4 fill-current" />
+                        <span>{t('Leave a Google Maps Review')}</span>
+                        <ExternalLink className="w-4 h-4" />
+                      </Button>
+                    </a>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <div className="flex justify-center gap-2">
+                  {[1, 2, 3, 4, 5].map(star => (
+                    <button
+                      key={star}
+                      type="button"
+                      aria-label={`Rate ${star} stars`}
+                      onClick={() => setRating(star)}
+                      className="w-11 h-11 rounded-xl border grid place-items-center cursor-pointer transition-transform hover:scale-105"
+                    >
+                      <Star
+                        className={`w-6 h-6 ${
+                          star <= rating ? 'fill-amber-400 text-amber-500' : 'text-muted-foreground'
+                        }`}
+                      />
+                    </button>
+                  ))}
+                </div>
+                {rating > 0 && (
+                  <div className="space-y-2">
+                    <Input
+                      value={comment}
+                      onChange={e => setComment(e.target.value)}
+                      placeholder="Any quick note for our barista team? (optional)"
+                    />
+                    <Button
+                      type="button"
+                      className="w-full min-h-11 cursor-pointer"
+                      disabled={feedbackMutation.isPending}
+                      onClick={() => feedbackMutation.mutate()}
+                    >
+                      Submit Rating
+                    </Button>
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+        )}
+
+        {/* Today's Specials & Optional Wait-Screen Mini-Game */}
+        {!isCollected && (
+          <div className="space-y-3">
+            {data.specials?.length > 0 && (
+              <section className="rounded-2xl border bg-card p-4 space-y-2">
+                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{t("Today's specials")}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {data.specials.map((item: any) => (
+                    <div key={item.id} className="rounded-xl border p-2.5 text-xs space-y-1">
+                      <strong className="block truncate">{label(item.name)}</strong>
+                      <span className="text-muted-foreground">
+                        {Number(item.price).toFixed(2)} {restaurant.currency}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {restaurant.pagerMiniGameEnabled && (
+              <div>
+                {showGame ? (
+                  <BeanCatcherMiniGame />
+                ) : (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full min-h-11 rounded-2xl cursor-pointer gap-2"
+                    onClick={() => setShowGame(true)}
+                  >
+                    <Gamepad2 className="w-4 h-4" />
+                    <span>Play Barista Reflex Game while waiting</span>
+                  </Button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        <footer className="text-center pt-2">
+          <Link href={`/menu/${restaurant.id}`}>
+            <Button variant="ghost" className="cursor-pointer text-sm">
+              Back to {label(restaurant.name)} Menu
+            </Button>
+          </Link>
+        </footer>
+      </div>
+    </div>
+  );
+}

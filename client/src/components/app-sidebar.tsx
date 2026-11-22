@@ -1,4 +1,4 @@
-import { LayoutDashboard, UtensilsCrossed, FolderOpen, Store, QrCode, LogOut, Building2, LibraryBig, Users, History } from "lucide-react";
+import { LayoutDashboard, UtensilsCrossed, FolderOpen, Store, QrCode, LogOut, Building2, LibraryBig, Users, History, BellRing, CalendarDays, Car, Truck, BarChart3 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -24,6 +24,31 @@ const adminMenuItems = [
     title: "Dashboard",
     url: "/admin",
     icon: LayoutDashboard,
+  },
+  {
+    title: "Virtual Pager & KDS",
+    url: "/admin/kds",
+    icon: BellRing,
+  },
+  {
+    title: "Tables & Waitlist",
+    url: "/admin/tables",
+    icon: CalendarDays,
+  },
+  {
+    title: "Drive-Thru & Bays",
+    url: "/admin/drive-thru",
+    icon: Car,
+  },
+  {
+    title: "Ordering & Delivery",
+    url: "/admin/delivery",
+    icon: Truck,
+  },
+  {
+    title: "SLA Analytics",
+    url: "/admin/analytics",
+    icon: BarChart3,
   },
   {
     title: "Café Profile & Theme",

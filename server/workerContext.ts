@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
+import type { DurableObjectNamespace } from '@cloudflare/workers-types';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type * as schema from '@shared/schema';
 
@@ -6,6 +7,7 @@ export interface WorkerEnvironment {
   APPLICATION_SURFACE: 'public' | 'management';
   HYPERDRIVE: { connectionString: string };
   ASSETS: { fetch(request: Request): Promise<Response> };
+  BRANCH_HUB?: DurableObjectNamespace;
   SESSION_SECRET: string;
   SUPABASE_URL: string;
   SUPABASE_SERVICE_ROLE_KEY: string;

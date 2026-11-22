@@ -1,0 +1,1810 @@
+import type { Express } from 'express';
+import { randomUUID } from 'node:crypto';
+import { and, asc, desc, eq, gt, inArray, lt, sql } from 'drizzle-orm';
+import { z } from 'zod';
+import { db } from './db';
+import { storage } from './storage';
+import { isAuthenticated, isSuperAdmin } from './localAuth';
+import { getManagedCafe } from './accessControl';
+import { rateLimit } from './httpSecurity';
+import { attachSseStream, publishRealtimeEvent } from './realtimeHub';
+import {
+  createPaymentCheckoutSession,
+  signGatewayPayload,
+  verifyGatewaySignature,
+} from './payments/gateways';
+import {
+  customizationTotal,
+  missingModifierGroups,
+  reconcileModifierSelections,
+  selectedModifierOptions,
+  type MenuModifierSelections,
+} from '@shared/menuCustomization';
+import {
+  aggregatorClicks,
+  aggregatorLinks,
+  diningTables,
+  diningZones,
+  guestOrders,
+  pagerTickets,
+  restaurants,
+  serviceBays,
+  tableReservations,
+  waitlistEntries,
+  type OrderLineItem,
+  type PublicCafe,
+  type Restaurant,
+} from '@shared/schema';
+
+const REBUZZ_COOLDOWN_MS = 20_000;
+
+function toPublicCafe(restaurant: Restaurant): PublicCafe {
+  const {
+    id,
+    name,
+    slug,
+    theme,
+    brandAccentHex,
+    currency,
+    timezone,
+    logoUrl,
+    coverMediaUrl,
+    coverMediaType,
+    cuisineType,
+    address,
+    phone,
+    openingHours,
+    orderingMode,
+    paymentGateway,
+    googleMapsReviewUrl,
+    reservationsEnabled,
+    waitlistEnabled,
+    driveThruEnabled,
+    pagerMiniGameEnabled,
+    slotIntervalMins,
+    defaultTurnDurationMins,
+    reservationDepositAmount,
+  } = restaurant;
+  return {
+    id,
+    name,
+    slug,
+    theme,
+    brandAccentHex,
+    currency,
+    timezone,
+    logoUrl,
+    coverMediaUrl,
+    coverMediaType,
+    cuisineType,
+    address,
+    phone,
+    openingHours,
+    orderingMode,
+    paymentGateway,
+    googleMapsReviewUrl,
+    reservationsEnabled,
+    waitlistEnabled,
+    driveThruEnabled,
+    pagerMiniGameEnabled,
+    slotIntervalMins,
+    defaultTurnDurationMins,
+    reservationDepositAmount,
+  };
+}
+
+function branchLocalDate(timezone = 'Asia/Qatar'): string {
+  try {
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date());
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
+async function nextDailyPagerCode(tx: typeof db, restaurantId: string, ticketDate: string) {
+  const existing = await tx
+    .select({ maxSeq: sql<number>`coalesce(max(${pagerTickets.dailySeq}), 0)` })
+    .from(pagerTickets)
+    .where(and(eq(pagerTickets.restaurantId, restaurantId), eq(pagerTickets.ticketDate, ticketDate)));
+  const seq = Number(existing[0]?.maxSeq || 0) + 1;
+  const code = `A-${String(seq).padStart(3, '0')}`;
+  return { seq, code };
+}
+
+async function nextWaitlistCode(tx: typeof db, restaurantId: string) {
+  const countRows = await tx
+    .select({ n: sql<number>`count(*)` })
+    .from(waitlistEntries)
+    .where(eq(waitlistEntries.restaurantId, restaurantId));
+  const seq = (Number(countRows[0]?.n || 0) % 999) + 1;
+  return `W-${String(seq).padStart(3, '0')}`;
+}
+
+export function mountHospitalityRoutes(app: Express) {
+  // ===== REALTIME STREAMS =====
+
+  app.get('/api/public/stream/pager/:token', async (req, res, next) => {
+    try {
+      const token = z.string().uuid().parse(req.params.token);
+      const [ticket] = await db
+        .select({ id: pagerTickets.id })
+        .from(pagerTickets)
+        .where(eq(pagerTickets.trackingToken, token));
+      if (!ticket) return res.status(404).json({ message: 'Pager ticket not found' });
+      attachSseStream(res, `pager:${token}`);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.get('/api/public/stream/waitlist/:token', async (req, res, next) => {
+    try {
+      const token = z.string().uuid().parse(req.params.token);
+      const [entry] = await db
+        .select({ id: waitlistEntries.id })
+        .from(waitlistEntries)
+        .where(eq(waitlistEntries.trackingToken, token));
+      if (!entry) return res.status(404).json({ message: 'Waitlist ticket not found' });
+      attachSseStream(res, `waitlist:${token}`);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.get('/api/hospitality/stream', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      attachSseStream(res, `branch:${cafe.id}`);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // ===== PUBLIC GUEST ENDPOINTS (PILLARS 1–5) =====
+
+  // Resolve permanent branded slug (/v/:slug)
+  app.get('/api/public/venue-by-slug/:slug', async (req, res, next) => {
+    try {
+      const slug = z
+        .string()
+        .trim()
+        .toLowerCase()
+        .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+        .parse(req.params.slug);
+      const [restaurant] = await db
+        .select()
+        .from(restaurants)
+        .where(and(sql`lower(${restaurants.slug}) = ${slug}`, eq(restaurants.status, 'active'), eq(restaurants.hidden, false)));
+      if (!restaurant) return res.status(404).json({ message: 'Venue not found' });
+      res.json({ restaurant: toPublicCafe(restaurant) });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Resolve permanent Curbside / Drive-Thru Bay QR (/bay/:qrToken)
+  app.get('/api/public/bay/:qrToken', async (req, res, next) => {
+    try {
+      const qrToken = z.string().uuid().parse(req.params.qrToken);
+      const [bay] = await db
+        .select()
+        .from(serviceBays)
+        .where(and(eq(serviceBays.qrToken, qrToken), eq(serviceBays.isActive, true)));
+      if (!bay) return res.status(404).json({ message: 'Service bay not found' });
+      const restaurant = await storage.getRestaurantById(bay.restaurantId);
+      if (!restaurant || restaurant.hidden || restaurant.status !== 'active') {
+        return res.status(404).json({ message: 'Venue unavailable' });
+      }
+      res.json({ restaurant: toPublicCafe(restaurant), bay });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Fetch public hospitality capabilities (zones, tables, bays, active delivery aggregators)
+  app.get('/api/public/hospitality/:restaurantId', async (req, res, next) => {
+    try {
+      const restaurantId = z.string().uuid().parse(req.params.restaurantId);
+      const restaurant = await storage.getRestaurantById(restaurantId);
+      if (!restaurant || restaurant.hidden || restaurant.status !== 'active') {
+        return res.status(404).json({ message: 'Venue unavailable' });
+      }
+      const [zones, tables, bays, aggregators] = await Promise.all([
+        db.select().from(diningZones).where(eq(diningZones.restaurantId, restaurantId)).orderBy(asc(diningZones.order)),
+        db
+          .select({
+            id: diningTables.id,
+            zoneId: diningTables.zoneId,
+            tableCode: diningTables.tableCode,
+            minCovers: diningTables.minCovers,
+            maxCovers: diningTables.maxCovers,
+            isCombinable: diningTables.isCombinable,
+          })
+          .from(diningTables)
+          .where(and(eq(diningTables.restaurantId, restaurantId), eq(diningTables.isActive, true)))
+          .orderBy(asc(diningTables.tableCode)),
+        db
+          .select({
+            id: serviceBays.id,
+            code: serviceBays.code,
+            label: serviceBays.label,
+            bayType: serviceBays.bayType,
+            qrToken: serviceBays.qrToken,
+          })
+          .from(serviceBays)
+          .where(and(eq(serviceBays.restaurantId, restaurantId), eq(serviceBays.isActive, true)))
+          .orderBy(asc(serviceBays.order), asc(serviceBays.code)),
+        db
+          .select()
+          .from(aggregatorLinks)
+          .where(and(eq(aggregatorLinks.restaurantId, restaurantId), eq(aggregatorLinks.isActive, true)))
+          .orderBy(asc(aggregatorLinks.order)),
+      ]);
+      res.json({ restaurant: toPublicCafe(restaurant), zones, tables, bays, aggregators });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Pillar 1 & 2: Guest Order Placement (Mode B: cart_pay_at_venue & Mode C: full_online_checkout)
+  const orderSubmissionSchema = z
+    .object({
+      restaurantId: z.string().uuid(),
+      channel: z.enum(['dine_in', 'counter_pickup', 'curbside', 'drive_thru']).default('counter_pickup'),
+      customerName: z.string().trim().min(1).max(120),
+      customerPhone: z.string().trim().max(40).optional().nullable(),
+      tableCode: z.string().trim().max(40).optional().nullable(),
+      bayId: z.string().uuid().optional().nullable(),
+      vehicleColor: z.string().trim().max(40).optional().nullable(),
+      vehicleType: z.enum(['Sedan', 'SUV', 'Pickup', 'Coupe', 'Other']).optional().nullable(),
+      licensePlate: z.string().trim().max(32).optional().nullable(),
+      notes: z.string().trim().max(500).optional().nullable(),
+      idempotencyKey: z.string().trim().min(8).max(120).optional(),
+      items: z
+        .array(
+          z
+            .object({
+              menuItemId: z.string().uuid(),
+              quantity: z.number().int().min(1).max(25),
+              variantId: z.string().uuid().optional().nullable(),
+              modifiers: z.record(z.string(), z.array(z.string())).default({}),
+              notes: z.string().trim().max(240).optional(),
+            })
+            .strict(),
+        )
+        .min(1)
+        .max(40),
+    })
+    .strict();
+
+  app.post('/api/public/orders', rateLimit(30, 10 * 60 * 1000, req => req.ip || 'unknown'), async (req, res, next) => {
+    try {
+      const payload = orderSubmissionSchema.parse(req.body);
+      const restaurant = await storage.getRestaurantById(payload.restaurantId);
+      if (!restaurant || restaurant.hidden || restaurant.status !== 'active') {
+        return res.status(404).json({ message: 'Venue unavailable' });
+      }
+      if (restaurant.orderingMode === 'browse_and_pager') {
+        return res.status(403).json({
+          message: 'Online cart ordering is disabled for this branch. Place your order at the counter and scan your pager.',
+        });
+      }
+
+      if (payload.idempotencyKey) {
+        const [existingOrder] = await db
+          .select()
+          .from(guestOrders)
+          .where(eq(guestOrders.paymentIdempotencyKey, payload.idempotencyKey));
+        if (existingOrder) {
+          const [existingPager] = await db
+            .select()
+            .from(pagerTickets)
+            .where(eq(pagerTickets.orderId, existingOrder.id));
+          return res.json({
+            order: existingOrder,
+            pager: existingPager || null,
+            idempotentReplay: true,
+          });
+        }
+      }
+
+      const [allCats, allItems, allVariants] = await Promise.all([
+        storage.getCategoriesByRestaurantId(restaurant.id),
+        storage.getMenuItemsByRestaurantId(restaurant.id),
+        storage.getPriceVariantsByRestaurantId(restaurant.id),
+      ]);
+      const visibleCats = new Set(allCats.filter(c => c.isVisible !== false).map(c => c.id));
+      const itemMap = new Map(
+        allItems.filter(i => i.isAvailable && visibleCats.has(i.categoryId)).map(i => [i.id, i]),
+      );
+
+      let totalCents = 0;
+      let maxPrepMins = 8;
+      const computedLines: OrderLineItem[] = [];
+
+      for (const entry of payload.items) {
+        const menuItem = itemMap.get(entry.menuItemId);
+        if (!menuItem) {
+          return res.status(409).json({ message: 'One or more items in your cart are currently unavailable.' });
+        }
+        const itemVariants = allVariants.filter(v => v.menuItemId === menuItem.id);
+        let chosenVariant = undefined;
+        if (menuItem.hasMultiplePricing) {
+          chosenVariant = itemVariants.find(v => v.id === entry.variantId) || itemVariants[0];
+          if (!chosenVariant) {
+            return res.status(400).json({ message: `Select a size option for ${menuItem.name}` });
+          }
+        }
+        const groups = menuItem.modifierGroups || [];
+        const reconciled: MenuModifierSelections = reconcileModifierSelections(groups, entry.modifiers);
+        const missing = missingModifierGroups(groups, reconciled);
+        if (missing.length > 0) {
+          return res.status(400).json({
+            message: `Complete required choices (${missing.map(g => g.title).join(', ')}) for ${menuItem.name}`,
+          });
+        }
+        const chosenMods = selectedModifierOptions(groups, reconciled);
+        const unitTotal = customizationTotal(
+          chosenVariant ? chosenVariant.price : menuItem.price,
+          chosenVariant ? chosenVariant.discount : menuItem.discount,
+          chosenMods,
+        );
+        const unitCents = Math.round(Number(unitTotal) * 100);
+        const lineCents = unitCents * entry.quantity;
+        totalCents += lineCents;
+        maxPrepMins = Math.max(maxPrepMins, menuItem.prepTimeMins || 10);
+
+        computedLines.push({
+          menuItemId: menuItem.id,
+          name: menuItem.name,
+          quantity: entry.quantity,
+          variantId: chosenVariant?.id || null,
+          variantLabel: chosenVariant?.label || null,
+          modifiers: chosenMods.map(m => ({ id: m.id, label: m.label, labelAr: m.labelAr, price: m.price })),
+          unitTotal,
+          lineTotal: (lineCents / 100).toFixed(2),
+          notes: entry.notes,
+        });
+      }
+
+      if (payload.bayId) {
+        const [bay] = await db
+          .select()
+          .from(serviceBays)
+          .where(and(eq(serviceBays.id, payload.bayId), eq(serviceBays.restaurantId, restaurant.id)));
+        if (!bay) return res.status(400).json({ message: 'Selected parking bay does not belong to this branch' });
+      }
+
+      const totalFormatted = (totalCents / 100).toFixed(2);
+      const isOnlineCheckout = restaurant.orderingMode === 'full_online_checkout';
+      const gateway: 'skipcash' | 'sadad' =
+        restaurant.paymentGateway === 'sadad' ? 'sadad' : 'skipcash';
+      const ticketDate = branchLocalDate(restaurant.timezone);
+
+      const created = await db.transaction(async tx => {
+        const { seq, code } = await nextDailyPagerCode(tx as any, restaurant.id, ticketDate);
+        const orderNumber = `ORD-${ticketDate.slice(5).replace('-', '')}-${String(seq).padStart(3, '0')}`;
+        const [order] = await tx
+          .insert(guestOrders)
+          .values({
+            restaurantId: restaurant.id,
+            orderNumber,
+            channel: payload.channel,
+            orderingMode: restaurant.orderingMode,
+            paymentStatus: isOnlineCheckout ? 'pending_online' : 'pay_at_venue',
+            paymentProvider: isOnlineCheckout ? gateway : 'venue',
+            paymentIdempotencyKey: payload.idempotencyKey || randomUUID(),
+            customerName: payload.customerName,
+            customerPhone: payload.customerPhone || null,
+            tableCode: payload.tableCode || null,
+            bayId: payload.bayId || null,
+            vehicleColor: payload.vehicleColor || null,
+            vehicleType: payload.vehicleType || null,
+            licensePlate: payload.licensePlate?.toUpperCase() || null,
+            notes: payload.notes || null,
+            currency: restaurant.currency,
+            subtotal: totalFormatted,
+            total: totalFormatted,
+            lineItems: computedLines,
+          })
+          .returning();
+
+        // In Mode B (cart_pay_at_venue), immediately release pager ticket to KDS.
+        // In Mode C (full_online_checkout), issue pager ticket only once payment succeeds (or create waiting ticket on confirmation).
+        let pager = null;
+        if (!isOnlineCheckout) {
+          const [ticket] = await tx
+            .insert(pagerTickets)
+            .values({
+              restaurantId: restaurant.id,
+              orderId: order.id,
+              bayId: payload.bayId || null,
+              ticketCode: code,
+              ticketDate,
+              dailySeq: seq,
+              source: payload.channel === 'curbside' || payload.channel === 'drive_thru' ? 'curbside' : 'online_order',
+              status: 'waiting',
+              customerName: payload.customerName,
+              notes: payload.notes || null,
+              estimatedPrepMins: maxPrepMins,
+              vehicleColor: payload.vehicleColor || null,
+              vehicleType: payload.vehicleType || null,
+              licensePlate: payload.licensePlate?.toUpperCase() || null,
+              etaStatus: payload.bayId ? 'arrived' : null,
+              arrivedAt: payload.bayId ? new Date() : null,
+            })
+            .returning();
+          pager = ticket;
+        }
+        return { order, pager, maxPrepMins };
+      });
+
+      if (isOnlineCheckout) {
+        const origin = `${req.protocol}://${req.get('host')}`;
+        const checkout = await createPaymentCheckoutSession({
+          orderId: created.order.id,
+          orderNumber: created.order.orderNumber,
+          restaurantId: restaurant.id,
+          amount: created.order.total,
+          currency: restaurant.currency,
+          provider: gateway,
+          customerName: payload.customerName,
+          customerPhone: payload.customerPhone,
+          returnOrigin: origin,
+        });
+        await db
+          .update(guestOrders)
+          .set({ paymentReference: checkout.paymentReference })
+          .where(eq(guestOrders.id, created.order.id));
+        return res.status(201).json({
+          order: { ...created.order, paymentReference: checkout.paymentReference },
+          pager: null,
+          checkout,
+        });
+      }
+
+      publishRealtimeEvent([`branch:${restaurant.id}`], {
+        type: 'order.created',
+        branchId: restaurant.id,
+        data: { order: created.order, pager: created.pager },
+      });
+
+      res.status(201).json({ order: created.order, pager: created.pager, checkout: null });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Sandbox / Signed Webhook confirmation for Mode C (SkipCash & Sadad)
+  async function finalizePaidOrder(orderId: string, provider: 'skipcash' | 'sadad', paymentReference: string) {
+    return await db.transaction(async tx => {
+      const [order] = await tx.select().from(guestOrders).where(eq(guestOrders.id, orderId)).for('update');
+      if (!order) throw Object.assign(new Error('Order not found'), { status: 404 });
+      if (order.paymentStatus === 'paid') {
+        const [existingPager] = await tx.select().from(pagerTickets).where(eq(pagerTickets.orderId, order.id));
+        return { order, pager: existingPager, alreadyPaid: true };
+      }
+      const [restaurant] = await tx
+        .select({ timezone: restaurants.timezone })
+        .from(restaurants)
+        .where(eq(restaurants.id, order.restaurantId));
+      const ticketDate = branchLocalDate(restaurant?.timezone);
+      const { seq, code } = await nextDailyPagerCode(tx as any, order.restaurantId, ticketDate);
+
+      const [updatedOrder] = await tx
+        .update(guestOrders)
+        .set({
+          paymentStatus: 'paid',
+          paymentProvider: provider,
+          paymentReference,
+          paidAt: new Date(),
+        })
+        .where(eq(guestOrders.id, order.id))
+        .returning();
+
+      const [ticket] = await tx
+        .insert(pagerTickets)
+        .values({
+          restaurantId: order.restaurantId,
+          orderId: order.id,
+          bayId: order.bayId,
+          ticketCode: code,
+          ticketDate,
+          dailySeq: seq,
+          source: order.channel === 'curbside' || order.channel === 'drive_thru' ? 'curbside' : 'online_order',
+          status: 'waiting',
+          customerName: order.customerName,
+          notes: order.notes,
+          estimatedPrepMins: 12,
+          vehicleColor: order.vehicleColor,
+          vehicleType: order.vehicleType,
+          licensePlate: order.licensePlate,
+          etaStatus: order.bayId ? 'arrived' : null,
+          arrivedAt: order.bayId ? new Date() : null,
+        })
+        .returning();
+
+      return { order: updatedOrder, pager: ticket, alreadyPaid: false };
+    });
+  }
+
+  app.post('/api/public/payments/:orderId/confirm-sandbox', async (req, res, next) => {
+    try {
+      const orderId = z.string().uuid().parse(req.params.orderId);
+      const body = z
+        .object({
+          provider: z.enum(['skipcash', 'sadad']),
+          paymentReference: z.string().min(4).max(120),
+          signatureToken: z.string().length(64),
+        })
+        .strict()
+        .parse(req.body);
+
+      const [order] = await db.select().from(guestOrders).where(eq(guestOrders.id, orderId));
+      if (!order) return res.status(404).json({ message: 'Order not found' });
+      const canonical = `${order.id}:${body.paymentReference}:${order.total}:${order.currency}`;
+      if (!verifyGatewaySignature(body.provider, canonical, body.signatureToken)) {
+        return res.status(403).json({ message: 'Invalid payment signature' });
+      }
+      const result = await finalizePaidOrder(order.id, body.provider, body.paymentReference);
+      if (!result.alreadyPaid) {
+        publishRealtimeEvent([`branch:${order.restaurantId}`], {
+          type: 'order.paid',
+          branchId: order.restaurantId,
+          data: { order: result.order, pager: result.pager },
+        });
+      }
+      res.json(result);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/webhooks/payments/:provider', async (req, res, next) => {
+    try {
+      const provider = z.enum(['skipcash', 'sadad']).parse(req.params.provider);
+      const signature = req.get('X-Gateway-Signature') || '';
+      const body = z
+        .object({
+          orderId: z.string().uuid(),
+          paymentReference: z.string().min(4).max(120),
+          amount: z.string(),
+          currency: z.string(),
+          status: z.enum(['paid', 'failed']),
+        })
+        .strict()
+        .parse(req.body);
+      const canonical = `${body.orderId}:${body.paymentReference}:${body.amount}:${body.currency}:${body.status}`;
+      if (!verifyGatewaySignature(provider, canonical, signature)) {
+        return res.status(401).json({ message: 'Invalid webhook signature' });
+      }
+      if (body.status === 'failed') {
+        await db
+          .update(guestOrders)
+          .set({ paymentStatus: 'failed', paymentReference: body.paymentReference })
+          .where(eq(guestOrders.id, body.orderId));
+        return res.json({ received: true, status: 'failed' });
+      }
+      const result = await finalizePaidOrder(body.orderId, provider, body.paymentReference);
+      if (!result.alreadyPaid) {
+        publishRealtimeEvent([`branch:${result.order.restaurantId}`], {
+          type: 'order.paid',
+          branchId: result.order.restaurantId,
+          data: { order: result.order, pager: result.pager },
+        });
+      }
+      res.json({ received: true, status: 'paid', trackingToken: result.pager?.trackingToken });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Pillar 2: Public Virtual Pager Screen & Ticket Lookup & Reputation Feedback
+  app.get('/api/public/pager/:token', async (req, res, next) => {
+    try {
+      const token = z.string().uuid().parse(req.params.token);
+      const [ticket] = await db.select().from(pagerTickets).where(eq(pagerTickets.trackingToken, token));
+      if (!ticket) return res.status(404).json({ message: 'Pager ticket not found' });
+
+      const restaurant = await storage.getRestaurantById(ticket.restaurantId);
+      if (!restaurant) return res.status(404).json({ message: 'Venue not found' });
+
+      const [aheadRows, orderRow, bayRow, allItems] = await Promise.all([
+        db
+          .select({ n: sql<number>`count(*)` })
+          .from(pagerTickets)
+          .where(
+            and(
+              eq(pagerTickets.restaurantId, ticket.restaurantId),
+              inArray(pagerTickets.status, ['waiting', 'preparing']),
+              lt(pagerTickets.queuedAt, ticket.queuedAt),
+            ),
+          ),
+        ticket.orderId ? db.select().from(guestOrders).where(eq(guestOrders.id, ticket.orderId)) : Promise.resolve([]),
+        ticket.bayId ? db.select().from(serviceBays).where(eq(serviceBays.id, ticket.bayId)) : Promise.resolve([]),
+        storage.getMenuItemsByRestaurantId(restaurant.id),
+      ]);
+
+      const today = branchLocalDate(restaurant.timezone);
+      const specials = allItems
+        .filter(i => i.isAvailable && i.specialDate === today)
+        .slice(0, 4)
+        .map(i => ({ id: i.id, name: i.name, price: i.price, discount: i.discount, imageUrl: i.imageUrl, unit: i.unit }));
+
+      const bays = restaurant.driveThruEnabled
+        ? await db
+            .select({ id: serviceBays.id, code: serviceBays.code, label: serviceBays.label, bayType: serviceBays.bayType })
+            .from(serviceBays)
+            .where(and(eq(serviceBays.restaurantId, restaurant.id), eq(serviceBays.isActive, true)))
+            .orderBy(asc(serviceBays.order))
+        : [];
+
+      res.json({
+        ticket,
+        restaurant: toPublicCafe(restaurant),
+        queueAhead: Number(aheadRows[0]?.n || 0),
+        order: orderRow[0] || null,
+        bay: bayRow[0] || null,
+        bays,
+        specials,
+      });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/public/pager/lookup', rateLimit(20, 5 * 60 * 1000, req => req.ip || 'unknown'), async (req, res, next) => {
+    try {
+      const { restaurantId, ticketCode } = z
+        .object({
+          restaurantId: z.string().uuid(),
+          ticketCode: z.string().trim().min(1).max(40),
+        })
+        .strict()
+        .parse(req.body);
+      const normalized = ticketCode.toUpperCase();
+      const [ticket] = await db
+        .select()
+        .from(pagerTickets)
+        .where(
+          and(
+            eq(pagerTickets.restaurantId, restaurantId),
+            sql`upper(${pagerTickets.ticketCode}) = ${normalized}`,
+          ),
+        )
+        .orderBy(desc(pagerTickets.queuedAt))
+        .limit(1);
+      if (!ticket) return res.status(404).json({ message: 'No active pager found for that receipt or pager code.' });
+      res.json({ trackingToken: ticket.trackingToken, ticketCode: ticket.ticketCode, status: ticket.status });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/public/pager/:token/feedback', async (req, res, next) => {
+    try {
+      const token = z.string().uuid().parse(req.params.token);
+      const { rating, comment } = z
+        .object({
+          rating: z.number().int().min(1).max(5),
+          comment: z.string().trim().max(500).optional(),
+        })
+        .strict()
+        .parse(req.body);
+      const [updated] = await db
+        .update(pagerTickets)
+        .set({ rating, feedbackComment: comment || null })
+        .where(eq(pagerTickets.trackingToken, token))
+        .returning();
+      if (!updated) return res.status(404).json({ message: 'Pager ticket not found' });
+      const restaurant = await storage.getRestaurantById(updated.restaurantId);
+      res.json({
+        ticket: updated,
+        promptGoogleReview: rating >= 4 && Boolean(restaurant?.googleMapsReviewUrl),
+        googleMapsReviewUrl: rating >= 4 ? restaurant?.googleMapsReviewUrl || null : null,
+      });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Pillar 4: Guest Curbside / Drive-Thru Vehicle Check-In ("5 Mins Away" / "I'm Here — Bay #")
+  app.post('/api/public/curbside/checkin', rateLimit(25, 5 * 60 * 1000, req => req.ip || 'unknown'), async (req, res, next) => {
+    try {
+      const body = z
+        .object({
+          trackingToken: z.string().uuid().optional(),
+          restaurantId: z.string().uuid().optional(),
+          bayId: z.string().uuid(),
+          etaStatus: z.enum(['5_mins_away', 'arrived']),
+          customerName: z.string().trim().max(120).optional(),
+          vehicleColor: z.string().trim().min(1).max(40),
+          vehicleType: z.enum(['Sedan', 'SUV', 'Pickup', 'Coupe', 'Other']),
+          licensePlate: z.string().trim().min(1).max(32),
+        })
+        .strict()
+        .parse(req.body);
+
+      const [bay] = await db.select().from(serviceBays).where(and(eq(serviceBays.id, body.bayId), eq(serviceBays.isActive, true)));
+      if (!bay) return res.status(404).json({ message: 'Parking bay not found' });
+
+      let updatedTicket;
+      if (body.trackingToken) {
+        const [existing] = await db
+          .select()
+          .from(pagerTickets)
+          .where(and(eq(pagerTickets.trackingToken, body.trackingToken), eq(pagerTickets.restaurantId, bay.restaurantId)));
+        if (!existing) return res.status(404).json({ message: 'Pager ticket not found for this branch' });
+        const [saved] = await db
+          .update(pagerTickets)
+          .set({
+            bayId: bay.id,
+            vehicleColor: body.vehicleColor,
+            vehicleType: body.vehicleType,
+            licensePlate: body.licensePlate.toUpperCase(),
+            etaStatus: body.etaStatus,
+            arrivedAt: body.etaStatus === 'arrived' ? existing.arrivedAt || new Date() : existing.arrivedAt,
+          })
+          .where(eq(pagerTickets.id, existing.id))
+          .returning();
+        updatedTicket = saved;
+      } else {
+        // Drive-up guest without a pre-order scanning Bay QR in browse_and_pager mode
+        const restaurant = await storage.getRestaurantById(bay.restaurantId);
+        if (!restaurant || restaurant.hidden || restaurant.status !== 'active') {
+          return res.status(404).json({ message: 'Venue unavailable' });
+        }
+        const ticketDate = branchLocalDate(restaurant.timezone);
+        updatedTicket = await db.transaction(async tx => {
+          const { seq, code } = await nextDailyPagerCode(tx as any, restaurant.id, ticketDate);
+          const [created] = await tx
+            .insert(pagerTickets)
+            .values({
+              restaurantId: restaurant.id,
+              bayId: bay.id,
+              ticketCode: code,
+              ticketDate,
+              dailySeq: seq,
+              source: 'curbside',
+              status: 'waiting',
+              customerName: body.customerName || `Car-Side · ${bay.code}`,
+              vehicleColor: body.vehicleColor,
+              vehicleType: body.vehicleType,
+              licensePlate: body.licensePlate.toUpperCase(),
+              etaStatus: body.etaStatus,
+              arrivedAt: body.etaStatus === 'arrived' ? new Date() : null,
+            })
+            .returning();
+          return created;
+        });
+      }
+
+      publishRealtimeEvent([`branch:${bay.restaurantId}`, `pager:${updatedTicket.trackingToken}`], {
+        type: 'curbside.arrived',
+        branchId: bay.restaurantId,
+        data: { ticket: updatedTicket, bay },
+      });
+
+      res.json({ ticket: updatedTicket, bay });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Pillar 3: Public Table Reservation Availability & Conflict-Free Booking
+  app.get('/api/public/reservations/:restaurantId/availability', async (req, res, next) => {
+    try {
+      const restaurantId = z.string().uuid().parse(req.params.restaurantId);
+      const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).parse(req.query.date);
+      const partySize = z.coerce.number().int().min(1).max(30).parse(req.query.partySize || 2);
+      const zoneId = req.query.zoneId ? z.string().uuid().parse(req.query.zoneId) : undefined;
+
+      const restaurant = await storage.getRestaurantById(restaurantId);
+      if (!restaurant || restaurant.hidden || restaurant.status !== 'active' || !restaurant.reservationsEnabled) {
+        return res.status(404).json({ message: 'Table reservations are not enabled for this branch' });
+      }
+
+      const candidateTables = (
+        await db
+          .select()
+          .from(diningTables)
+          .where(and(eq(diningTables.restaurantId, restaurantId), eq(diningTables.isActive, true)))
+      ).filter(
+        t =>
+          t.minCovers <= partySize &&
+          t.maxCovers >= partySize &&
+          (!zoneId || t.zoneId === zoneId),
+      );
+
+      if (!candidateTables.length) {
+        return res.json({ slots: [], durationMins: restaurant.defaultTurnDurationMins });
+      }
+
+      const dayStart = new Date(`${date}T00:00:00.000Z`);
+      const dayEnd = new Date(`${date}T23:59:59.999Z`);
+      const existingBookings = await db
+        .select()
+        .from(tableReservations)
+        .where(
+          and(
+            eq(tableReservations.restaurantId, restaurantId),
+            inArray(tableReservations.status, ['confirmed', 'seated']),
+            lt(tableReservations.startAt, dayEnd),
+            gt(tableReservations.endAt, dayStart),
+          ),
+        );
+
+      const interval = restaurant.slotIntervalMins || 30;
+      const duration = restaurant.defaultTurnDurationMins || 90;
+      const slots: { time: string; startIso: string; availableTables: number }[] = [];
+
+      // Offer slots from 09:00 to 22:00 UTC+3 equivalent (stored as ISO timestamps)
+      for (let mins = 9 * 60; mins <= 22 * 60; mins += interval) {
+        const hh = String(Math.floor(mins / 60)).padStart(2, '0');
+        const mm = String(mins % 60).padStart(2, '0');
+        const slotStart = new Date(`${date}T${hh}:${mm}:00+03:00`);
+        const slotEnd = new Date(slotStart.getTime() + duration * 60_000);
+        const freeCount = candidateTables.filter(
+          table =>
+            !existingBookings.some(
+              b =>
+                b.tableId === table.id &&
+                new Date(b.startAt).getTime() < slotEnd.getTime() &&
+                new Date(b.endAt).getTime() > slotStart.getTime(),
+            ),
+        ).length;
+        if (freeCount > 0) {
+          slots.push({ time: `${hh}:${mm}`, startIso: slotStart.toISOString(), availableTables: freeCount });
+        }
+      }
+
+      res.json({ slots, durationMins: duration });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/public/reservations/:restaurantId', rateLimit(15, 10 * 60 * 1000, req => req.ip || 'unknown'), async (req, res, next) => {
+    try {
+      const restaurantId = z.string().uuid().parse(req.params.restaurantId);
+      const body = z
+        .object({
+          guestName: z.string().trim().min(1).max(120),
+          guestPhone: z.string().trim().min(5).max(40),
+          partySize: z.number().int().min(1).max(30),
+          zoneId: z.string().uuid().optional().nullable(),
+          startIso: z.string().datetime({ offset: true }),
+          notes: z.string().trim().max(400).optional().nullable(),
+        })
+        .strict()
+        .parse(req.body);
+
+      const restaurant = await storage.getRestaurantById(restaurantId);
+      if (!restaurant || restaurant.hidden || restaurant.status !== 'active' || !restaurant.reservationsEnabled) {
+        return res.status(404).json({ message: 'Reservations are unavailable for this branch' });
+      }
+
+      const startAt = new Date(body.startIso);
+      const endAt = new Date(startAt.getTime() + (restaurant.defaultTurnDurationMins || 90) * 60_000);
+
+      // Lock candidate tables inside a single transaction so concurrent bookings can never double-book.
+      const booked = await db.transaction(async tx => {
+        const tables = await tx
+          .select()
+          .from(diningTables)
+          .where(and(eq(diningTables.restaurantId, restaurantId), eq(diningTables.isActive, true)))
+          .orderBy(asc(diningTables.maxCovers), asc(diningTables.tableCode))
+          .for('update');
+
+        const eligible = tables.filter(
+          t =>
+            t.minCovers <= body.partySize &&
+            t.maxCovers >= body.partySize &&
+            (!body.zoneId || t.zoneId === body.zoneId),
+        );
+        if (!eligible.length) {
+          throw Object.assign(new Error('No table fits that party size in the selected dining zone.'), { status: 409 });
+        }
+
+        const overlapping = await tx
+          .select({ tableId: tableReservations.tableId })
+          .from(tableReservations)
+          .where(
+            and(
+              eq(tableReservations.restaurantId, restaurantId),
+              inArray(tableReservations.status, ['confirmed', 'seated']),
+              lt(tableReservations.startAt, endAt),
+              gt(tableReservations.endAt, startAt),
+            ),
+          );
+        const busyIds = new Set(overlapping.map(o => o.tableId));
+        const chosenTable = eligible.find(t => !busyIds.has(t.id));
+        if (!chosenTable) {
+          throw Object.assign(
+            new Error('That time slot was just taken. Please pick another available time.'),
+            { status: 409 },
+          );
+        }
+
+        const depositAmt =
+          restaurant.orderingMode === 'full_online_checkout' ? String(restaurant.reservationDepositAmount || '0') : '0';
+        const [reservation] = await tx
+          .insert(tableReservations)
+          .values({
+            restaurantId,
+            zoneId: chosenTable.zoneId,
+            tableId: chosenTable.id,
+            guestName: body.guestName,
+            guestPhone: body.guestPhone,
+            partySize: body.partySize,
+            startAt,
+            endAt,
+            status: 'confirmed',
+            depositStatus: Number(depositAmt) > 0 ? 'paid_simulated' : 'none',
+            depositAmount: depositAmt,
+            notes: body.notes || null,
+          })
+          .returning();
+
+        return { reservation, table: chosenTable };
+      });
+
+      publishRealtimeEvent([`branch:${restaurantId}`], {
+        type: 'reservation.updated',
+        branchId: restaurantId,
+        data: booked,
+      });
+
+      res.status(201).json(booked);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.get('/api/public/booking/:token', async (req, res, next) => {
+    try {
+      const token = z.string().uuid().parse(req.params.token);
+      const [reservation] = await db.select().from(tableReservations).where(eq(tableReservations.trackingToken, token));
+      if (!reservation) return res.status(404).json({ message: 'Reservation not found' });
+      const [restaurant, [table], [zone]] = await Promise.all([
+        storage.getRestaurantById(reservation.restaurantId),
+        db.select().from(diningTables).where(eq(diningTables.id, reservation.tableId)),
+        reservation.zoneId ? db.select().from(diningZones).where(eq(diningZones.id, reservation.zoneId)) : Promise.resolve([]),
+      ]);
+      if (!restaurant) return res.status(404).json({ message: 'Venue not found' });
+      res.json({ reservation, table: table || null, zone: zone || null, restaurant: toPublicCafe(restaurant) });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/public/booking/:token/cancel', async (req, res, next) => {
+    try {
+      const token = z.string().uuid().parse(req.params.token);
+      const [existing] = await db.select().from(tableReservations).where(eq(tableReservations.trackingToken, token));
+      if (!existing) return res.status(404).json({ message: 'Reservation not found' });
+      if (existing.status !== 'confirmed') {
+        return res.status(409).json({ message: `Reservation is already ${existing.status}.` });
+      }
+      const [cancelled] = await db
+        .update(tableReservations)
+        .set({ status: 'cancelled', cancelledAt: new Date() })
+        .where(eq(tableReservations.id, existing.id))
+        .returning();
+      publishRealtimeEvent([`branch:${existing.restaurantId}`], {
+        type: 'reservation.updated',
+        branchId: existing.restaurantId,
+        data: { reservation: cancelled },
+      });
+      res.json({ reservation: cancelled });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Pillar 3: Public Live Walk-In Virtual Waitlist
+  app.post('/api/public/waitlist/:restaurantId', rateLimit(20, 10 * 60 * 1000, req => req.ip || 'unknown'), async (req, res, next) => {
+    try {
+      const restaurantId = z.string().uuid().parse(req.params.restaurantId);
+      const body = z
+        .object({
+          guestName: z.string().trim().min(1).max(120),
+          guestPhone: z.string().trim().max(40).optional().nullable(),
+          partySize: z.number().int().min(1).max(30),
+          zoneId: z.string().uuid().optional().nullable(),
+          notes: z.string().trim().max(300).optional().nullable(),
+        })
+        .strict()
+        .parse(req.body);
+
+      const restaurant = await storage.getRestaurantById(restaurantId);
+      if (!restaurant || restaurant.hidden || restaurant.status !== 'active' || !restaurant.waitlistEnabled) {
+        return res.status(404).json({ message: 'Walk-in waitlist is currently closed for this branch' });
+      }
+
+      const entry = await db.transaction(async tx => {
+        const ticketCode = await nextWaitlistCode(tx as any, restaurantId);
+        const [created] = await tx
+          .insert(waitlistEntries)
+          .values({
+            restaurantId,
+            zoneId: body.zoneId || null,
+            ticketCode,
+            guestName: body.guestName,
+            guestPhone: body.guestPhone || null,
+            partySize: body.partySize,
+            notes: body.notes || null,
+            status: 'waiting',
+          })
+          .returning();
+        return created;
+      });
+
+      publishRealtimeEvent([`branch:${restaurantId}`], {
+        type: 'waitlist.updated',
+        branchId: restaurantId,
+        data: { entry },
+      });
+
+      res.status(201).json({ entry });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.get('/api/public/waitlist-ticket/:token', async (req, res, next) => {
+    try {
+      const token = z.string().uuid().parse(req.params.token);
+      const [entry] = await db.select().from(waitlistEntries).where(eq(waitlistEntries.trackingToken, token));
+      if (!entry) return res.status(404).json({ message: 'Waitlist ticket not found' });
+      const restaurant = await storage.getRestaurantById(entry.restaurantId);
+      if (!restaurant) return res.status(404).json({ message: 'Venue not found' });
+      const [aheadRows, [zone]] = await Promise.all([
+        db
+          .select({ n: sql<number>`count(*)` })
+          .from(waitlistEntries)
+          .where(
+            and(
+              eq(waitlistEntries.restaurantId, entry.restaurantId),
+              eq(waitlistEntries.status, 'waiting'),
+              lt(waitlistEntries.joinedAt, entry.joinedAt),
+            ),
+          ),
+        entry.zoneId ? db.select().from(diningZones).where(eq(diningZones.id, entry.zoneId)) : Promise.resolve([]),
+      ]);
+      res.json({
+        entry,
+        zone: zone || null,
+        partiesAhead: Number(aheadRows[0]?.n || 0),
+        restaurant: toPublicCafe(restaurant),
+      });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/public/waitlist-ticket/:token/respond', async (req, res, next) => {
+    try {
+      const token = z.string().uuid().parse(req.params.token);
+      const { action } = z
+        .object({ action: z.enum(['on_my_way', 'release_spot']) })
+        .strict()
+        .parse(req.body);
+      const [entry] = await db.select().from(waitlistEntries).where(eq(waitlistEntries.trackingToken, token));
+      if (!entry) return res.status(404).json({ message: 'Waitlist ticket not found' });
+
+      const [updated] = await db
+        .update(waitlistEntries)
+        .set(
+          action === 'release_spot'
+            ? { status: 'released', guestResponse: 'release_spot', closedAt: new Date() }
+            : { guestResponse: 'on_my_way' },
+        )
+        .where(eq(waitlistEntries.id, entry.id))
+        .returning();
+
+      publishRealtimeEvent([`branch:${entry.restaurantId}`, `waitlist:${token}`], {
+        type: 'waitlist.updated',
+        branchId: entry.restaurantId,
+        data: { entry: updated },
+      });
+
+      res.json({ entry: updated });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Pillar 5: Public Aggregator Outbound Click Telemetry (Zero-PII)
+  app.post('/api/public/aggregator-click', rateLimit(60, 5 * 60 * 1000, req => req.ip || 'unknown'), async (req, res, next) => {
+    try {
+      const body = z
+        .object({
+          restaurantId: z.string().uuid(),
+          aggregatorId: z.string().uuid().optional().nullable(),
+          platform: z.enum(['talabat', 'snoonu', 'keeta', 'custom']),
+          menuItemId: z.string().uuid().optional().nullable(),
+          locale: z.enum(['en', 'ar']).default('en'),
+        })
+        .strict()
+        .parse(req.body);
+
+      const restaurant = await storage.getRestaurantById(body.restaurantId);
+      if (!restaurant || restaurant.hidden || restaurant.status !== 'active') {
+        return res.status(404).json({ message: 'Venue unavailable' });
+      }
+      await db.insert(aggregatorClicks).values({
+        restaurantId: body.restaurantId,
+        aggregatorId: body.aggregatorId || null,
+        platform: body.platform,
+        menuItemId: body.menuItemId || null,
+        locale: body.locale,
+      });
+      res.status(201).json({ recorded: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // ===== PROTECTED STAFF & MANAGER ENDPOINTS (/api/hospitality/...) =====
+  // Tenant boundary & X-Cafe-Context checks are enforced upstream in mountAccessControl.
+
+  // KDS & Virtual Pager Console
+  app.get('/api/hospitality/pagers', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const [tickets, orders, bays] = await Promise.all([
+        db
+          .select()
+          .from(pagerTickets)
+          .where(eq(pagerTickets.restaurantId, cafe.id))
+          .orderBy(asc(pagerTickets.queuedAt))
+          .limit(200),
+        db
+          .select()
+          .from(guestOrders)
+          .where(eq(guestOrders.restaurantId, cafe.id))
+          .orderBy(desc(guestOrders.createdAt))
+          .limit(100),
+        db
+          .select()
+          .from(serviceBays)
+          .where(eq(serviceBays.restaurantId, cafe.id))
+          .orderBy(asc(serviceBays.order)),
+      ]);
+      res.json({ tickets, orders, bays });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/hospitality/pagers/issue', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const body = z
+        .object({
+          mode: z.enum(['auto_number', 'pos_invoice']),
+          invoiceNumber: z.string().trim().max(40).optional(),
+          customerName: z.string().trim().max(120).optional(),
+          notes: z.string().trim().max(300).optional(),
+          estimatedPrepMins: z.number().int().min(1).max(120).default(8),
+          bayId: z.string().uuid().optional().nullable(),
+        })
+        .strict()
+        .parse(req.body);
+
+      if (body.mode === 'pos_invoice' && !body.invoiceNumber?.trim()) {
+        return res.status(400).json({ message: 'Enter the POS invoice or receipt number.' });
+      }
+
+      const ticketDate = branchLocalDate(cafe.timezone);
+      const ticket = await db.transaction(async tx => {
+        const auto = body.mode === 'auto_number' ? await nextDailyPagerCode(tx as any, cafe.id, ticketDate) : null;
+        const ticketCode = auto ? auto.code : body.invoiceNumber!.trim().toUpperCase();
+        const [created] = await tx
+          .insert(pagerTickets)
+          .values({
+            restaurantId: cafe.id,
+            bayId: body.bayId || null,
+            ticketCode,
+            ticketDate,
+            dailySeq: auto?.seq ?? null,
+            source: body.mode,
+            status: 'waiting',
+            customerName: body.customerName || null,
+            notes: body.notes || null,
+            estimatedPrepMins: body.estimatedPrepMins,
+          })
+          .returning();
+        return created;
+      });
+
+      publishRealtimeEvent([`branch:${cafe.id}`, `pager:${ticket.trackingToken}`], {
+        type: 'pager.created',
+        branchId: cafe.id,
+        data: { ticket },
+      });
+
+      res.status(201).json({ ticket });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/hospitality/pagers/:id/transition', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const id = z.string().uuid().parse(req.params.id);
+      const { action } = z
+        .object({ action: z.enum(['preparing', 'ready', 'rebuzz', 'collected', 'no_show', 'confirm_venue_payment']) })
+        .strict()
+        .parse(req.body);
+
+      const [existing] = await db
+        .select()
+        .from(pagerTickets)
+        .where(and(eq(pagerTickets.id, id), eq(pagerTickets.restaurantId, cafe.id)));
+      if (!existing) return res.status(404).json({ message: 'Pager ticket not found in this branch' });
+
+      if (action === 'confirm_venue_payment' && existing.orderId) {
+        await db
+          .update(guestOrders)
+          .set({ paymentStatus: 'paid', paidAt: new Date() })
+          .where(and(eq(guestOrders.id, existing.orderId), eq(guestOrders.restaurantId, cafe.id)));
+        publishRealtimeEvent([`branch:${cafe.id}`, `pager:${existing.trackingToken}`], {
+          type: 'order.paid',
+          branchId: cafe.id,
+          data: { ticketId: existing.id, orderId: existing.orderId },
+        });
+        return res.json({ ticket: existing, paymentConfirmed: true });
+      }
+
+      const now = new Date();
+      if (action === 'rebuzz') {
+        if (existing.status !== 'ready') {
+          return res.status(400).json({ message: 'Mark the ticket Ready before re-buzzing.' });
+        }
+        if (existing.lastBuzzedAt && now.getTime() - new Date(existing.lastBuzzedAt).getTime() < REBUZZ_COOLDOWN_MS) {
+          const waitSecs = Math.ceil(
+            (REBUZZ_COOLDOWN_MS - (now.getTime() - new Date(existing.lastBuzzedAt).getTime())) / 1000,
+          );
+          return res.status(429).json({ message: `Cooldown active. Wait ${waitSecs}s before re-buzzing.` });
+        }
+        const [buzzed] = await db
+          .update(pagerTickets)
+          .set({ buzzCount: existing.buzzCount + 1, lastBuzzedAt: now })
+          .where(eq(pagerTickets.id, existing.id))
+          .returning();
+        publishRealtimeEvent([`branch:${cafe.id}`, `pager:${buzzed.trackingToken}`], {
+          type: 'pager.buzzed',
+          branchId: cafe.id,
+          data: { ticket: buzzed },
+        });
+        return res.json({ ticket: buzzed });
+      }
+
+      const patch: Partial<typeof pagerTickets.$inferInsert> = { status: action };
+      if (action === 'preparing' && !existing.preparingAt) patch.preparingAt = now;
+      if (action === 'ready') {
+        if (!existing.preparingAt) patch.preparingAt = now;
+        patch.readyAt = existing.readyAt || now;
+        patch.buzzCount = existing.buzzCount + 1;
+        patch.lastBuzzedAt = now;
+      }
+      if (action === 'collected' || action === 'no_show') {
+        patch.collectedAt = now;
+      }
+
+      const [updated] = await db
+        .update(pagerTickets)
+        .set(patch)
+        .where(eq(pagerTickets.id, existing.id))
+        .returning();
+
+      publishRealtimeEvent([`branch:${cafe.id}`, `pager:${updated.trackingToken}`], {
+        type: action === 'ready' ? 'pager.buzzed' : 'pager.updated',
+        branchId: cafe.id,
+        data: { ticket: updated },
+      });
+
+      res.json({ ticket: updated });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // 1-Tap KDS Out-of-Stock Item Snooze
+  app.post('/api/hospitality/items/:id/snooze', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const itemId = z.string().uuid().parse(req.params.id);
+      const { isAvailable } = z.object({ isAvailable: z.boolean() }).strict().parse(req.body);
+      const items = await storage.getMenuItemsByRestaurantId(cafe.id);
+      if (!items.some(i => i.id === itemId)) return res.status(404).json({ message: 'Item not found in this branch' });
+      const updated = await storage.updateMenuItem(itemId, { isAvailable });
+      res.json({ item: updated });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Pillar 3: Staff Floor Zones, Tables, Reservations & Waitlist Management
+  app.get('/api/hospitality/floor', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const [zones, tables, reservations, waitlist] = await Promise.all([
+        db.select().from(diningZones).where(eq(diningZones.restaurantId, cafe.id)).orderBy(asc(diningZones.order)),
+        db.select().from(diningTables).where(eq(diningTables.restaurantId, cafe.id)).orderBy(asc(diningTables.tableCode)),
+        db
+          .select()
+          .from(tableReservations)
+          .where(eq(tableReservations.restaurantId, cafe.id))
+          .orderBy(asc(tableReservations.startAt))
+          .limit(200),
+        db
+          .select()
+          .from(waitlistEntries)
+          .where(eq(waitlistEntries.restaurantId, cafe.id))
+          .orderBy(asc(waitlistEntries.joinedAt))
+          .limit(200),
+      ]);
+      res.json({ zones, tables, reservations, waitlist });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/hospitality/zones', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const body = z
+        .object({
+          name: z.string().trim().min(1).max(80),
+          nameAr: z.string().trim().max(80).optional().nullable(),
+          order: z.number().int().min(0).default(0),
+        })
+        .strict()
+        .parse(req.body);
+      const [zone] = await db
+        .insert(diningZones)
+        .values({ restaurantId: cafe.id, name: body.name, nameAr: body.nameAr || null, order: body.order })
+        .returning();
+      res.status(201).json({ zone });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.delete('/api/hospitality/zones/:id', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      await db.delete(diningZones).where(and(eq(diningZones.id, req.params.id), eq(diningZones.restaurantId, cafe.id)));
+      res.json({ success: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/hospitality/tables', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const body = z
+        .object({
+          zoneId: z.string().uuid(),
+          tableCode: z.string().trim().min(1).max(40),
+          minCovers: z.number().int().min(1).max(30).default(1),
+          maxCovers: z.number().int().min(1).max(30).default(4),
+          isCombinable: z.boolean().default(false),
+        })
+        .strict()
+        .parse(req.body);
+      if (body.maxCovers < body.minCovers) {
+        return res.status(400).json({ message: 'Maximum covers must be at least minimum covers.' });
+      }
+      const [zone] = await db
+        .select()
+        .from(diningZones)
+        .where(and(eq(diningZones.id, body.zoneId), eq(diningZones.restaurantId, cafe.id)));
+      if (!zone) return res.status(400).json({ message: 'Choose a dining zone from this branch' });
+      const [table] = await db
+        .insert(diningTables)
+        .values({
+          restaurantId: cafe.id,
+          zoneId: body.zoneId,
+          tableCode: body.tableCode.toUpperCase(),
+          minCovers: body.minCovers,
+          maxCovers: body.maxCovers,
+          isCombinable: body.isCombinable,
+        })
+        .returning();
+      res.status(201).json({ table });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.delete('/api/hospitality/tables/:id', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      await db.delete(diningTables).where(and(eq(diningTables.id, req.params.id), eq(diningTables.restaurantId, cafe.id)));
+      res.json({ success: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/hospitality/reservations/:id/status', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const { status } = z
+        .object({ status: z.enum(['confirmed', 'seated', 'completed', 'cancelled', 'no_show']) })
+        .strict()
+        .parse(req.body);
+      const [updated] = await db
+        .update(tableReservations)
+        .set({ status, ...(status === 'cancelled' ? { cancelledAt: new Date() } : {}) })
+        .where(and(eq(tableReservations.id, req.params.id), eq(tableReservations.restaurantId, cafe.id)))
+        .returning();
+      if (!updated) return res.status(404).json({ message: 'Reservation not found' });
+      publishRealtimeEvent([`branch:${cafe.id}`], {
+        type: 'reservation.updated',
+        branchId: cafe.id,
+        data: { reservation: updated },
+      });
+      res.json({ reservation: updated });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/hospitality/waitlist/:id/action', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const { action } = z
+        .object({ action: z.enum(['ready', 'rebuzz', 'seated', 'expired']) })
+        .strict()
+        .parse(req.body);
+
+      const [existing] = await db
+        .select()
+        .from(waitlistEntries)
+        .where(and(eq(waitlistEntries.id, req.params.id), eq(waitlistEntries.restaurantId, cafe.id)));
+      if (!existing) return res.status(404).json({ message: 'Waitlist entry not found' });
+
+      const now = new Date();
+      if (action === 'rebuzz' && existing.lastBuzzedAt && now.getTime() - new Date(existing.lastBuzzedAt).getTime() < REBUZZ_COOLDOWN_MS) {
+        return res.status(429).json({ message: 'Wait 20 seconds before re-buzzing this guest.' });
+      }
+
+      const patch: Partial<typeof waitlistEntries.$inferInsert> =
+        action === 'ready' || action === 'rebuzz'
+          ? {
+              status: 'ready',
+              readyAt: existing.readyAt || now,
+              holdExpiresAt: new Date(now.getTime() + 10 * 60_000),
+              buzzCount: existing.buzzCount + 1,
+              lastBuzzedAt: now,
+            }
+          : action === 'seated'
+            ? { status: 'seated', seatedAt: now, closedAt: now }
+            : { status: 'expired', closedAt: now };
+
+      const [updated] = await db
+        .update(waitlistEntries)
+        .set(patch)
+        .where(eq(waitlistEntries.id, existing.id))
+        .returning();
+
+      publishRealtimeEvent([`branch:${cafe.id}`, `waitlist:${updated.trackingToken}`], {
+        type: action === 'ready' || action === 'rebuzz' ? 'waitlist.buzzed' : 'waitlist.updated',
+        branchId: cafe.id,
+        data: { entry: updated },
+      });
+
+      res.json({ entry: updated });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Pillar 4: Staff Drive-Thru Lanes & Curbside Bays
+  app.get('/api/hospitality/bays', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const [bays, activeVehicles] = await Promise.all([
+        db.select().from(serviceBays).where(eq(serviceBays.restaurantId, cafe.id)).orderBy(asc(serviceBays.order), asc(serviceBays.code)),
+        db
+          .select()
+          .from(pagerTickets)
+          .where(
+            and(
+              eq(pagerTickets.restaurantId, cafe.id),
+              inArray(pagerTickets.status, ['waiting', 'preparing', 'ready']),
+              sql`(${pagerTickets.bayId} IS NOT NULL OR ${pagerTickets.licensePlate} IS NOT NULL)`,
+            ),
+          )
+          .orderBy(asc(pagerTickets.arrivedAt), asc(pagerTickets.queuedAt)),
+      ]);
+      res.json({ bays, activeVehicles });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/hospitality/bays', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const body = z
+        .object({
+          code: z.string().trim().min(1).max(40),
+          label: z.string().trim().min(1).max(80),
+          bayType: z.enum(['curbside', 'drive_thru']).default('curbside'),
+          order: z.number().int().min(0).default(0),
+        })
+        .strict()
+        .parse(req.body);
+      const [bay] = await db
+        .insert(serviceBays)
+        .values({
+          restaurantId: cafe.id,
+          code: body.code.toUpperCase(),
+          label: body.label,
+          bayType: body.bayType,
+          order: body.order,
+        })
+        .returning();
+      res.status(201).json({ bay });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.delete('/api/hospitality/bays/:id', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      await db.delete(serviceBays).where(and(eq(serviceBays.id, req.params.id), eq(serviceBays.restaurantId, cafe.id)));
+      res.json({ success: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Pillar 5: Staff Aggregator Links Management
+  app.get('/api/hospitality/aggregators', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const links = await db
+        .select()
+        .from(aggregatorLinks)
+        .where(eq(aggregatorLinks.restaurantId, cafe.id))
+        .orderBy(asc(aggregatorLinks.order));
+      res.json({ aggregators: links });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/hospitality/aggregators', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const body = z
+        .object({
+          platform: z.enum(['talabat', 'snoonu', 'keeta', 'custom']),
+          displayName: z.string().trim().min(1).max(80),
+          url: z.string().trim().url('Enter a valid https:// storefront URL').max(500),
+          badgeEn: z.string().trim().max(80).optional().nullable(),
+          badgeAr: z.string().trim().max(80).optional().nullable(),
+          isActive: z.boolean().default(true),
+          order: z.number().int().min(0).default(0),
+        })
+        .strict()
+        .parse(req.body);
+      const [link] = await db
+        .insert(aggregatorLinks)
+        .values({
+          restaurantId: cafe.id,
+          platform: body.platform,
+          displayName: body.displayName,
+          url: body.url,
+          badgeEn: body.badgeEn || null,
+          badgeAr: body.badgeAr || null,
+          isActive: body.isActive,
+          order: body.order,
+        })
+        .returning();
+      res.status(201).json({ aggregator: link });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.put('/api/hospitality/aggregators/:id', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const body = z
+        .object({
+          displayName: z.string().trim().min(1).max(80).optional(),
+          url: z.string().trim().url().max(500).optional(),
+          badgeEn: z.string().trim().max(80).nullable().optional(),
+          badgeAr: z.string().trim().max(80).nullable().optional(),
+          isActive: z.boolean().optional(),
+          order: z.number().int().min(0).optional(),
+        })
+        .strict()
+        .parse(req.body);
+      const [updated] = await db
+        .update(aggregatorLinks)
+        .set(body)
+        .where(and(eq(aggregatorLinks.id, req.params.id), eq(aggregatorLinks.restaurantId, cafe.id)))
+        .returning();
+      if (!updated) return res.status(404).json({ message: 'Aggregator link not found' });
+      res.json({ aggregator: updated });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.delete('/api/hospitality/aggregators/:id', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      await db
+        .delete(aggregatorLinks)
+        .where(and(eq(aggregatorLinks.id, req.params.id), eq(aggregatorLinks.restaurantId, cafe.id)));
+      res.json({ success: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Branch SLA, Congestion & Aggregator Analytics
+  app.get('/api/hospitality/analytics', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const [tickets, orders, reservations, waitlist, clicks] = await Promise.all([
+        db.select().from(pagerTickets).where(eq(pagerTickets.restaurantId, cafe.id)),
+        db.select().from(guestOrders).where(eq(guestOrders.restaurantId, cafe.id)),
+        db.select().from(tableReservations).where(eq(tableReservations.restaurantId, cafe.id)),
+        db.select().from(waitlistEntries).where(eq(waitlistEntries.restaurantId, cafe.id)),
+        db.select().from(aggregatorClicks).where(eq(aggregatorClicks.restaurantId, cafe.id)),
+      ]);
+
+      const completedWithReady = tickets.filter(t => t.readyAt && t.queuedAt);
+      const prepDurationsMins = completedWithReady.map(
+        t => Math.max(0, (new Date(t.readyAt!).getTime() - new Date(t.queuedAt).getTime()) / 60_000),
+      );
+      const avgPrepMins = prepDurationsMins.length
+        ? Number((prepDurationsMins.reduce((a, b) => a + b, 0) / prepDurationsMins.length).toFixed(1))
+        : 0;
+      const withinSlaCount = prepDurationsMins.filter(m => m <= 10).length;
+      const slaCompliancePct = prepDurationsMins.length
+        ? Math.round((withinSlaCount / prepDurationsMins.length) * 100)
+        : 100;
+
+      const hourlyBuckets = Array.from({ length: 24 }, (_, hour) => ({ hour, tickets: 0, orders: 0 }));
+      for (const t of tickets) {
+        const hour = new Date(t.queuedAt).getHours();
+        hourlyBuckets[hour].tickets++;
+      }
+      for (const o of orders) {
+        const hour = new Date(o.createdAt).getHours();
+        hourlyBuckets[hour].orders++;
+      }
+
+      const clicksByPlatform: Record<string, number> = {};
+      for (const c of clicks) {
+        clicksByPlatform[c.platform] = (clicksByPlatform[c.platform] || 0) + 1;
+      }
+
+      const ratings = tickets.map(t => t.rating).filter((r): r is number => typeof r === 'number');
+      const avgRating = ratings.length
+        ? Number((ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(2))
+        : null;
+
+      res.json({
+        summary: {
+          totalTickets: tickets.length,
+          activeTickets: tickets.filter(t => ['waiting', 'preparing', 'ready'].includes(t.status)).length,
+          avgPrepMins,
+          slaCompliancePct,
+          avgRating,
+          ratingsCount: ratings.length,
+          totalOrders: orders.length,
+          paidRevenue: orders
+            .filter(o => o.paymentStatus === 'paid' || o.paymentStatus === 'pay_at_venue')
+            .reduce((sum, o) => sum + Number(o.total), 0)
+            .toFixed(2),
+          currency: cafe.currency,
+          reservationsCount: reservations.filter(r => r.status !== 'cancelled').length,
+          waitlistCount: waitlist.length,
+          aggregatorClicksTotal: clicks.length,
+        },
+        clicksByPlatform,
+        hourlyBuckets,
+      });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Super Admin / Tenant Owner Multi-Branch Comparison Analytics
+  app.get('/api/super-admin/portfolio-analytics', isSuperAdmin, async (_req, res, next) => {
+    try {
+      const [cafes, tickets, orders, reservations, clicks] = await Promise.all([
+        storage.getAllRestaurants(),
+        db.select().from(pagerTickets),
+        db.select().from(guestOrders),
+        db.select().from(tableReservations),
+        db.select().from(aggregatorClicks),
+      ]);
+
+      const branches = cafes.map(cafe => {
+        const branchTickets = tickets.filter(t => t.restaurantId === cafe.id);
+        const readyTickets = branchTickets.filter(t => t.readyAt && t.queuedAt);
+        const avgPrepMins = readyTickets.length
+          ? Number(
+              (
+                readyTickets.reduce(
+                  (sum, t) => sum + Math.max(0, (new Date(t.readyAt!).getTime() - new Date(t.queuedAt).getTime()) / 60_000),
+                  0,
+                ) / readyTickets.length
+              ).toFixed(1),
+            )
+          : 0;
+        const branchOrders = orders.filter(o => o.restaurantId === cafe.id);
+        const branchRes = reservations.filter(r => r.restaurantId === cafe.id && r.status !== 'cancelled');
+        const branchClicks = clicks.filter(c => c.restaurantId === cafe.id);
+        return {
+          id: cafe.id,
+          name: cafe.name,
+          slug: cafe.slug,
+          orderingMode: cafe.orderingMode,
+          currency: cafe.currency,
+          totalTickets: branchTickets.length,
+          avgPrepMins,
+          totalOrders: branchOrders.length,
+          reservations: branchRes.length,
+          aggregatorClicks: branchClicks.length,
+        };
+      });
+
+      res.json({ branches });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Helper endpoint for deterministic webhook signature generation in verified tests
+  if (process.env.NODE_ENV !== 'production') {
+    app.post('/api/public/dev-webhook-sign', (req, res) => {
+      const { provider, payload } = z
+        .object({ provider: z.enum(['skipcash', 'sadad']), payload: z.string() })
+        .parse(req.body);
+      res.json({ signature: signGatewayPayload(provider, payload) });
+    });
+  }
+}

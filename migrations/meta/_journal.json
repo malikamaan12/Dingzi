@@ -50,6 +50,13 @@
       "when": 1791774618355,
       "tag": "0006_lame_bedlam",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795382400000,
+      "tag": "0007_hospitality_platform",
+      "breakpoints": true
     }
   ]
 }

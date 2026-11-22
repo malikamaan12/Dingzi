@@ -9,6 +9,7 @@ import { publicMediaId, cachedPublicMedia, streamPublicMedia } from './workerPub
 import { publicMenuRequestAllowed, blockedPublicMenuRequest } from './publicMenuBoundary';
 import { secureWorkerResponse } from './securityHeaders';
 import { guestMenuId, serveGuestMenu } from './workerGuestMenu';
+export { BranchRealtimeDO } from './durable-objects/branch-hub';
 
 types.setTypeParser(1114, value => new Date(value + 'Z'));
 let application: Promise<void> | undefined;
@@ -51,6 +52,16 @@ async function handleRequest(request: Request, env: WorkerEnvironment, ctx: Exec
       return Response.json({ message: 'Application surface is not configured' }, { status: 503 });
     }
     if (!url.pathname.startsWith('/api/') && !url.pathname.startsWith('/objects/') && !url.pathname.startsWith('/public-objects/')) return env.ASSETS.fetch(request);
+    if (url.pathname.startsWith('/api/ws/public/') && env.BRANCH_HUB) {
+      const match = url.pathname.match(/^\/api\/ws\/public\/([a-f0-9-]{36})\/?$/i);
+      if (!match) return Response.json({ message: 'Invalid branch realtime room' }, { status: 400 });
+      const scope = url.searchParams.get('scope') || '';
+      if (!/^(pager|waitlist):[a-f0-9-]{36}$/i.test(scope)) {
+        return Response.json({ message: 'Guest sockets require a valid tracking scope' }, { status: 403 });
+      }
+      const stub = env.BRANCH_HUB.get(env.BRANCH_HUB.idFromName(match[1]));
+      return stub.fetch(request as any) as unknown as Response;
+    }
     if (!configured(env)) return Response.json({ message: 'Deployment setup is incomplete' }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
     const photo = publicMediaId(request);
     if (photo) { const cached = await cachedPublicMedia(request); if (cached) return cached; }

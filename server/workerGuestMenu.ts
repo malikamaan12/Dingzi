@@ -1,25 +1,29 @@
 import type { Client } from 'pg';
 
-// Build the public snapshot in PostgreSQL. Avoid booting the management server
-// and parsing/serializing every item on each five-second guest refresh: the
-// free Worker has a 10 ms CPU budget. One statement also gives a consistent
-// view of visibility, prices and options. No cross-request menu cache is used.
 const guestSnapshot = `
 WITH cafe AS (
-  SELECT id, name, theme, currency, timezone, logo_url AS "logoUrl",
-    cover_media_url AS "coverMediaUrl", cover_media_type AS "coverMediaType",
-    cuisine_type AS "cuisineType", address, phone, opening_hours AS "openingHours"
+  SELECT id, name, slug, theme, brand_accent_hex AS "brandAccentHex", currency, timezone,
+    logo_url AS "logoUrl", cover_media_url AS "coverMediaUrl", cover_media_type AS "coverMediaType",
+    cuisine_type AS "cuisineType", address, phone, opening_hours AS "openingHours",
+    ordering_mode AS "orderingMode", payment_gateway AS "paymentGateway",
+    google_maps_review_url AS "googleMapsReviewUrl", reservations_enabled AS "reservationsEnabled",
+    waitlist_enabled AS "waitlistEnabled", drive_thru_enabled AS "driveThruEnabled",
+    pager_mini_game_enabled AS "pagerMiniGameEnabled", slot_interval_mins AS "slotIntervalMins",
+    default_turn_duration_mins AS "defaultTurnDurationMins",
+    reservation_deposit_amount::text AS "reservationDepositAmount"
   FROM restaurants WHERE id = $1 AND status = 'active' AND hidden = false
 ), cats AS (
-  SELECT c.id, c.restaurant_id AS "restaurantId", c.title, c."order",
+  SELECT c.id, c.restaurant_id AS "restaurantId", c.title, c.is_visible AS "isVisible",
+    c.available_from AS "availableFrom", c.available_until AS "availableUntil", c."order",
     to_char(c.created_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "createdAt"
-  FROM categories c JOIN cafe ON cafe.id = c.restaurant_id
+  FROM categories c JOIN cafe ON cafe.id = c.restaurant_id WHERE c.is_visible = true
 ), items AS (
   SELECT i.id, i.category_id AS "categoryId", i.name, i.description,
     i.price::text AS price, i.discount::text AS discount, i.unit,
     i.image_url AS "imageUrl", i.is_available AS "isAvailable",
     i.special_date AS "specialDate", i.has_multiple_pricing AS "hasMultiplePricing",
-    i.modifier_groups AS "modifierGroups", i.tags, i."order",
+    i.modifier_groups AS "modifierGroups", i.tags, i.allergen_tags AS "allergenTags",
+    i.prep_time_mins AS "prepTimeMins", i.aggregator_overrides AS "aggregatorOverrides", i."order",
     to_char(i.created_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "createdAt",
     to_char(i.updated_at, 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') AS "updatedAt"
   FROM menu_items i JOIN cats ON cats.id = i.category_id WHERE i.is_available = true

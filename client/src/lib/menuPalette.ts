@@ -8,9 +8,9 @@ const accents: Record<string, [string, string, string]> = {
   ocean: ['133 208 243', '194 169 247', '255 198 151'],
   plum: ['197 164 246', '255 172 188', '255 211 144'],
 };
-export function liveCafeStyle(theme = 'e3'): CSSProperties {
+export function liveCafeStyle(theme = 'e3', brandAccentHex?: string | null): CSSProperties {
   const [first, second, third] = accents[theme] || accents.e3;
-  return { ...cafeThemeStyle(theme), '--scene-first': first, '--scene-second': second, '--scene-third': third } as CSSProperties;
+  return { ...cafeThemeStyle(theme, brandAccentHex), '--scene-first': first, '--scene-second': second, '--scene-third': third } as CSSProperties;
 }
 export function menuTone(title: string) {
   const name = title.toLowerCase();

@@ -1,5 +1,4 @@
-import { sql } from "drizzle-orm";
-import { relations } from "drizzle-orm";
+import { sql, relations } from "drizzle-orm";
 import {
   index,
   uniqueIndex,
@@ -39,7 +38,11 @@ export const users = pgTable("users", {
   accountStatus: varchar("account_status").notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-}, table => [uniqueIndex('users_email_case_unique').on(sql`lower(${table.email})`), check('users_management_role', sql`${table.role} in ('admin','super_admin')`), check('users_account_status', sql`${table.accountStatus} in ('active','frozen','deleted')`)]);
+}, table => [
+  uniqueIndex('users_email_case_unique').on(sql`lower(${table.email})`),
+  check('users_management_role', sql`${table.role} in ('admin','super_admin')`),
+  check('users_account_status', sql`${table.accountStatus} in ('active','frozen','deleted')`),
+]);
 
 export type UpsertUser = typeof users.$inferInsert;
 export type User = typeof users.$inferSelect;
@@ -51,6 +54,7 @@ export const mediaObjects = pgTable('media_objects', {
   size: integer('size').notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
 });
+
 export const rateLimitBuckets = pgTable('rate_limit_buckets', {
   id: varchar('id').primaryKey(),
   count: integer('count').notNull(),
@@ -60,47 +64,76 @@ export const rateLimitBuckets = pgTable('rate_limit_buckets', {
 // Login schema for authentication
 export const emailSchema = z.string().trim().toLowerCase().max(254).email('Invalid email address');
 export const passwordSchema = z.string().min(10, 'Use at least 10 characters').max(72).refine(v => new TextEncoder().encode(v).length <= 72, 'Password must be at most 72 UTF-8 bytes');
-export const registrationSchema = z.object({ email: emailSchema, password: passwordSchema,
-  firstName: z.string().trim().min(1).max(100), lastName: z.string().trim().min(1).max(100),
+export const registrationSchema = z.object({
+  email: emailSchema,
+  password: passwordSchema,
+  firstName: z.string().trim().min(1).max(100),
+  lastName: z.string().trim().min(1).max(100),
   restaurantName: z.string().trim().min(1).max(150),
 }).strict();
-export const loginSchema = z.object({ email: emailSchema, password: z.string().min(1).max(72).refine(v => new TextEncoder().encode(v).length <= 72, 'Password is too long') }).strict();
+export const loginSchema = z.object({
+  email: emailSchema,
+  password: z.string().min(1).max(72).refine(v => new TextEncoder().encode(v).length <= 72, 'Password is too long'),
+}).strict();
 
 export type LoginCredentials = z.infer<typeof loginSchema>;
 
-// Restaurants table
+export const orderingModes = ['browse_and_pager', 'cart_pay_at_venue', 'full_online_checkout'] as const;
+export type OrderingMode = (typeof orderingModes)[number];
+export const paymentGateways = ['none', 'skipcash', 'sadad'] as const;
+export type PaymentGateway = (typeof paymentGateways)[number];
+
+// Restaurants / Branches table
 export const restaurants = pgTable("restaurants", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  slug: varchar("slug", { length: 120 }),
   theme: text("theme").notNull().default("e3"),
-  currency: varchar("currency").notNull().default("SAR"),
-  timezone: text("timezone").notNull().default("Asia/Riyadh"),
+  brandAccentHex: varchar("brand_accent_hex", { length: 7 }),
+  currency: varchar("currency").notNull().default("QAR"),
+  timezone: text("timezone").notNull().default("Asia/Qatar"),
   logoUrl: text("logo_url"),
-  coverMediaUrl: text("cover_media_url"), // Cover media for menu display (video/GIF/image)
-  coverMediaType: varchar("cover_media_type"), // "image", "video", "gif"
+  coverMediaUrl: text("cover_media_url"),
+  coverMediaType: varchar("cover_media_type"),
   cuisineType: text("cuisine_type"),
   address: text("address"),
   phone: varchar("phone"),
   openingHours: text("opening_hours"),
   qrCodeUrl: text("qr_code_url"),
-  status: varchar("status").notNull().default("active"), // "active", "suspended", "pending"
-  hidden: boolean("hidden").notNull().default(false), // Super Admin can hide restaurants from public view
-  upiId: text("upi_id"), // UPI payment ID (e.g., merchant@upi)
-  upiQrCodeUrl: text("upi_qr_code_url"), // URL to uploaded UPI QR code image
-  
-  // Legacy billing fields retained for database compatibility; internal app does not use billing.
+  status: varchar("status").notNull().default("active"),
+  hidden: boolean("hidden").notNull().default(false),
+  upiId: text("upi_id"),
+  upiQrCodeUrl: text("upi_qr_code_url"),
+
+  // Hospitality Operating Platform v1 configuration
+  orderingMode: varchar("ordering_mode", { length: 40 }).notNull().default("browse_and_pager"),
+  paymentGateway: varchar("payment_gateway", { length: 40 }).notNull().default("none"),
+  googleMapsReviewUrl: text("google_maps_review_url"),
+  reservationsEnabled: boolean("reservations_enabled").notNull().default(true),
+  waitlistEnabled: boolean("waitlist_enabled").notNull().default(true),
+  driveThruEnabled: boolean("drive_thru_enabled").notNull().default(false),
+  pagerMiniGameEnabled: boolean("pager_mini_game_enabled").notNull().default(true),
+  slotIntervalMins: integer("slot_interval_mins").notNull().default(30),
+  defaultTurnDurationMins: integer("default_turn_duration_mins").notNull().default(90),
+  reservationDepositAmount: decimal("reservation_deposit_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  version: integer("version").notNull().default(1),
+
+  // Legacy billing fields retained for database compatibility
   activeSince: timestamp("active_since").defaultNow(),
-  subscriptionStatus: varchar("subscription_status").notNull().default("trial"), // "trial", "active", "expired", "cancelled"
-  subscriptionPlan: varchar("subscription_plan").default("monthly"), // "monthly", "quarterly", "annual"
-  monthlyFee: decimal("monthly_fee", { precision: 10, scale: 2 }).default("999"), // Subscription fee
+  subscriptionStatus: varchar("subscription_status").notNull().default("trial"),
+  subscriptionPlan: varchar("subscription_plan").default("monthly"),
+  monthlyFee: decimal("monthly_fee", { precision: 10, scale: 2 }).default("999"),
   lastPaymentDate: timestamp("last_payment_date"),
   nextPaymentDue: timestamp("next_payment_due"),
-  suspensionReason: text("suspension_reason"), // Reason for suspension (e.g., "Non-payment", "Policy violation")
-  
+  suspensionReason: text("suspension_reason"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-}, table => [uniqueIndex('restaurants_one_owner').on(table.userId), check('restaurants_status', sql`${table.status} in ('active','suspended','pending')`)]);
+}, table => [
+  uniqueIndex('restaurants_one_owner').on(table.userId),
+  check('restaurants_status', sql`${table.status} in ('active','suspended','pending')`),
+]);
 
 export const restaurantsRelations = relations(restaurants, ({ one, many }) => ({
   user: one(users, {
@@ -120,15 +153,61 @@ export const insertRestaurantSchema = createInsertSchema(restaurants).omit({
 export type InsertRestaurant = z.infer<typeof insertRestaurantSchema>;
 export type Restaurant = typeof restaurants.$inferSelect;
 
-export const cafeProfileSchema = insertRestaurantSchema.pick({ name: true, theme: true, currency: true, timezone: true,
-  logoUrl: true, coverMediaUrl: true, coverMediaType: true, cuisineType: true, address: true, phone: true,
-  openingHours: true }).extend({
-  name: z.string().trim().min(1).max(150), theme: z.enum(['e3','forest','terracotta','ocean','plum']).optional(),
-  currency: z.enum(['SAR','QAR','INR','AED','USD','EUR','GBP']).optional(),
+const moneySchema = z.string().or(z.number()).refine(
+  v => /^\d+(?:\.\d{1,2})?$/.test(String(v)) && Number(v) <= 99999999.99,
+  'Use a non-negative price with at most two decimal places',
+);
+const discountSchema = z.string().or(z.number()).refine(
+  v => /^\d+(?:\.\d{1,2})?$/.test(String(v)) && Number(v) <= 100,
+  'Discount must be between 0 and 100, with at most two decimal places',
+);
+
+export const cafeProfileSchema = insertRestaurantSchema.pick({
+  name: true,
+  slug: true,
+  theme: true,
+  brandAccentHex: true,
+  currency: true,
+  timezone: true,
+  logoUrl: true,
+  coverMediaUrl: true,
+  coverMediaType: true,
+  cuisineType: true,
+  address: true,
+  phone: true,
+  openingHours: true,
+  orderingMode: true,
+  paymentGateway: true,
+  googleMapsReviewUrl: true,
+  reservationsEnabled: true,
+  waitlistEnabled: true,
+  driveThruEnabled: true,
+  pagerMiniGameEnabled: true,
+  slotIntervalMins: true,
+  defaultTurnDurationMins: true,
+  reservationDepositAmount: true,
+}).extend({
+  name: z.string().trim().min(1).max(150),
+  slug: z.string().trim().toLowerCase().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Slug must use lowercase letters, numbers, and hyphens').max(120).nullable().optional(),
+  theme: z.enum(['e3', 'forest', 'terracotta', 'ocean', 'plum']).optional(),
+  brandAccentHex: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Use a 6-digit hex color like #92400E').nullable().optional(),
+  currency: z.enum(['SAR', 'QAR', 'INR', 'AED', 'USD', 'EUR', 'GBP']).optional(),
   timezone: z.string().max(100).refine(v => { try { new Intl.DateTimeFormat('en', { timeZone: v }); return true; } catch { return false; } }).optional(),
-  coverMediaType: z.enum(['image','video','gif']).nullable().optional(),
-  cuisineType: z.string().trim().max(250).nullable().optional(), address: z.string().trim().max(1000).nullable().optional(),
-  phone: z.string().trim().max(40).nullable().optional(), openingHours: z.string().trim().max(250).nullable().optional(),
+  coverMediaType: z.enum(['image', 'video', 'gif']).nullable().optional(),
+  cuisineType: z.string().trim().max(250).nullable().optional(),
+  address: z.string().trim().max(1000).nullable().optional(),
+  phone: z.string().trim().max(40).nullable().optional(),
+  openingHours: z.string().trim().max(250).nullable().optional(),
+  orderingMode: z.enum(orderingModes).optional(),
+  paymentGateway: z.enum(paymentGateways).optional(),
+  googleMapsReviewUrl: z.string().trim().url('Enter a valid URL').max(500).or(z.literal('')).nullable().optional().transform(v => v === '' ? null : v),
+  reservationsEnabled: z.boolean().optional(),
+  waitlistEnabled: z.boolean().optional(),
+  driveThruEnabled: z.boolean().optional(),
+  pagerMiniGameEnabled: z.boolean().optional(),
+  slotIntervalMins: z.number().int().min(10).max(180).optional(),
+  defaultTurnDurationMins: z.number().int().min(15).max(360).optional(),
+  reservationDepositAmount: moneySchema.transform(String).optional(),
 }).strict();
 
 export type CafeAccessContext = Pick<Restaurant, 'id' | 'name' | 'theme'> & {
@@ -154,6 +233,9 @@ export const categories = pgTable("categories", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   restaurantId: varchar("restaurant_id").notNull().references(() => restaurants.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
+  isVisible: boolean("is_visible").notNull().default(true),
+  availableFrom: varchar("available_from", { length: 5 }),
+  availableUntil: varchar("available_until", { length: 5 }),
   order: integer("order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
 }, table => [uniqueIndex('categories_cafe_name_unique').on(table.restaurantId, sql`lower(btrim(${table.title}))`)]);
@@ -166,39 +248,58 @@ export const categoriesRelations = relations(categories, ({ one, many }) => ({
   menuItems: many(menuItems),
 }));
 
+const hhmmSchema = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use 24-hour HH:MM format').nullable().optional();
+
 export const insertCategorySchema = createInsertSchema(categories).omit({
   id: true,
   createdAt: true,
-}).extend({ title: z.string().trim().min(1).max(100), order: z.number().int().min(0).optional() });
+}).extend({
+  title: z.string().trim().min(1).max(100),
+  isVisible: z.boolean().optional(),
+  availableFrom: hhmmSchema,
+  availableUntil: hhmmSchema,
+  order: z.number().int().min(0).optional(),
+});
 
 export type InsertCategory = z.infer<typeof insertCategorySchema>;
 export type Category = typeof categories.$inferSelect;
 
-const moneySchema = z.string().or(z.number()).refine(v => /^\d+(?:\.\d{1,2})?$/.test(String(v)) && Number(v) <= 99999999.99, 'Use a non-negative price with at most two decimal places');
-const discountSchema = z.string().or(z.number()).refine(v => /^\d+(?:\.\d{1,2})?$/.test(String(v)) && Number(v) <= 100, 'Discount must be between 0 and 100, with at most two decimal places');
 const arabicOptionLabel = z.string().trim().max(80).optional();
 export const menuModifierOptionSchema = z.object({
-  id: z.string().uuid(), label: z.string().trim().min(1).max(80), labelAr: arabicOptionLabel,
-  price: moneySchema.transform(String), isAvailable: z.boolean().default(true),
+  id: z.string().uuid(),
+  label: z.string().trim().min(1).max(80),
+  labelAr: arabicOptionLabel,
+  price: moneySchema.transform(String),
+  isAvailable: z.boolean().default(true),
 }).strict();
 export const menuModifierGroupSchema = z.object({
-  id: z.string().uuid(), title: z.string().trim().min(1).max(80), titleAr: arabicOptionLabel,
-  selection: z.enum(['single', 'multiple']), minSelections: z.number().int().min(0).max(20),
-  maxSelections: z.number().int().min(1).max(20), options: z.array(menuModifierOptionSchema).min(1).max(20),
+  id: z.string().uuid(),
+  title: z.string().trim().min(1).max(80),
+  titleAr: arabicOptionLabel,
+  selection: z.enum(['single', 'multiple']),
+  minSelections: z.number().int().min(0).max(20),
+  maxSelections: z.number().int().min(1).max(20),
+  options: z.array(menuModifierOptionSchema).min(1).max(20),
 }).strict().superRefine((group, context) => {
   if (group.maxSelections < group.minSelections || group.maxSelections > group.options.length)
     context.addIssue({ code: 'custom', message: 'Selection limits must fit the number of options', path: ['maxSelections'] });
   if (group.selection === 'single' && (group.maxSelections !== 1 || group.minSelections > 1))
     context.addIssue({ code: 'custom', message: 'A single-choice group allows at most one option', path: ['maxSelections'] });
-  if (new Set(group.options.map(option => option.id)).size !== group.options.length ||
-    new Set(group.options.map(option => option.label.toLowerCase())).size !== group.options.length)
+  if (
+    new Set(group.options.map(option => option.id)).size !== group.options.length ||
+    new Set(group.options.map(option => option.label.toLowerCase())).size !== group.options.length
+  )
     context.addIssue({ code: 'custom', message: 'Give every option a unique name and identifier', path: ['options'] });
 });
 export const menuModifierGroupsSchema = z.array(menuModifierGroupSchema).max(8).superRefine((groups, context) => {
-  if (new Set(groups.map(group => group.id)).size !== groups.length || new Set(groups.map(group => group.title.toLowerCase())).size !== groups.length)
+  if (
+    new Set(groups.map(group => group.id)).size !== groups.length ||
+    new Set(groups.map(group => group.title.toLowerCase())).size !== groups.length
+  )
     context.addIssue({ code: 'custom', message: 'Give every option group a unique name and identifier' });
   const optionIds = groups.flatMap(group => group.options.map(option => option.id));
-  if (new Set(optionIds).size !== optionIds.length) context.addIssue({ code: 'custom', message: 'Every choice must have a unique identifier within the item' });
+  if (new Set(optionIds).size !== optionIds.length)
+    context.addIssue({ code: 'custom', message: 'Every choice must have a unique identifier within the item' });
 });
 export type MenuModifierOption = z.infer<typeof menuModifierOptionSchema>;
 export type MenuModifierGroup = z.infer<typeof menuModifierGroupSchema>;
@@ -211,17 +312,24 @@ export const menuItems = pgTable("menu_items", {
   description: text("description"),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
   discount: decimal("discount", { precision: 5, scale: 2 }).default("0"),
-  unit: text("unit").notNull().default("plate"), // e.g., "plate", "piece", "kg", "gram", "liter", "ml", "half", "quarter", "full"
+  unit: text("unit").notNull().default("plate"),
   imageUrl: text("image_url"),
   isAvailable: boolean("is_available").notNull().default(true),
   specialDate: varchar("special_date"),
   hasMultiplePricing: boolean("has_multiple_pricing").notNull().default(false),
   modifierGroups: jsonb('modifier_groups').$type<MenuModifierGroup[]>().notNull().default(sql`'[]'::jsonb`),
   tags: text("tags").array().default(sql`ARRAY[]::text[]`),
+  allergenTags: text("allergen_tags").array().notNull().default(sql`ARRAY[]::text[]`),
+  prepTimeMins: integer("prep_time_mins").notNull().default(10),
+  aggregatorOverrides: jsonb("aggregator_overrides").$type<Record<string, string>>().notNull().default(sql`'{}'::jsonb`),
   order: integer("order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-}, table => [check('menu_price_valid', sql`${table.price} >= 0`), check('menu_discount_valid', sql`${table.discount} between 0 and 100`), check('menu_modifier_groups_array', sql`jsonb_typeof(${table.modifierGroups}) = 'array' and jsonb_array_length(${table.modifierGroups}) <= 8`)]);
+}, table => [
+  check('menu_price_valid', sql`${table.price} >= 0`),
+  check('menu_discount_valid', sql`${table.discount} between 0 and 100`),
+  check('menu_modifier_groups_array', sql`jsonb_typeof(${table.modifierGroups}) = 'array' and jsonb_array_length(${table.modifierGroups}) <= 8`),
+]);
 
 export const menuItemsRelations = relations(menuItems, ({ one, many }) => ({
   category: one(categories, {
@@ -231,17 +339,21 @@ export const menuItemsRelations = relations(menuItems, ({ one, many }) => ({
   priceVariants: many(menuItemPriceVariants),
 }));
 
-// Menu Item Price Variants table (for multiple pricing options)
+// Menu Item Price Variants table (up to 3 variants enforced)
 export const menuItemPriceVariants = pgTable("menu_item_price_variants", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   menuItemId: varchar("menu_item_id").notNull().references(() => menuItems.id, { onDelete: "cascade" }),
-  label: text("label").notNull(), // e.g., "Full Plate", "Half Plate", "1 Kg"
+  label: text("label").notNull(),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
   discount: decimal("discount", { precision: 5, scale: 2 }).default("0"),
-  unit: text("unit").notNull(), // e.g., "plate", "kg", "gram", "liter", "ml", "piece"
+  unit: text("unit").notNull(),
   order: integer("order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
-}, table => [check('option_price_valid', sql`${table.price} >= 0`), check('option_discount_valid', sql`${table.discount} between 0 and 100`), uniqueIndex('option_item_label_unique').on(table.menuItemId, sql`lower(btrim(${table.label}))`)]);
+}, table => [
+  check('option_price_valid', sql`${table.price} >= 0`),
+  check('option_discount_valid', sql`${table.discount} between 0 and 100`),
+  uniqueIndex('option_item_label_unique').on(table.menuItemId, sql`lower(btrim(${table.label}))`),
+]);
 
 export const menuItemPriceVariantsRelations = relations(menuItemPriceVariants, ({ one }) => ({
   menuItem: one(menuItems, {
@@ -259,6 +371,9 @@ export const insertMenuItemSchema = createInsertSchema(menuItems).omit({
   categoryId: z.string().uuid(),
   description: z.string().trim().max(2000).nullable().optional(),
   tags: z.array(z.string().trim().min(1).max(40)).max(10).refine(v => new Set(v.map(t => t.toLowerCase())).size === v.length, 'Tags must be unique').nullable().optional(),
+  allergenTags: z.array(z.string().trim().min(1).max(40)).max(12).optional(),
+  prepTimeMins: z.number().int().min(1).max(180).optional(),
+  aggregatorOverrides: z.record(z.string().max(40), z.string().url().max(500)).optional(),
   order: z.number().int().min(0).optional(),
   price: moneySchema,
   unit: z.string().trim().min(1).max(30).optional(),
@@ -270,7 +385,6 @@ export const insertMenuItemSchema = createInsertSchema(menuItems).omit({
 export type InsertMenuItem = z.infer<typeof insertMenuItemSchema>;
 export type MenuItem = typeof menuItems.$inferSelect;
 
-// Price variant schemas
 export const insertPriceVariantSchema = createInsertSchema(menuItemPriceVariants).omit({
   id: true,
   createdAt: true,
@@ -288,7 +402,6 @@ export type PriceVariant = typeof menuItemPriceVariants.$inferSelect;
 
 export type LibraryPriceVariant = { label: string; price: string; unit: string };
 
-// Saved templates survive changes to, or deletion of, the original café menu.
 export const globalMenuItems = pgTable("global_menu_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   sourceItemId: varchar("source_item_id").unique().references(() => menuItems.id, { onDelete: "set null" }),
@@ -311,20 +424,19 @@ export const globalMenuItems = pgTable("global_menu_items", {
 });
 export type GlobalMenuItem = typeof globalMenuItems.$inferSelect;
 
-// Payments table - Track subscription payments for restaurants
 export const payments = pgTable("payments", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   restaurantId: varchar("restaurant_id").notNull().references(() => restaurants.id, { onDelete: "cascade" }),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
   paymentDate: timestamp("payment_date").notNull().defaultNow(),
-  paymentMethod: varchar("payment_method").notNull(), // "cash", "upi", "bank_transfer", "card"
-  transactionId: varchar("transaction_id"), // Reference ID from payment gateway
+  paymentMethod: varchar("payment_method").notNull(),
+  transactionId: varchar("transaction_id"),
   requestKey: varchar('request_key').unique(),
-  status: varchar("status").notNull().default("completed"), // "completed", "pending", "failed"
-  periodStart: timestamp("period_start").notNull(), // Subscription period start
-  periodEnd: timestamp("period_end").notNull(), // Subscription period end
-  notes: text("notes"), // Additional notes from super admin
-  recordedBy: varchar("recorded_by").references(() => users.id), // Super admin who recorded the payment
+  status: varchar("status").notNull().default("completed"),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  notes: text("notes"),
+  recordedBy: varchar("recorded_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -349,10 +461,225 @@ export const insertPaymentSchema = createInsertSchema(payments).omit({
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 export type Payment = typeof payments.$inferSelect;
 
-export type PublicCafe = Pick<Restaurant, 'id' | 'name' | 'theme' | 'currency' | 'timezone' | 'logoUrl' | 'coverMediaUrl' | 'coverMediaType' | 'cuisineType' | 'address' | 'phone' | 'openingHours'>;
+// ===== HOSPITALITY OPERATING PLATFORM TABLES (PILLARS 2-5) =====
+
+// Pillar 4: Drive-Thru Lanes & Curbside Parking Bays
+export const serviceBays = pgTable("service_bays", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull().references(() => restaurants.id, { onDelete: "cascade" }),
+  code: varchar("code", { length: 40 }).notNull(),
+  label: text("label").notNull(),
+  bayType: varchar("bay_type", { length: 20 }).notNull().default("curbside"), // 'curbside' | 'drive_thru'
+  qrToken: varchar("qr_token").notNull().default(sql`gen_random_uuid()`),
+  isActive: boolean("is_active").notNull().default(true),
+  order: integer("order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type ServiceBay = typeof serviceBays.$inferSelect;
+
+export interface OrderLineItem {
+  menuItemId: string;
+  name: string;
+  quantity: number;
+  variantId?: string | null;
+  variantLabel?: string | null;
+  modifiers: { id: string; label: string; labelAr?: string; price: string }[];
+  unitTotal: string;
+  lineTotal: string;
+  notes?: string;
+}
+
+// Pillar 1: Guest Orders (Pay at Venue & Online SkipCash/Sadad Checkout)
+export const guestOrders = pgTable("guest_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull().references(() => restaurants.id, { onDelete: "cascade" }),
+  orderNumber: varchar("order_number", { length: 32 }).notNull(),
+  channel: varchar("channel", { length: 24 }).notNull().default("counter_pickup"),
+  orderingMode: varchar("ordering_mode", { length: 40 }).notNull(),
+  paymentStatus: varchar("payment_status", { length: 24 }).notNull().default("pay_at_venue"),
+  paymentProvider: varchar("payment_provider", { length: 32 }).notNull().default("venue"),
+  paymentReference: varchar("payment_reference", { length: 120 }),
+  paymentIdempotencyKey: varchar("payment_idempotency_key", { length: 120 }),
+  customerName: text("customer_name"),
+  customerPhone: varchar("customer_phone", { length: 40 }),
+  tableCode: varchar("table_code", { length: 40 }),
+  bayId: varchar("bay_id").references(() => serviceBays.id, { onDelete: "set null" }),
+  vehicleColor: varchar("vehicle_color", { length: 40 }),
+  vehicleType: varchar("vehicle_type", { length: 40 }),
+  licensePlate: varchar("license_plate", { length: 32 }),
+  notes: text("notes"),
+  currency: varchar("currency", { length: 10 }).notNull(),
+  subtotal: decimal("subtotal", { precision: 10, scale: 2 }).notNull(),
+  total: decimal("total", { precision: 10, scale: 2 }).notNull(),
+  lineItems: jsonb("line_items").$type<OrderLineItem[]>().notNull().default(sql`'[]'::jsonb`),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  paidAt: timestamp("paid_at"),
+});
+export type GuestOrder = typeof guestOrders.$inferSelect;
+
+// Pillar 2: Hardware-Free Virtual Pager Tickets
+export const pagerTickets = pgTable("pager_tickets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  trackingToken: varchar("tracking_token").notNull().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull().references(() => restaurants.id, { onDelete: "cascade" }),
+  orderId: varchar("order_id").references(() => guestOrders.id, { onDelete: "set null" }),
+  bayId: varchar("bay_id").references(() => serviceBays.id, { onDelete: "set null" }),
+  ticketCode: varchar("ticket_code", { length: 40 }).notNull(),
+  ticketDate: varchar("ticket_date", { length: 10 }).notNull(),
+  dailySeq: integer("daily_seq"),
+  source: varchar("source", { length: 24 }).notNull().default("auto_number"),
+  status: varchar("status", { length: 24 }).notNull().default("waiting"),
+  customerName: text("customer_name"),
+  notes: text("notes"),
+  estimatedPrepMins: integer("estimated_prep_mins").notNull().default(10),
+  vehicleColor: varchar("vehicle_color", { length: 40 }),
+  vehicleType: varchar("vehicle_type", { length: 40 }),
+  licensePlate: varchar("license_plate", { length: 32 }),
+  etaStatus: varchar("eta_status", { length: 24 }),
+  arrivedAt: timestamp("arrived_at"),
+  buzzCount: integer("buzz_count").notNull().default(0),
+  lastBuzzedAt: timestamp("last_buzzed_at"),
+  rating: integer("rating"),
+  feedbackComment: text("feedback_comment"),
+  queuedAt: timestamp("queued_at").notNull().defaultNow(),
+  preparingAt: timestamp("preparing_at"),
+  readyAt: timestamp("ready_at"),
+  collectedAt: timestamp("collected_at"),
+});
+export type PagerTicket = typeof pagerTickets.$inferSelect;
+
+// Pillar 3: Floor Dining Zones, Tables, Reservations & Walk-In Waitlist
+export const diningZones = pgTable("dining_zones", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull().references(() => restaurants.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  nameAr: text("name_ar"),
+  order: integer("order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type DiningZone = typeof diningZones.$inferSelect;
+
+export const diningTables = pgTable("dining_tables", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull().references(() => restaurants.id, { onDelete: "cascade" }),
+  zoneId: varchar("zone_id").notNull().references(() => diningZones.id, { onDelete: "cascade" }),
+  tableCode: varchar("table_code", { length: 40 }).notNull(),
+  minCovers: integer("min_covers").notNull().default(1),
+  maxCovers: integer("max_covers").notNull().default(4),
+  isCombinable: boolean("is_combinable").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  qrToken: varchar("qr_token").notNull().default(sql`gen_random_uuid()`),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type DiningTable = typeof diningTables.$inferSelect;
+
+export const tableReservations = pgTable("table_reservations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  trackingToken: varchar("tracking_token").notNull().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull().references(() => restaurants.id, { onDelete: "cascade" }),
+  zoneId: varchar("zone_id").references(() => diningZones.id, { onDelete: "set null" }),
+  tableId: varchar("table_id").notNull().references(() => diningTables.id, { onDelete: "cascade" }),
+  guestName: text("guest_name").notNull(),
+  guestPhone: varchar("guest_phone", { length: 40 }).notNull(),
+  partySize: integer("party_size").notNull(),
+  startAt: timestamp("start_at", { withTimezone: true }).notNull(),
+  endAt: timestamp("end_at", { withTimezone: true }).notNull(),
+  status: varchar("status", { length: 24 }).notNull().default("confirmed"),
+  depositStatus: varchar("deposit_status", { length: 24 }).notNull().default("none"),
+  depositAmount: decimal("deposit_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  cancelledAt: timestamp("cancelled_at"),
+});
+export type TableReservation = typeof tableReservations.$inferSelect;
+
+export const waitlistEntries = pgTable("waitlist_entries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  trackingToken: varchar("tracking_token").notNull().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull().references(() => restaurants.id, { onDelete: "cascade" }),
+  zoneId: varchar("zone_id").references(() => diningZones.id, { onDelete: "set null" }),
+  ticketCode: varchar("ticket_code", { length: 24 }).notNull(),
+  guestName: text("guest_name").notNull(),
+  guestPhone: varchar("guest_phone", { length: 40 }),
+  partySize: integer("party_size").notNull(),
+  status: varchar("status", { length: 24 }).notNull().default("waiting"),
+  guestResponse: varchar("guest_response", { length: 24 }),
+  holdExpiresAt: timestamp("hold_expires_at"),
+  buzzCount: integer("buzz_count").notNull().default(0),
+  lastBuzzedAt: timestamp("last_buzzed_at"),
+  notes: text("notes"),
+  joinedAt: timestamp("joined_at").notNull().defaultNow(),
+  readyAt: timestamp("ready_at"),
+  seatedAt: timestamp("seated_at"),
+  closedAt: timestamp("closed_at"),
+});
+export type WaitlistEntry = typeof waitlistEntries.$inferSelect;
+
+// Pillar 5: Aggregator Delivery Storefront Handoff & Zero-PII Click Telemetry
+export const aggregatorLinks = pgTable("aggregator_links", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull().references(() => restaurants.id, { onDelete: "cascade" }),
+  platform: varchar("platform", { length: 40 }).notNull(), // 'talabat' | 'snoonu' | 'keeta' | 'custom'
+  displayName: text("display_name").notNull(),
+  url: text("url").notNull(),
+  badgeEn: varchar("badge_en", { length: 80 }),
+  badgeAr: varchar("badge_ar", { length: 80 }),
+  isActive: boolean("is_active").notNull().default(true),
+  order: integer("order").notNull().default(0),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type AggregatorLink = typeof aggregatorLinks.$inferSelect;
+
+export const aggregatorClicks = pgTable("aggregator_clicks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull().references(() => restaurants.id, { onDelete: "cascade" }),
+  aggregatorId: varchar("aggregator_id").references(() => aggregatorLinks.id, { onDelete: "set null" }),
+  platform: varchar("platform", { length: 40 }).notNull(),
+  menuItemId: varchar("menu_item_id").references(() => menuItems.id, { onDelete: "set null" }),
+  locale: varchar("locale", { length: 8 }).notNull().default("en"),
+  clickedAt: timestamp("clicked_at").notNull().defaultNow(),
+});
+export type AggregatorClick = typeof aggregatorClicks.$inferSelect;
+
+export type PublicCafe = Pick<
+  Restaurant,
+  | 'id'
+  | 'name'
+  | 'slug'
+  | 'theme'
+  | 'brandAccentHex'
+  | 'currency'
+  | 'timezone'
+  | 'logoUrl'
+  | 'coverMediaUrl'
+  | 'coverMediaType'
+  | 'cuisineType'
+  | 'address'
+  | 'phone'
+  | 'openingHours'
+  | 'orderingMode'
+  | 'paymentGateway'
+  | 'googleMapsReviewUrl'
+  | 'reservationsEnabled'
+  | 'waitlistEnabled'
+  | 'driveThruEnabled'
+  | 'pagerMiniGameEnabled'
+  | 'slotIntervalMins'
+  | 'defaultTurnDurationMins'
+  | 'reservationDepositAmount'
+>;
+
 export interface PublicMenuData {
   restaurant: PublicCafe;
   categories: Category[];
   items: MenuItem[];
   variants: PriceVariant[];
+}
+
+export interface PublicHospitalityConfig {
+  restaurant: PublicCafe;
+  zones: DiningZone[];
+  tables: Pick<DiningTable, 'id' | 'zoneId' | 'tableCode' | 'minCovers' | 'maxCovers' | 'isCombinable'>[];
+  bays: Pick<ServiceBay, 'id' | 'code' | 'label' | 'bayType' | 'qrToken'>[];
+  aggregators: AggregatorLink[];
 }

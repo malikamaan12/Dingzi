@@ -31,15 +31,17 @@ export async function authUser(req: any): Promise<AuthUser> {
     owner: owner ? { id: owner.id, email: owner.email, firstName: owner.firstName, lastName: owner.lastName } : null } : null };
 }
 
-const publicGet = /^\/api\/(?:cafes$|(?:menu|restaurant|categories|menu-items)\/public\/[^/]+$|price-variants\/public\/(?:[^/]+|restaurant\/[^/]+)$)/;
-const cafePath = /^\/api\/(?:restaurant|categories|menu-items|price-variants|manager-menu|category-order|cafe-backup|cafe-menu|objects\/upload)(?:\/|$)/;
+const publicGet = /^\/api\/(?:cafes$|(?:menu|restaurant|categories|menu-items)\/public\/[^/]+$|price-variants\/public\/(?:[^/]+|restaurant\/[^/]+)$|public\/)/;
+const publicPost = /^\/api\/(?:public\/|webhooks\/payments\/)/;
+const cafePath = /^\/api\/(?:restaurant|categories|menu-items|price-variants|manager-menu|category-order|cafe-backup|cafe-menu|objects\/upload|hospitality)(?:\/|$)/;
 const sharedPath = /^\/api\/(?:auth\/user|account\/password|menu-library)(?:\/|$)/;
 
 export function mountAccessControl(app: Express) {
-  // Every private API passes through one live role check. Public menu reads are explicit.
+  // Every private API passes through one live role check. Public menu & guest hospitality endpoints are explicit.
   app.use(async (req: any, res, next) => {
     if (!req.path.startsWith('/api/')) return next();
     if (['GET', 'HEAD'].includes(req.method) && publicGet.test(req.path)) return next();
+    if (req.method === 'POST' && publicPost.test(req.path)) return next();
     isAuthenticated(req, res, async (error?: any) => {
       if (error) return next(error);
       try {

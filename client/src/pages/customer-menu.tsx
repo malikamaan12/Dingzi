@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRoute } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowUpRight, Check, Coffee, Clock3, Heart, MapPin, Phone, Search, Sparkles, SlidersHorizontal, X, Leaf, Pause, Play } from 'lucide-react';
+import { ArrowUpRight, Check, Coffee, Clock3, Heart, MapPin, Phone, Search, Sparkles, SlidersHorizontal, X, Leaf, Pause, Play, ShoppingBag } from 'lucide-react';
+import GuestHospitalityBar, { type GuestCartItem } from '@/components/hospitality/GuestHospitalityBar';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { cafeDate, cafeThemeStyle } from '@/lib/cafeTheme';
 import { categoryEmoji, liveCafeStyle, menuTone } from '@/lib/menuPalette';
@@ -64,6 +65,10 @@ function CustomerMenuContent() {
   const [detailOpen, setDetailOpen] = useState(false);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
   const [selectedModifiers, setSelectedModifiers] = useState<MenuModifierSelections>({});
+  const [cart, setCart] = useState<GuestCartItem[]>([]);
+  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+  const initialTableCode = searchParams?.get('table') || null;
+  const initialBayId = searchParams?.get('bay') || null;
   const [now, setNow] = useState(Date.now());
   const menuRef = useRef<HTMLDivElement>(null);
   const detailTitleRef = useRef<HTMLHeadingElement>(null);
@@ -163,7 +168,7 @@ function CustomerMenuContent() {
   }
   if (menuQuery.isLoading) return <div className="guest-menu guest-loading" lang={language} dir={dir} style={cafeThemeStyle()}><MenuLanguageSwitch/><Coffee size={40}/><p>{t('Preparing your menu…')}</p></div>;
   if (!restaurant || menuQuery.isError && !keepMenuDuringReconnect(menuQuery.error, menuQuery.dataUpdatedAt, now)) return <div className="guest-menu guest-loading" lang={language} dir={dir} style={cafeThemeStyle()}><MenuLanguageSwitch/><Coffee size={40}/><h1>{t("We'll be back shortly.")}</h1><p>{t('This café menu is currently unavailable.')}</p><button className="guest-button" onClick={() => menuQuery.refetch()}>{t('Try again')}</button></div>;
-  return <div ref={menuRef} className="guest-menu guest-live guest-simple" lang={language} dir={dir} style={liveCafeStyle(restaurant.theme)} data-motion={motion.enabled ? 'on' : 'off'} data-page-visible={motion.pageVisible}>
+  return <div ref={menuRef} className="guest-menu guest-live guest-simple" lang={language} dir={dir} style={liveCafeStyle(restaurant.theme, restaurant.brandAccentHex)} data-motion={motion.enabled ? 'on' : 'off'} data-page-visible={motion.pageVisible}>
     <div className="guest-atmosphere" aria-hidden="true"><span/><span/><span/></div>
     <div className="guest-shell">
       <div className="guest-navigation">
@@ -176,6 +181,7 @@ function CustomerMenuContent() {
       <h1 className="sr-only">{t('{name} menu', { name: label(restaurant.name) })}</h1>
       {hasMenuError && <div className="guest-reconnecting" role="status"><p>{t('Reconnecting. Prices and availability may have changed.')}</p><button disabled={menuQuery.isFetching} onClick={()=>menuQuery.refetch()}>{t('Try again')}</button></div>}
       <MenuCover cafe={restaurant} motion={motion.enabled && motion.pageVisible}/>
+      <GuestHospitalityBar restaurant={restaurant} cart={cart} setCart={setCart} initialTableCode={initialTableCode} initialBayId={initialBayId} />
       <div className="guest-search"><Search size={18}/><input aria-label={t('Search menu')} placeholder={t('Search items or categories')} value={search} onChange={e=>setSearch(e.target.value)}/>{search && <button onClick={()=>setSearch('')} aria-label={t('Clear search')}><X size={17}/></button>}</div>
       <div className="guest-simple-tools"><div><span>{selectionLabel}</span>{appliedFilters>0 && <button aria-label={t('Clear filters')} onClick={clearFilters}><X size={14}/></button>}</div><button className="guest-wheel-link" onClick={()=>setWheelOpen(true)} disabled={!filtered.length || hasMenuError}><Sparkles size={16}/>{t("Can't decide?")}</button></div>
       <main id="guest-menu-list" className="guest-main">
@@ -231,6 +237,46 @@ function CustomerMenuContent() {
         </div>
         {missingChoices.length>0 && <p className="guest-selection-required" role="status">{t('Choose required options.')}</p>}
         <div className="guest-selection-total" role="status" aria-live="polite" aria-atomic="true"><span>{t('Estimated total')}</span>{!activeItem.hasMultiplePricing || activeVariant ? <strong><bdi dir="ltr">{customizationTotal(activeItem.hasMultiplePricing ? activeVariant!.price : activeItem.price, activeItem.hasMultiplePricing ? activeVariant!.discount : activeItem.discount, selectedExtras)}</bdi> <small>{language === 'ar' ? ({QAR:'ر.ق',SAR:'ر.س',AED:'د.إ'}[restaurant.currency] || restaurant.currency) : restaurant.currency}</small></strong> : <strong className="guest-selection-no-price">{t('Ask our team for pricing')}</strong>}</div>
+        {restaurant.orderingMode !== 'browse_and_pager' && (!activeItem.hasMultiplePricing || activeVariant) && (
+          <button
+            type="button"
+            disabled={missingChoices.length > 0 || unavailableRequired}
+            data-testid="button-add-item-to-cart"
+            onClick={() => {
+              const unitTotal = customizationTotal(
+                activeItem.hasMultiplePricing ? activeVariant!.price : activeItem.price,
+                activeItem.hasMultiplePricing ? activeVariant!.discount : activeItem.discount,
+                selectedExtras,
+              );
+              const key = `${activeItem.id}:${activeVariant?.id || 'base'}:${selectedExtras.map(e => e.id).sort().join(',')}`;
+              setCart(prev => {
+                const existing = prev.find(i => i.key === key);
+                if (existing) {
+                  return prev.map(i => (i.key === key ? { ...i, quantity: i.quantity + 1 } : i));
+                }
+                return [
+                  ...prev,
+                  {
+                    key,
+                    menuItemId: activeItem.id,
+                    name: activeItem.name,
+                    quantity: 1,
+                    variantId: activeVariant?.id || null,
+                    variantLabel: activeVariant?.label || null,
+                    modifiers: selectedModifiers,
+                    modifierSummary: selectedExtras.map(o => (language === 'ar' && o.labelAr ? o.labelAr : o.label)),
+                    unitTotal,
+                  },
+                ];
+              });
+              setDetailOpen(false);
+            }}
+            className="mt-3 w-full min-h-11 rounded-xl bg-primary text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer transition-opacity"
+          >
+            <ShoppingBag size={16} />
+            <span>{t('Add to Order')}</span>
+          </button>
+        )}
       </footer>
     </>}</DialogContent></Dialog>
   </div>;

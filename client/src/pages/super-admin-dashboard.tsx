@@ -21,7 +21,7 @@ import {
   Building2, 
   Ban, 
   CheckCircle, 
-  Settings, QrCode, Eye, EyeOff, Plus
+  Settings, QrCode, Eye, EyeOff, Plus, Phone, UtensilsCrossed
 } from "lucide-react";
 import type { Restaurant } from "@shared/schema";
 import PermanentMenuQR from "@/components/permanent-menu-qr";
@@ -117,6 +117,22 @@ export default function SuperAdminDashboard() {
   const { data: restaurants, isLoading } = useQuery<RestaurantWithOwner[]>({
     queryKey: ["/api/super-admin/restaurants"],
   });
+  const { data: portfolioAnalytics } = useQuery<{
+    branches: {
+      id: string;
+      name: string;
+      slug: string | null;
+      orderingMode: string;
+      currency: string;
+      totalTickets: number;
+      avgPrepMins: number;
+      totalOrders: number;
+      reservations: number;
+      aggregatorClicks: number;
+    }[];
+  }>({
+    queryKey: ["/api/super-admin/portfolio-analytics"],
+  });
 
   const activateMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -168,6 +184,43 @@ export default function SuperAdminDashboard() {
 
       <div className="manager-stats">{stats.map(stat=><div className="manager-stat" key={stat.label}><stat.icon/><strong>{stat.count}</strong><span>{stat.label}</span></div>)}</div>
 
+      {portfolioAnalytics && portfolioAnalytics.branches.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-lg">Multi-Branch Hospitality Comparison</CardTitle>
+            <CardDescription>Side-by-side prep-time SLA, virtual pagers, orders, table bookings, and outbound aggregator clicks.</CardDescription>
+          </CardHeader>
+          <CardContent className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="border-b text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="py-2 pr-4">Branch</th>
+                  <th className="py-2 pr-4">Mode</th>
+                  <th className="py-2 pr-4">Pagers</th>
+                  <th className="py-2 pr-4">Avg Prep</th>
+                  <th className="py-2 pr-4">Orders</th>
+                  <th className="py-2 pr-4">Reservations</th>
+                  <th className="py-2">Aggregator Clicks</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {portfolioAnalytics.branches.map(b => (
+                  <tr key={b.id}>
+                    <td className="py-2.5 pr-4 font-semibold">{b.name}</td>
+                    <td className="py-2.5 pr-4"><Badge variant="outline">{b.orderingMode.replace(/_/g, ' ')}</Badge></td>
+                    <td className="py-2.5 pr-4 font-mono">{b.totalTickets}</td>
+                    <td className="py-2.5 pr-4 font-mono">{b.avgPrepMins}m</td>
+                    <td className="py-2.5 pr-4 font-mono">{b.totalOrders}</td>
+                    <td className="py-2.5 pr-4 font-mono">{b.reservations}</td>
+                    <td className="py-2.5 font-mono">{b.aggregatorClicks}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="staff-platform-grid">
         {restaurants && restaurants.length === 0 && (
           <Card>
@@ -197,8 +250,8 @@ export default function SuperAdminDashboard() {
                     {restaurant.owner && (
                       <span data-restaurant-owner>{restaurant.owner.email}</span>
                     )}
-                    {restaurant.phone && <span>📞 {restaurant.phone}</span>}
-                    {restaurant.cuisineType && <span>🍽️ {restaurant.cuisineType}</span>}
+                    {restaurant.phone && <span className="inline-flex items-center gap-1"><Phone className="w-3.5 h-3.5" /> {restaurant.phone}</span>}
+                    {restaurant.cuisineType && <span className="inline-flex items-center gap-1"><UtensilsCrossed className="w-3.5 h-3.5" /> {restaurant.cuisineType}</span>}
                   </CardDescription>
                 </div>
               </div>

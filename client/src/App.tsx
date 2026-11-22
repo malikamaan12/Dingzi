@@ -40,6 +40,15 @@ const AccessHistory = lazy(() => import('@/pages/access-history'));
 import { returnToPlatform } from '@/lib/cafeAccess';
 import { useToast } from '@/hooks/use-toast';
 const AdminQRCode = lazy(() => import('@/pages/admin-qrcode'));
+const AdminKds = lazy(() => import('@/pages/admin-kds'));
+const AdminTables = lazy(() => import('@/pages/admin-tables'));
+const AdminDriveThru = lazy(() => import('@/pages/admin-drive-thru'));
+const AdminDelivery = lazy(() => import('@/pages/admin-delivery'));
+const AdminAnalytics = lazy(() => import('@/pages/admin-analytics'));
+const VirtualPagerPage = lazy(() => import('@/pages/virtual-pager'));
+const GuestWaitlistPage = lazy(() => import('@/pages/guest-waitlist'));
+const GuestBookingPage = lazy(() => import('@/pages/guest-booking'));
+import { VenueBySlugEntry, BayQrEntry } from '@/pages/venue-slug-entry';
 const SuperAdminDashboard = lazy(() => import('@/pages/super-admin-dashboard'));
 const SuperAdminRestaurantDetail = lazy(() => import('@/pages/super-admin-restaurant-detail'));
 const CustomerMenu = lazy(() => import('@/pages/customer-menu'));
@@ -136,10 +145,23 @@ function AdminLayout({ children }: { children: React.ReactNode }) {
 
 function Router() {
   const [location] = useLocation();
+  const isGuestSurface =
+    window.location.origin === PUBLIC_MENU_ORIGIN ||
+    location.startsWith('/menu/') ||
+    location.startsWith('/v/') ||
+    location.startsWith('/pager/') ||
+    location.startsWith('/waitlist/') ||
+    location.startsWith('/booking/') ||
+    location.startsWith('/bay/');
   // The Worker separately enforces this boundary for direct URL requests.
-  if (window.location.origin === PUBLIC_MENU_ORIGIN || location.startsWith('/menu/')) return (
+  if (isGuestSurface) return (
     <Switch>
       <Route path="/menu/:id" component={CustomerMenu}/>
+      <Route path="/v/:slug" component={VenueBySlugEntry}/>
+      <Route path="/pager/:token" component={VirtualPagerPage}/>
+      <Route path="/waitlist/:token" component={GuestWaitlistPage}/>
+      <Route path="/booking/:token" component={GuestBookingPage}/>
+      <Route path="/bay/:token" component={BayQrEntry}/>
       <Route path="/" component={Home}/>
       <Route component={NotFound}/>
     </Switch>
@@ -218,6 +240,11 @@ function StaffRouter() {
         </Route>
         <Route path="/admin/settings"><AdminLayout><CafeSettings /></AdminLayout></Route>
         <Route path="/admin/library"><AdminLayout><MenuLibrary /></AdminLayout></Route>
+        <Route path="/admin/kds"><AdminLayout><AdminKds /></AdminLayout></Route>
+        <Route path="/admin/tables"><AdminLayout><AdminTables /></AdminLayout></Route>
+        <Route path="/admin/drive-thru"><AdminLayout><AdminDriveThru /></AdminLayout></Route>
+        <Route path="/admin/delivery"><AdminLayout><AdminDelivery /></AdminLayout></Route>
+        <Route path="/admin/analytics"><AdminLayout><AdminAnalytics /></AdminLayout></Route>
         <Route path="/admin/qr-code">
           <AdminLayout>
             <AdminQRCode />
