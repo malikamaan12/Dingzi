@@ -1,0 +1,6 @@
+project_id = "pager-platform"
+
+[functions.cafe-passwords]
+verify_jwt = false
+# This private service verifies a separate 256-bit bearer secret before parsing
+# any password. Deploy to a dedicated Supabase project separate from legacy Cafe Menu.

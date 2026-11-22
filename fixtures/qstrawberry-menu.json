@@ -1,0 +1,50 @@
+{
+  "cafeName": "Qstrawberry",
+  "currency": "QAR",
+  "categories": [
+    {
+      "title": "Strawberry Desserts",
+      "items": [
+        ["Strawberry Chocolate Cup 14 OZ", 35, "A generous 14 oz cup of strawberry and chocolate.", ["dessert", "strawberry", "chocolate"], "strawberry-chocolate-cup.webp"],
+        ["Strawberry Marshmallow Chocolate Cup 14 OZ", 35, "A generous 14 oz cup of strawberry, marshmallow and chocolate.", ["dessert", "strawberry", "marshmallow", "chocolate"], "strawberry-marshmallow-chocolate-cup.webp"],
+        ["Marshmallow Chocolate Cup 14 OZ", 35, "A generous 14 oz cup of marshmallow and chocolate.", ["dessert", "marshmallow", "chocolate"], "marshmallow-chocolate-cup.webp"],
+        ["Mini Pancake", 35, "Warm mini pancakes with a strawberry finish.", ["dessert", "pancake", "strawberry"], "mini-pancake.webp"],
+        ["Waffle Stick", 35, "Golden waffle stick with chocolate drizzle.", ["dessert", "waffle", "chocolate"], "waffle-stick.webp"]
+      ]
+    },
+    {
+      "title": "Cold Drinks",
+      "items": [
+        ["Slushy", 30, "A refreshing strawberry frozen slushy.", ["drink", "frozen", "strawberry"], "slushy.webp"]
+      ]
+    },
+    {
+      "title": "Refreshments & Snacks",
+      "items": [
+        ["Water", 5, "Chilled still water.", ["drink", "water"], "water.webp"],
+        ["Redbull", 20, "Chilled energy drink.", ["drink", "energy"], "redbull.webp"],
+        ["Pop Corn", 15, "Freshly prepared buttery popcorn.", ["snack", "popcorn"], "pop-corn.webp"]
+      ]
+    },
+    {
+      "title": "Coffee",
+      "items": [
+        ["Espresso Single", 15, "A single shot of espresso.", ["coffee", "espresso", "hot drink"], "espresso-single.webp"],
+        ["Cappucino", 24, "Velvety espresso with steamed milk foam.", ["coffee", "cappuccino", "hot drink"], "cappucino.webp"],
+        ["Spanish Latte", 27, "Creamy Spanish-style latte.", ["coffee", "latte", "hot drink"], "spanish-latte.webp"],
+        ["Latte", 24, "Smooth espresso with steamed milk.", ["coffee", "latte", "hot drink"], "latte.webp"],
+        ["Americano", 20, "Espresso with hot water.", ["coffee", "americano", "hot drink"], "americano.webp"],
+        ["Cortado", 22, "Balanced espresso and steamed milk.", ["coffee", "cortado", "hot drink"], "cortado.webp"],
+        ["Flat White", 24, "Silky microfoam over espresso.", ["coffee", "flat white", "hot drink"], "flat-white.webp"],
+        ["Hot Chocolate", 24, "Rich, warming hot chocolate.", ["chocolate", "hot drink"], "hot-chocolate.webp"]
+      ]
+    },
+    {
+      "title": "Extras",
+      "items": [
+        ["Add Vanilla Syrup", 5, "Add a vanilla syrup shot to your drink.", ["extra", "syrup", "topping", "vanilla"], "vanilla-syrup.webp"],
+        ["Add Caramel Syrup", 5, "Add a caramel syrup shot to your drink.", ["extra", "syrup", "topping", "caramel"], "caramel-syrup.webp"]
+      ]
+    }
+  ]
+}

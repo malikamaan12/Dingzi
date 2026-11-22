@@ -1,0 +1,36 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pager-staff",
+  "main": "server/worker.ts",
+  "compatibility_date": "2026-10-09",
+  "compatibility_flags": ["nodejs_compat", "enable_nodejs_http_server_modules"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "placement": { "region": "aws:ap-south-1" },
+  "minify": true,
+  "alias": {
+    "./db": "./server/workerDatabase.ts",
+    "./passwords": "./server/workerPasswords.ts",
+    "./mediaStore": "./server/workerMediaStore.ts",
+    "iconv-lite": "./node_modules/iconv-lite/lib/index.js"
+  },
+  "vars": {
+    "APPLICATION_SURFACE": "management",
+    "NODE_ENV": "production",
+    "CAFE_RUNTIME": "workers",
+    "COOKIE_SECURE": "true",
+    "TRUST_PROXY": "true",
+    "TZ": "UTC",
+    "STORAGE_BUCKET": "pager-media"
+  },
+  "assets": {
+    "directory": "./dist/public",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+  "triggers": { "crons": [] },
+  "observability": { "enabled": true }
+  // Bind a NEW Cloudflare account_id and Hyperdrive ID using scripts/configure-cloud.mjs.
+  // Never connect this project to the legacy Cafe Menu account or database.
+}
