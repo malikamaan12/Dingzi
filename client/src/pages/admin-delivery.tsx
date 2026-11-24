@@ -192,7 +192,7 @@ export default function AdminDeliveryAndCommercePage() {
     <div className="space-y-6 max-w-[1200px]">
       <div>
         <p className="manager-eyebrow">COMMERCE MODES &amp; DELIVERY HANDOFF</p>
-        <h1 className="text-3xl font-bold">Ordering Modes, Payments &amp; Aggregators</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold">Ordering Modes, Payments &amp; Aggregators</h1>
         <p className="text-sm text-muted-foreground">
           Switch between Browse &amp; Pager Only, Pay at Venue, or SkipCash/Sadad Online Checkout, configure reservation slot intervals &amp; deposits, and manage Talabat, Snoonu &amp; Keeta storefronts.
         </p>
@@ -204,14 +204,14 @@ export default function AdminDeliveryAndCommercePage() {
           e.preventDefault();
           saveCommerce.mutate();
         }}
-        className="manager-panel p-6 space-y-5"
+        className="manager-panel p-4 sm:p-6 space-y-5"
       >
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="font-bold text-lg flex items-center gap-2">
             <CreditCard className="w-5 h-5 text-primary" />
             Branch Commerce, Booking Rules &amp; Feature Toggles
           </h2>
-          <Button type="submit" className="cursor-pointer gap-2" disabled={saveCommerce.isPending}>
+          <Button type="submit" className="w-full sm:w-auto cursor-pointer gap-2" disabled={saveCommerce.isPending}>
             <Save className="w-4 h-4" />
             {saveCommerce.isPending ? 'Saving…' : 'Save Mode'}
           </Button>

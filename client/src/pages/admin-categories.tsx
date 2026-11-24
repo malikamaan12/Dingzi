@@ -95,7 +95,7 @@ export default function AdminCategories() {
       <div className="manager-section-heading">
         <div>
           <p className="manager-eyebrow">ORGANIZE YOUR COLLECTION</p>
-          <h1 className="text-3xl font-bold">Menu categories &amp; daypart schedules</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Menu categories &amp; daypart schedules</h1>
           <p className="text-muted-foreground">
             {cats.length} categories · {data?.items.length} items. Toggle visibility or set optional Breakfast/Dinner time windows.
           </p>
@@ -138,7 +138,7 @@ export default function AdminCategories() {
                 {count(c.id)} items · {data?.items.filter(i => i.categoryId === c.id && i.isAvailable).length || 0} visible
               </p>
             </div>
-            <div className="flex items-center flex-wrap gap-1">
+            <div className="flex items-center flex-wrap gap-2">
               <Button
                 variant="ghost"
                 size="icon"

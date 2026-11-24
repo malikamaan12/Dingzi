@@ -304,7 +304,7 @@ function VirtualPagerContent() {
           >
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <BellRing className="w-7 h-7 animate-bounce shrink-0 text-[#17132E]" aria-hidden="true" />
+                <BellRing className="w-7 h-7 motion-safe:animate-pulse shrink-0 text-[#17132E]" aria-hidden="true" />
                 <div>
                   <strong className="block text-lg font-extrabold leading-tight">
                     Pager {ticket.ticketCode} Ringing!
@@ -349,7 +349,7 @@ function VirtualPagerContent() {
                 : 'bg-[#EFEAFF] text-[#4B1FE0]'
             }`}
           >
-            {isReady ? <BellRing className="w-4 h-4 animate-bounce" aria-hidden="true" /> : <Clock className="w-4 h-4" aria-hidden="true" />}
+            {isReady ? <BellRing className="w-4 h-4 motion-safe:animate-pulse" aria-hidden="true" /> : <Clock className="w-4 h-4" aria-hidden="true" />}
             <span>
               {isReady
                 ? t('Ready for Pickup!')
@@ -390,18 +390,18 @@ function VirtualPagerContent() {
             </div>
           )}
 
-          <ol className="grid grid-cols-4 gap-2 mt-6 text-xs">
+          <ol className="grid grid-cols-4 gap-1.5 sm:gap-2 mt-6 text-[11px] sm:text-xs">
             {steps.map((step, idx) => {
               const done = currentIdx >= idx;
               return (
-                <li key={step.id} className="space-y-1.5">
+                <li key={step.id} className="space-y-1.5 min-w-0">
                   <div
                     className={`h-2 rounded-full transition-colors ${
                       done ? (isReady ? 'bg-[#C8FF42]' : 'bg-[#6236FF]') : isReady ? 'bg-[#241E42]' : 'bg-muted'
                     }`}
                   />
                   <span
-                    className={`block leading-tight ${
+                    className={`block leading-tight break-words ${
                       done
                         ? isReady
                           ? 'font-semibold text-white'
@@ -422,7 +422,7 @@ function VirtualPagerContent() {
         {/* Lock-Screen Push + Audio Keep-Alive Arming Panel */}
         {!isCollected && (
           <section className="rounded-2xl border bg-card p-4 space-y-2.5">
-            <div className="flex gap-2">
+            <div className="flex flex-col min-[390px]:flex-row gap-2">
               <Button
                 type="button"
                 variant={alertsArmed ? 'secondary' : 'default'}
@@ -522,16 +522,16 @@ function VirtualPagerContent() {
         {/* Curbside / Drive-Thru Bay Arrival Check-in */}
         {restaurant.driveThruEnabled && !isCollected && data.bays?.length > 0 && (
           <section className="rounded-2xl border bg-card p-4 space-y-3">
-            <div className="flex items-center gap-2 font-semibold text-sm">
+            <div className="flex flex-wrap items-center gap-2 font-semibold text-sm">
               <Car className="w-4 h-4 text-primary" aria-hidden="true" />
               <span>{t('Curbside & Drive-Thru')}</span>
               {data.bay && (
-                <span className="ml-auto text-xs px-2.5 py-0.5 rounded-full bg-[#C8FF42] text-[#17132E] font-bold">
+                <span className="ms-auto text-xs px-2.5 py-0.5 rounded-full bg-[#C8FF42] text-[#17132E] font-bold">
                   Checked into {data.bay.code}
                 </span>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
                 <Label className="text-xs">{t('Select Parking Bay')}</Label>
                 <select
@@ -579,7 +579,7 @@ function VirtualPagerContent() {
                 />
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-2">
               <Button
                 type="button"
                 variant="outline"

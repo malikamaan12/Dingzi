@@ -10,8 +10,10 @@
 .guest-simple .guest-brand{flex:1;min-width:140px;overflow-wrap:anywhere}
 .guest-simple .guest-search>svg{flex-shrink:0}
 .guest-simple .guest-search input{flex:1;min-width:0}
-.guest-simple-tools{flex-wrap:wrap}
+.guest-simple-tools{flex-wrap:wrap;gap:8px}
 .guest-simple-tools>div{flex:1;min-width:100px}
+.guest-simple-tools button,.guest-wheel-link{min-height:44px;min-width:44px;cursor:pointer}
+.guest-simple .guest-navigation{padding-top:env(safe-area-inset-top,0px)}
 .guest-card-bottom{flex-wrap:wrap;align-items:center}
 .guest-card-bottom>.guest-card-arrow{margin-left:auto}
 .guest-simple .guest-category-heading{gap:10px;align-items:flex-start}

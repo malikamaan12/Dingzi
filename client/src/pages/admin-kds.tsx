@@ -161,17 +161,17 @@ export default function AdminKdsPage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="manager-eyebrow">BARISTA &amp; COUNTER OPERATIONS</p>
-          <h1 className="text-3xl font-bold">Virtual Pager &amp; Live KDS Console</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Virtual Pager &amp; Live KDS Console</h1>
           <p className="text-sm text-muted-foreground">
             Issue 1-tap hardware-free pagers, manage incoming orders, and buzz guest phones in under 250 ms.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-sm" role="status" aria-atomic="true">
+        <div className="flex flex-wrap items-center gap-2 text-sm w-full sm:w-auto" role="status" aria-atomic="true">
           <Button
             type="button"
             variant="outline"
             size="sm"
-            className="min-h-10 cursor-pointer"
+            className="min-h-11 cursor-pointer flex-1 sm:flex-none"
             onClick={async () => {
               const res = await subscribeStaffLockScreenPush();
               toast({
@@ -187,7 +187,7 @@ export default function AdminKdsPage() {
             type="button"
             variant="secondary"
             size="sm"
-            className="min-h-10 cursor-pointer"
+            className="min-h-11 cursor-pointer flex-1 sm:flex-none"
             onClick={() => setKioskMode(v => !v)}
           >
             {kioskMode ? 'Exit Counter Kiosk' : 'Counter QR Kiosk Display'}
@@ -236,33 +236,35 @@ export default function AdminKdsPage() {
               Issues the next sequential daily code (`A-001`, `A-002`…) and opens a scannable QR for the guest.
             </p>
           </div>
-          <div className="flex gap-2 items-end">
-            <div className="flex-1">
-              <Label className="text-xs">Guest Name (optional)</Label>
-              <Input
-                value={customerName}
-                onChange={e => setCustomerName(e.target.value)}
-                placeholder="e.g. Ahmad"
-                className="h-11"
-              />
-            </div>
-            <div className="w-24">
-              <Label className="text-xs">Est. Min</Label>
-              <Input
-                type="number"
-                min={1}
-                max={90}
-                value={prepMins}
-                onChange={e => setPrepMins(Number(e.target.value) || 8)}
-                className="h-11"
-              />
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_6rem_auto] gap-2.5 items-end">
+            <div className="grid grid-cols-[1fr_5.5rem] sm:contents gap-2">
+              <div>
+                <Label className="text-xs">Guest Name (optional)</Label>
+                <Input
+                  value={customerName}
+                  onChange={e => setCustomerName(e.target.value)}
+                  placeholder="e.g. Ahmad"
+                  className="h-11"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Est. Min</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={90}
+                  value={prepMins}
+                  onChange={e => setPrepMins(Number(e.target.value) || 8)}
+                  className="h-11"
+                />
+              </div>
             </div>
             <Button
               type="button"
               data-testid="button-issue-auto-pager"
               onClick={() => issueMutation.mutate('auto_number')}
               disabled={issueMutation.isPending}
-              className="min-h-11 px-5 font-semibold cursor-pointer"
+              className="w-full sm:w-auto min-h-11 px-5 font-semibold cursor-pointer"
             >
               <QrCode className="w-4 h-4 mr-2" />
               New Auto Pager
@@ -286,8 +288,8 @@ export default function AdminKdsPage() {
               Enter your existing POS invoice number so the guest tracks their receipt directly on their phone.
             </p>
           </div>
-          <div className="flex flex-wrap sm:flex-nowrap gap-2 items-end">
-            <div className="flex-1 min-w-[180px]">
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2.5 items-end">
+            <div>
               <Label className="text-xs">POS Invoice / Receipt # *</Label>
               <Input
                 value={invoiceNumber}
@@ -302,7 +304,7 @@ export default function AdminKdsPage() {
               type="submit"
               variant="secondary"
               disabled={!invoiceNumber.trim() || issueMutation.isPending}
-              className="min-h-11 px-5 font-semibold cursor-pointer"
+              className="w-full sm:w-auto min-h-11 px-5 font-semibold cursor-pointer"
               data-testid="button-issue-pos-pager"
             >
               Issue Receipt Pager
@@ -313,9 +315,9 @@ export default function AdminKdsPage() {
 
       {/* Active KDS Queue Grid */}
       <section className="space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h2 className="text-lg font-bold">Active Prep &amp; Pickup Queue ({activeTickets.length})</h2>
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter KDS tickets">
+          <div className="flex flex-nowrap sm:flex-wrap overflow-x-auto no-scrollbar pb-1 gap-2" role="group" aria-label="Filter KDS tickets">
             {[
               { id: 'all', label: `All (${allActiveTickets.length})` },
               { id: 'orders', label: 'In-App Orders' },
@@ -328,7 +330,7 @@ export default function AdminKdsPage() {
                 size="sm"
                 variant={channelFilter === tab.id ? 'default' : 'outline'}
                 onClick={() => setChannelFilter(tab.id as any)}
-                className="h-9 text-xs cursor-pointer"
+                className="min-h-11 md:min-h-9 shrink-0 text-xs cursor-pointer"
               >
                 {tab.label}
               </Button>
@@ -405,7 +407,7 @@ export default function AdminKdsPage() {
                             type="button"
                             size="sm"
                             variant="outline"
-                            className="w-full mt-1.5 h-8 text-xs cursor-pointer gap-1"
+                            className="w-full mt-1.5 min-h-11 md:min-h-9 text-xs cursor-pointer gap-1.5"
                             onClick={() => transitionMutation.mutate({ id: ticket.id, action: 'confirm_venue_payment' })}
                           >
                             <CreditCard className="w-3.5 h-3.5" />
@@ -470,19 +472,19 @@ export default function AdminKdsPage() {
                       )}
                     </div>
 
-                    <div className="flex items-center justify-between text-xs">
+                    <div className="flex items-center justify-between gap-2 text-xs">
                       <button
                         type="button"
                         onClick={() => setIssuedQrTicket(ticket)}
-                        className="text-primary font-medium hover:underline inline-flex items-center gap-1 cursor-pointer"
+                        className="min-h-11 px-3 rounded-xl bg-muted/40 hover:bg-muted text-primary font-semibold inline-flex items-center gap-1.5 cursor-pointer"
                       >
-                        <QrCode className="w-3.5 h-3.5" />
+                        <QrCode className="w-4 h-4" />
                         Show Guest QR
                       </button>
                       <button
                         type="button"
                         onClick={() => transitionMutation.mutate({ id: ticket.id, action: 'no_show' })}
-                        className="text-muted-foreground hover:text-destructive cursor-pointer"
+                        className="min-h-11 px-3 rounded-xl text-muted-foreground hover:text-destructive hover:bg-destructive/10 inline-flex items-center cursor-pointer"
                       >
                         Mark No-Show
                       </button>
@@ -504,13 +506,13 @@ export default function AdminKdsPage() {
               <p className="text-xs text-muted-foreground">Instantly hide or restore sold-out items and toppings on the live guest menu.</p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
+          <div className="flex flex-wrap gap-2 max-h-44 overflow-y-auto">
             {(menuQuery.data?.items || []).slice(0, 24).map(item => (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => snoozeMutation.mutate({ id: item.id, isAvailable: !item.isAvailable })}
-                className={`px-3 min-h-10 rounded-xl border text-xs font-medium inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+                className={`px-3 min-h-11 rounded-xl border text-xs font-medium inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
                   item.isAvailable ? 'bg-card hover:bg-muted' : 'bg-destructive/10 text-destructive border-destructive/30 line-through'
                 }`}
               >
@@ -522,7 +524,7 @@ export default function AdminKdsPage() {
           {(menuQuery.data?.items || []).some(i => (i.modifierGroups || []).length > 0) && (
             <div className="pt-3 border-t space-y-2">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Modifier &amp; Topping Options</p>
-              <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto">
+              <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
                 {(menuQuery.data?.items || [])
                   .flatMap(item =>
                     (item.modifierGroups || []).flatMap(group =>
@@ -541,7 +543,7 @@ export default function AdminKdsPage() {
                           isAvailable: !opt.isAvailable,
                         })
                       }
-                      className={`px-2.5 min-h-9 rounded-lg border text-[11px] font-medium inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+                      className={`px-3 min-h-11 rounded-xl border text-[11px] font-medium inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
                         opt.isAvailable ? 'bg-muted/40 hover:bg-muted' : 'bg-destructive/10 text-destructive border-destructive/30 line-through'
                       }`}
                     >

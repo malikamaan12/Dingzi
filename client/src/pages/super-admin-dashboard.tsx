@@ -69,7 +69,44 @@ function PortfolioAnalyticsPanel() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="overflow-x-auto">
+        {/* Mobile Branch Comparison Cards (< 768px) */}
+        <div className="grid gap-3 md:hidden">
+          {branches.map(b => (
+            <article key={b.id} className="rounded-2xl border p-3.5 space-y-2.5 bg-card">
+              <div className="flex items-center justify-between gap-2">
+                <strong className="text-sm truncate">{b.name}</strong>
+                <Badge variant="outline" className="text-[11px] font-mono shrink-0">
+                  {b.orderingMode}
+                </Badge>
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-xs">
+                <div className="rounded-xl bg-muted/40 p-2">
+                  <span className="text-[10px] text-muted-foreground block">Pagers</span>
+                  <strong className="font-mono">{b.totalTickets}</strong>
+                </div>
+                <div className="rounded-xl bg-muted/40 p-2">
+                  <span className="text-[10px] text-muted-foreground block">Avg Prep</span>
+                  <strong className="font-mono">{b.avgPrepMins}m</strong>
+                </div>
+                <div className="rounded-xl bg-muted/40 p-2">
+                  <span className="text-[10px] text-muted-foreground block">Orders</span>
+                  <strong className="font-mono">{b.totalOrders}</strong>
+                </div>
+                <div className="rounded-xl bg-muted/40 p-2">
+                  <span className="text-[10px] text-muted-foreground block">Bookings</span>
+                  <strong className="font-mono">{b.reservations}</strong>
+                </div>
+                <div className="rounded-xl bg-muted/40 p-2 col-span-2">
+                  <span className="text-[10px] text-muted-foreground block">Delivery Clicks</span>
+                  <strong className="font-mono">{b.aggregatorClicks}</strong>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        {/* Desktop Portfolio Table (md+) */}
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead>
               <tr className="border-b text-xs uppercase text-muted-foreground">

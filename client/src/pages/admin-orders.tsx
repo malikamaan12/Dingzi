@@ -182,7 +182,7 @@ export default function AdminOrdersPage() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="manager-eyebrow">COMMERCE LEDGER &amp; COUNTER POS</p>
-          <h1 className="text-3xl font-bold">Orders &amp; Receipts Console</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Orders &amp; Receipts Console</h1>
           <p className="text-sm text-muted-foreground">
             Track live dine-in, counter, and curbside orders, settle Pay-at-Venue tickets, print receipts, or ring up a counter POS order.
           </p>
@@ -191,7 +191,7 @@ export default function AdminOrdersPage() {
           type="button"
           onClick={() => setPosOpen(true)}
           data-testid="button-open-pos-order"
-          className="min-h-11 rounded-xl bg-[#6236FF] hover:bg-[#4B1FE0] text-white cursor-pointer gap-2"
+          className="w-full sm:w-auto min-h-11 rounded-xl bg-[#6236FF] hover:bg-[#4B1FE0] text-white cursor-pointer gap-2"
         >
           <Plus className="w-4 h-4" />
           <span>New Counter POS Order</span>
@@ -202,27 +202,27 @@ export default function AdminOrdersPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" role="status" aria-live="polite">
         <div className="manager-panel p-4">
           <span className="text-xs text-muted-foreground font-medium">Total Orders</span>
-          <strong className="block text-2xl font-mono mt-1">{orders.length}</strong>
+          <strong className="block text-xl sm:text-2xl font-mono mt-1">{orders.length}</strong>
         </div>
         <div className="manager-panel p-4">
           <span className="text-xs text-muted-foreground font-medium">Settled Revenue</span>
-          <strong className="block text-2xl font-mono mt-1 text-primary">
+          <strong className="block text-xl sm:text-2xl font-mono mt-1 text-primary truncate">
             {paidTotal} {ordersQuery.data?.currency || cafe?.currency || 'QAR'}
           </strong>
         </div>
         <div className="manager-panel p-4">
           <span className="text-xs text-muted-foreground font-medium">Awaiting Venue Payment</span>
-          <strong className="block text-2xl font-mono mt-1">{unpaidVenueCount}</strong>
+          <strong className="block text-xl sm:text-2xl font-mono mt-1">{unpaidVenueCount}</strong>
         </div>
         <div className="manager-panel p-4">
           <span className="text-xs text-muted-foreground font-medium">Branch Commerce Mode</span>
-          <strong className="block text-sm font-mono mt-2 uppercase">{(cafe?.orderingMode || 'browse_and_pager').replace(/_/g, ' ')}</strong>
+          <strong className="block text-xs sm:text-sm font-mono mt-2 uppercase break-words">{(cafe?.orderingMode || 'browse_and_pager').replace(/_/g, ' ')}</strong>
         </div>
       </div>
 
       {/* Filters */}
-      <div className="manager-panel p-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-1.5">
+      <div className="manager-panel p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+        <div className="flex flex-nowrap sm:flex-wrap overflow-x-auto no-scrollbar pb-1 gap-2">
           {(
             [
               ['all', 'All Payments'],
@@ -236,7 +236,7 @@ export default function AdminOrdersPage() {
               key={id}
               type="button"
               onClick={() => setStatusFilter(id)}
-              className={`px-3 min-h-10 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+              className={`px-3.5 min-h-11 shrink-0 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
                 statusFilter === id
                   ? 'bg-[#6236FF] text-white'
                   : 'bg-muted/60 text-muted-foreground hover:text-foreground'
@@ -247,10 +247,10 @@ export default function AdminOrdersPage() {
           ))}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex items-center gap-2">
           <select
             aria-label="Filter by channel"
-            className="manager-select h-10 text-xs"
+            className="manager-select w-full sm:w-auto text-xs"
             value={channelFilter}
             onChange={e => setChannelFilter(e.target.value as any)}
           >
@@ -260,13 +260,13 @@ export default function AdminOrdersPage() {
             <option value="curbside">Curbside Bay</option>
             <option value="drive_thru">Drive-Thru Lane</option>
           </select>
-          <div className="relative">
-            <Search className="w-4 h-4 text-muted-foreground absolute left-3 top-3" />
+          <div className="relative w-full sm:w-auto">
+            <Search className="w-4 h-4 text-muted-foreground absolute start-3 top-3.5" />
             <Input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Order #, guest, table, plate…"
-              className="pl-9 h-10 w-56 text-xs"
+              className="ps-9 min-h-11 md:h-10 w-full lg:w-56 text-base md:text-xs"
             />
           </div>
         </div>
@@ -336,8 +336,8 @@ export default function AdminOrdersPage() {
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 shrink-0">
-                  <div className="text-right mr-2">
+                <div className="flex flex-wrap items-center justify-between lg:justify-end gap-2 w-full lg:w-auto border-t lg:border-t-0 pt-3 lg:pt-0 shrink-0">
+                  <div className="text-start lg:text-end me-2">
                     <strong className="block font-mono text-lg">
                       {order.total} {order.currency}
                     </strong>
@@ -481,7 +481,7 @@ export default function AdminOrdersPage() {
             }}
             className="space-y-4"
           >
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Guest Name *</Label>
                 <Input
@@ -505,7 +505,7 @@ export default function AdminOrdersPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Channel</Label>
                 <select
@@ -546,16 +546,16 @@ export default function AdminOrdersPage() {
                             {Number(item.price).toFixed(2)} {cafe?.currency || 'QAR'}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="flex items-center gap-2 shrink-0">
                           <button
                             type="button"
                             aria-label={`Decrease ${item.name}`}
                             onClick={() =>
                               setPosLines(prev => ({ ...prev, [item.id]: Math.max(0, (prev[item.id] || 0) - 1) }))
                             }
-                            className="w-9 h-9 rounded-lg border grid place-items-center cursor-pointer"
+                            className="w-11 h-11 rounded-xl border grid place-items-center cursor-pointer"
                           >
-                            <Minus className="w-3.5 h-3.5" />
+                            <Minus className="w-4 h-4" />
                           </button>
                           <span className="w-7 text-center font-mono font-bold">{qty}</span>
                           <button
@@ -564,9 +564,9 @@ export default function AdminOrdersPage() {
                             onClick={() =>
                               setPosLines(prev => ({ ...prev, [item.id]: Math.min(25, (prev[item.id] || 0) + 1) }))
                             }
-                            className="w-9 h-9 rounded-lg border bg-primary/10 text-primary grid place-items-center cursor-pointer"
+                            className="w-11 h-11 rounded-xl border bg-primary/10 text-primary grid place-items-center cursor-pointer"
                           >
-                            <Plus className="w-3.5 h-3.5" />
+                            <Plus className="w-4 h-4" />
                           </button>
                         </div>
                       </div>

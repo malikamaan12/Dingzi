@@ -151,7 +151,7 @@ export default function AdminDriveThruPage() {
     <div className="space-y-6 max-w-[1400px]">
       <div>
         <p className="manager-eyebrow">RUNNER &amp; DRIVE-THRU DISPATCH</p>
-        <h1 className="text-3xl font-bold">Drive-Thru Lanes &amp; Curbside Pickup Board</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold">Drive-Thru Lanes &amp; Curbside Pickup Board</h1>
         <p className="text-sm text-muted-foreground">
           Live arrived-vehicle identification with car color swatches, license plates, car-side pager linking, and printable Bay QR bollards.
         </p>
@@ -206,7 +206,7 @@ export default function AdminDriveThruPage() {
                       type="button"
                       aria-label={`Show QR for ${v.ticketCode}`}
                       onClick={() => setCarPagerTicket(v)}
-                      className="p-2 rounded-lg border hover:bg-muted cursor-pointer"
+                      className="w-11 h-11 rounded-xl border hover:bg-muted grid place-items-center shrink-0 cursor-pointer"
                     >
                       <QrCode className="w-4 h-4 text-primary" />
                     </button>
@@ -215,7 +215,7 @@ export default function AdminDriveThruPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <Button
                       type="button"
-                      className="min-h-10 cursor-pointer gap-1 bg-[#C8FF42] hover:bg-[#b8f52c] text-[#17132E] font-extrabold border-0"
+                      className="min-h-11 cursor-pointer gap-1 bg-[#C8FF42] hover:bg-[#b8f52c] text-[#17132E] font-extrabold border-0"
                       onClick={() => pagerTransition.mutate({ id: v.id, action: 'ready' })}
                     >
                       <BellRing className="w-4 h-4" />
@@ -224,7 +224,7 @@ export default function AdminDriveThruPage() {
                     <Button
                       type="button"
                       variant="secondary"
-                      className="min-h-10 cursor-pointer gap-1"
+                      className="min-h-11 cursor-pointer gap-1"
                       onClick={() => pagerTransition.mutate({ id: v.id, action: 'collected' })}
                     >
                       <CheckCircle2 className="w-4 h-4" />
@@ -363,12 +363,12 @@ export default function AdminDriveThruPage() {
                 </div>
                 <span className="text-muted-foreground block mt-0.5">{bay.label}</span>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-2 shrink-0">
                 <button
                   type="button"
                   aria-label={`QR code for ${bay.code}`}
                   onClick={() => setQrBay(bay)}
-                  className="p-2 rounded-lg border hover:bg-muted cursor-pointer"
+                  className="w-11 h-11 rounded-xl border hover:bg-muted grid place-items-center cursor-pointer"
                 >
                   <QrCode className="w-4 h-4 text-primary" />
                 </button>
@@ -376,7 +376,7 @@ export default function AdminDriveThruPage() {
                   type="button"
                   aria-label={`Delete ${bay.code}`}
                   onClick={() => deleteBay.mutate(bay.id)}
-                  className="p-2 text-muted-foreground hover:text-destructive cursor-pointer"
+                  className="w-11 h-11 rounded-xl text-muted-foreground hover:text-destructive hover:bg-destructive/10 grid place-items-center cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>

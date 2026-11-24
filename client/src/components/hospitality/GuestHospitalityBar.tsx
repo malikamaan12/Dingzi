@@ -468,9 +468,9 @@ export default function GuestHospitalityBar({
         </div>
       )}
 
-      {/* Hospitality Quick-Action Strip */}
+      {/* Hospitality Quick-Action Strip — Single-row thumb scroll on phones, wraps on sm+ */}
       <div
-        className="flex flex-wrap gap-2 my-3"
+        className="flex flex-nowrap sm:flex-wrap overflow-x-auto no-scrollbar -mx-1 px-1 py-1 gap-2 my-2.5 snap-x"
         role="region"
         aria-label="Hospitality services"
       >
@@ -478,9 +478,9 @@ export default function GuestHospitalityBar({
           type="button"
           onClick={() => setPagerOpen(true)}
           data-testid="button-open-pager-lookup"
-          className="inline-flex items-center gap-1.5 px-3.5 min-h-11 rounded-2xl border bg-card/90 text-foreground text-xs font-semibold shadow-sm hover:shadow transition-all cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border bg-card/95 text-foreground text-xs font-semibold shadow-sm hover:shadow active:scale-[0.99] transition-all cursor-pointer"
         >
-          <Bell className="w-4 h-4 text-primary" />
+          <Bell className="w-4 h-4 text-primary shrink-0" />
           <span>{t('Virtual Pager')}</span>
         </button>
 
@@ -489,9 +489,9 @@ export default function GuestHospitalityBar({
             type="button"
             onClick={() => setReserveOpen(true)}
             data-testid="button-open-reservations"
-            className="inline-flex items-center gap-1.5 px-3.5 min-h-11 rounded-2xl border bg-card/90 text-foreground text-xs font-semibold shadow-sm hover:shadow transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border bg-card/95 text-foreground text-xs font-semibold shadow-sm hover:shadow active:scale-[0.99] transition-all cursor-pointer"
           >
-            <CalendarDays className="w-4 h-4 text-primary" />
+            <CalendarDays className="w-4 h-4 text-primary shrink-0" />
             <span>{t('Book Table')}</span>
           </button>
         )}
@@ -501,9 +501,9 @@ export default function GuestHospitalityBar({
             type="button"
             onClick={() => setWaitlistOpen(true)}
             data-testid="button-open-waitlist"
-            className="inline-flex items-center gap-1.5 px-3.5 min-h-11 rounded-2xl border bg-card/90 text-foreground text-xs font-semibold shadow-sm hover:shadow transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border bg-card/95 text-foreground text-xs font-semibold shadow-sm hover:shadow active:scale-[0.99] transition-all cursor-pointer"
           >
-            <Users className="w-4 h-4 text-primary" />
+            <Users className="w-4 h-4 text-primary shrink-0" />
             <span>{t('Walk-In Waitlist')}</span>
           </button>
         )}
@@ -513,9 +513,9 @@ export default function GuestHospitalityBar({
             type="button"
             onClick={() => setCurbsideOpen(true)}
             data-testid="button-open-curbside"
-            className="inline-flex items-center gap-1.5 px-3.5 min-h-11 rounded-2xl border bg-card/90 text-foreground text-xs font-semibold shadow-sm hover:shadow transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border bg-card/95 text-foreground text-xs font-semibold shadow-sm hover:shadow active:scale-[0.99] transition-all cursor-pointer"
           >
-            <Car className="w-4 h-4 text-primary" />
+            <Car className="w-4 h-4 text-primary shrink-0" />
             <span>{t('Curbside & Drive-Thru')}</span>
           </button>
         )}
@@ -525,9 +525,9 @@ export default function GuestHospitalityBar({
             type="button"
             onClick={() => setDeliveryOpen(true)}
             data-testid="button-open-delivery"
-            className="inline-flex items-center gap-1.5 px-3.5 min-h-11 rounded-2xl border bg-card/90 text-foreground text-xs font-semibold shadow-sm hover:shadow transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border bg-card/95 text-foreground text-xs font-semibold shadow-sm hover:shadow active:scale-[0.99] transition-all cursor-pointer"
           >
-            <Truck className="w-4 h-4 text-primary" />
+            <Truck className="w-4 h-4 text-primary shrink-0" />
             <span>{t('Get Delivery')}</span>
           </button>
         )}
@@ -535,7 +535,10 @@ export default function GuestHospitalityBar({
 
       {/* Floating Cart Bar when Branch Ordering Mode is Active */}
       {orderingEnabled && totalCartItems > 0 && (
-        <div className="fixed bottom-4 inset-x-4 z-40 max-w-lg mx-auto">
+        <div
+          style={{ bottom: 'max(1rem, calc(env(safe-area-inset-bottom, 0px) + 0.5rem))' }}
+          className="fixed inset-x-4 z-40 max-w-lg mx-auto"
+        >
           <button
             type="button"
             onClick={() => setCartOpen(true)}
@@ -576,7 +579,7 @@ export default function GuestHospitalityBar({
               value={lookupCode}
               onChange={e => setLookupCode(e.target.value)}
               placeholder={t('Enter receipt or pager # (e.g. A-001)')}
-              className="h-12 font-mono text-base uppercase"
+              className="h-12 font-mono text-base uppercase placeholder:font-sans placeholder:normal-case"
               required
             />
             {lookupError && <p className="text-xs text-destructive font-medium">{lookupError}</p>}
@@ -635,7 +638,7 @@ export default function GuestHospitalityBar({
             }}
             className="space-y-3 mt-2"
           >
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">Date</Label>
                 <Input type="date" min={todayIso} value={resDate} onChange={e => { setResDate(e.target.value); setResSlot(''); }} className="h-11" required />
@@ -664,18 +667,18 @@ export default function GuestHospitalityBar({
 
             <div>
               <Label className="text-xs">{t('Available Times')}</Label>
-              <div className="grid grid-cols-4 gap-1.5 mt-1 max-h-36 overflow-y-auto p-1">
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-1 max-h-40 overflow-y-auto p-1">
                 {availabilityQuery.isLoading ? (
-                  <p className="col-span-4 text-xs text-muted-foreground">Checking tables…</p>
+                  <p className="col-span-full text-xs text-muted-foreground">Checking tables…</p>
                 ) : (availabilityQuery.data?.slots || []).length === 0 ? (
-                  <p className="col-span-4 text-xs text-muted-foreground">No open tables for this filter.</p>
+                  <p className="col-span-full text-xs text-muted-foreground">No open tables for this filter.</p>
                 ) : (
                   (availabilityQuery.data?.slots || []).map(slot => (
                     <button
                       key={slot.startIso}
                       type="button"
                       onClick={() => setResSlot(slot.startIso)}
-                      className={`py-2 px-2 rounded-xl border text-xs font-semibold cursor-pointer transition-colors ${
+                      className={`min-h-11 py-2 px-2 rounded-xl border text-xs font-semibold cursor-pointer transition-colors ${
                         resSlot === slot.startIso
                           ? 'bg-[#EFEAFF] text-[#4B1FE0] border-[#6236FF] ring-1 ring-[#6236FF]'
                           : 'bg-[#F6F5FC] border-[#E5E2F2] text-[#17132E] hover:bg-[#EFEAFF] hover:text-[#4B1FE0]'
@@ -691,7 +694,7 @@ export default function GuestHospitalityBar({
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-3">
               <div>
                 <Label className="text-xs">{t('Your Name')} *</Label>
                 <Input value={resName} onChange={e => setResName(e.target.value)} required className="h-11" />
@@ -954,7 +957,7 @@ export default function GuestHospitalityBar({
                         {(Number(item.unitTotal) * item.quantity).toFixed(2)} {restaurant.currency}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0">
                       <button
                         type="button"
                         aria-label="Decrease quantity"
@@ -965,20 +968,20 @@ export default function GuestHospitalityBar({
                               : prev.map(i => (i.key === item.key ? { ...i, quantity: i.quantity - 1 } : i)),
                           )
                         }
-                        className="w-8 h-8 rounded-lg border grid place-items-center cursor-pointer"
+                        className="w-11 h-11 rounded-xl border grid place-items-center cursor-pointer"
                       >
-                        {item.quantity <= 1 ? <Trash2 className="w-3.5 h-3.5 text-destructive" /> : <Minus className="w-3.5 h-3.5" />}
+                        {item.quantity <= 1 ? <Trash2 className="w-4 h-4 text-destructive" /> : <Minus className="w-4 h-4" />}
                       </button>
-                      <span className="w-6 text-center font-semibold text-xs">{item.quantity}</span>
+                      <span className="w-6 text-center font-semibold font-mono text-xs">{item.quantity}</span>
                       <button
                         type="button"
                         aria-label="Increase quantity"
                         onClick={() =>
                           setCart(prev => prev.map(i => (i.key === item.key ? { ...i, quantity: i.quantity + 1 } : i)))
                         }
-                        className="w-8 h-8 rounded-lg border grid place-items-center cursor-pointer"
+                        className="w-11 h-11 rounded-xl border grid place-items-center cursor-pointer"
                       >
-                        <Plus className="w-3.5 h-3.5" />
+                        <Plus className="w-4 h-4" />
                       </button>
                     </div>
                   </div>
@@ -987,7 +990,7 @@ export default function GuestHospitalityBar({
 
               <div>
                 <Label className="text-xs">{t('Order Channel')}</Label>
-                <div className="grid grid-cols-2 gap-2 mt-1">
+                <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-2 mt-1">
                   {[
                     { id: 'counter_pickup', label: t('Counter Pickup') },
                     { id: 'dine_in', label: t('Dine-In Table') },
@@ -1013,7 +1016,7 @@ export default function GuestHospitalityBar({
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-2.5">
                 <div>
                   <Label className="text-xs">{t('Your Name')} *</Label>
                   <Input value={custName} onChange={e => setCustName(e.target.value)} required className="h-11" data-testid="input-order-customer-name" />
@@ -1044,14 +1047,14 @@ export default function GuestHospitalityBar({
                       </select>
                     </div>
                   )}
-                  <div className="grid grid-cols-3 gap-2">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     <select className="manager-select h-11 text-xs" value={vehColor} onChange={e => setVehColor(e.target.value)}>
                       {['White', 'Black', 'Silver', 'Blue', 'Red', 'Sand'].map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                     <select className="manager-select h-11 text-xs" value={vehType} onChange={e => setVehType(e.target.value as any)}>
                       {['SUV', 'Sedan', 'Pickup', 'Coupe'].map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
-                    <Input value={plate} onChange={e => setPlate(e.target.value)} placeholder="Plate #" className="h-11 text-xs" />
+                    <Input value={plate} onChange={e => setPlate(e.target.value)} placeholder="Plate #" className="h-11 text-xs col-span-2 sm:col-span-1" />
                   </div>
                 </div>
               )}

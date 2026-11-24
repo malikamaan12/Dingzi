@@ -30,29 +30,29 @@ export function PwaInstallBanner({ compact = false }: { compact?: boolean }) {
   return (
     <>
       <div
-        className={`rounded-2xl border border-[#E5E2F2] bg-card/95 backdrop-blur px-4 py-3 shadow-sm flex items-center justify-between gap-3 ${
+        className={`rounded-2xl border border-[#E5E2F2] bg-card/95 backdrop-blur px-3.5 py-3 shadow-sm flex flex-col min-[420px]:flex-row min-[420px]:items-center justify-between gap-2.5 ${
           compact ? 'text-xs' : 'text-sm'
         }`}
         role="region"
         aria-label="Install Dingzi Mobile App"
       >
-        <div className="flex items-center gap-2.5 min-w-0">
+        <div className="flex items-start min-[420px]:items-center gap-2.5 min-w-0 flex-1">
           <span className="w-9 h-9 rounded-xl bg-[#EFEAFF] text-[#4B1FE0] grid place-items-center shrink-0">
             <Smartphone className="w-4 h-4" />
           </span>
-          <div className="min-w-0">
-            <strong className="block truncate">Install Dingzi App for Lock-Screen Ringing</strong>
-            <span className="text-xs text-muted-foreground block truncate">
+          <div className="min-w-0 flex-1">
+            <strong className="block leading-snug">Install Dingzi App for Lock-Screen Ringing</strong>
+            <span className="text-xs text-muted-foreground block leading-snug mt-0.5">
               Instant push alerts even when your screen is locked or switched away.
             </span>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center justify-end gap-2 shrink-0">
           {deferredPrompt ? (
             <Button
               type="button"
               size="sm"
-              className="min-h-10 cursor-pointer gap-1.5"
+              className="min-h-11 flex-1 min-[420px]:flex-none cursor-pointer gap-1.5"
               onClick={async () => {
                 await deferredPrompt.prompt();
                 await deferredPrompt.userChoice;
@@ -67,7 +67,7 @@ export function PwaInstallBanner({ compact = false }: { compact?: boolean }) {
               type="button"
               size="sm"
               variant="outline"
-              className="min-h-10 cursor-pointer gap-1"
+              className="min-h-11 flex-1 min-[420px]:flex-none cursor-pointer gap-1"
               onClick={() => setIosGuideOpen(true)}
             >
               <Share className="w-3.5 h-3.5" />
@@ -78,7 +78,7 @@ export function PwaInstallBanner({ compact = false }: { compact?: boolean }) {
             type="button"
             aria-label="Dismiss install banner"
             onClick={() => setDismissed(true)}
-            className="w-9 h-9 rounded-lg grid place-items-center text-muted-foreground hover:bg-muted cursor-pointer"
+            className="w-11 h-11 rounded-xl border min-[420px]:border-0 grid place-items-center text-muted-foreground hover:bg-muted shrink-0 cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>

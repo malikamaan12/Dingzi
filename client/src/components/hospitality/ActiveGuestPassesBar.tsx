@@ -75,7 +75,7 @@ function SinglePassChip({ pass, showVenueName }: { pass: SavedGuestPass; showVen
           }`}
         >
           {pass.kind === 'pager' ? (
-            isReady ? <BellRing className="w-4 h-4 animate-bounce" /> : <Clock className="w-4 h-4" />
+            isReady ? <BellRing className="w-4 h-4 motion-safe:animate-pulse" /> : <Clock className="w-4 h-4" />
           ) : pass.kind === 'waitlist' ? (
             <Users className="w-4 h-4" />
           ) : (
@@ -95,7 +95,7 @@ function SinglePassChip({ pass, showVenueName }: { pass: SavedGuestPass; showVen
           )}
         </div>
         <span
-          className={`ml-auto inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-extrabold shrink-0 ${
+          className={`ms-auto inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold shrink-0 ${
             isReady ? 'bg-[#17132E] text-white' : 'bg-[#C8FF42] text-[#17132E]'
           }`}
         >
@@ -107,11 +107,11 @@ function SinglePassChip({ pass, showVenueName }: { pass: SavedGuestPass; showVen
         type="button"
         aria-label={t('Dismiss live pass')}
         onClick={() => dismissGuestPass(pass.kind, pass.trackingToken)}
-        className={`w-7 h-7 rounded-lg grid place-items-center shrink-0 cursor-pointer ${
+        className={`w-11 h-11 -my-1.5 -me-1.5 rounded-xl grid place-items-center shrink-0 cursor-pointer ${
           isReady ? 'hover:bg-[#17132E]/10 text-[#17132E]' : 'hover:bg-white/10 text-white/70'
         }`}
       >
-        <X className="w-3.5 h-3.5" />
+        <X className="w-4 h-4" />
       </button>
     </div>
   );

@@ -46,7 +46,7 @@ export default function AdminAnalyticsPage() {
     <div className="space-y-6 max-w-[1400px]">
       <div>
         <p className="manager-eyebrow">DINGZI SLA &amp; CONVERSION TELEMETRY</p>
-        <h1 className="text-3xl font-bold">Branch Operations &amp; SLA Analytics</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold">Branch Operations &amp; SLA Analytics</h1>
         <p className="text-sm text-muted-foreground">
           Real-time prep-time SLA compliance, hourly peak congestion, reservation volume, and item-level delivery click attribution.
         </p>
@@ -68,27 +68,29 @@ export default function AdminAnalyticsPage() {
       </div>
 
       <div className="grid lg:grid-cols-12 gap-5">
-        <section className="lg:col-span-8 manager-panel p-5 space-y-6">
+        <section className="lg:col-span-8 manager-panel p-5 space-y-6 min-w-0">
           <div>
             <h2 className="font-bold text-base flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-primary" />
               Hourly Queue &amp; Order Congestion (24h)
             </h2>
-            <div className="grid grid-cols-12 sm:grid-cols-24 gap-1.5 items-end h-40 pt-4">
-              {hourlyBuckets.map(bucket => {
-                const total = bucket.tickets + bucket.orders;
-                const pct = Math.max(6, Math.round((total / maxHourCount) * 100));
-                return (
-                  <div key={bucket.hour} className="flex flex-col items-center gap-1 h-full justify-end">
-                    <div
-                      title={`${String(bucket.hour).padStart(2, '0')}:00 — ${bucket.tickets} pagers, ${bucket.orders} orders`}
-                      style={{ height: `${pct}%` }}
-                      className={`w-full rounded-t-md transition-all ${total > 0 ? 'bg-primary' : 'bg-muted'}`}
-                    />
-                    <span className="text-[10px] font-mono text-muted-foreground">{String(bucket.hour).padStart(2, '0')}</span>
-                  </div>
-                );
-              })}
+            <div className="overflow-x-auto pb-2 -mx-1 px-1">
+              <div className="grid grid-cols-24 min-w-[540px] gap-1.5 items-end h-40 pt-4">
+                {hourlyBuckets.map(bucket => {
+                  const total = bucket.tickets + bucket.orders;
+                  const pct = Math.max(6, Math.round((total / maxHourCount) * 100));
+                  return (
+                    <div key={bucket.hour} className="flex flex-col items-center gap-1 h-full justify-end">
+                      <div
+                        title={`${String(bucket.hour).padStart(2, '0')}:00 — ${bucket.tickets} pagers, ${bucket.orders} orders`}
+                        style={{ height: `${pct}%` }}
+                        className={`w-full rounded-t-md transition-all ${total > 0 ? 'bg-primary' : 'bg-muted'}`}
+                      />
+                      <span className="text-[10px] font-mono text-muted-foreground">{String(bucket.hour).padStart(2, '0')}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
@@ -97,22 +99,24 @@ export default function AdminAnalyticsPage() {
               <Clock className="w-4 h-4 text-primary" />
               Hourly Average Prep-Time SLA (mins)
             </h3>
-            <div className="grid grid-cols-12 sm:grid-cols-24 gap-1.5 items-end h-32 pt-3">
-              {hourlyBuckets.map(bucket => {
-                const prep = bucket.avgPrepMins || 0;
-                const pct = Math.max(6, Math.round((prep / maxHourPrep) * 100));
-                const barTone = prep > 15 ? 'bg-destructive' : prep > 10 ? 'bg-amber-500' : prep > 0 ? 'bg-[#C8FF42]' : 'bg-muted';
-                return (
-                  <div key={`prep-${bucket.hour}`} className="flex flex-col items-center gap-1 h-full justify-end">
-                    <div
-                      title={`${String(bucket.hour).padStart(2, '0')}:00 — Avg prep ${prep} min`}
-                      style={{ height: `${pct}%` }}
-                      className={`w-full rounded-t-md transition-all ${barTone}`}
-                    />
-                    <span className="text-[10px] font-mono text-muted-foreground">{String(bucket.hour).padStart(2, '0')}</span>
-                  </div>
-                );
-              })}
+            <div className="overflow-x-auto pb-2 -mx-1 px-1">
+              <div className="grid grid-cols-24 min-w-[540px] gap-1.5 items-end h-32 pt-3">
+                {hourlyBuckets.map(bucket => {
+                  const prep = bucket.avgPrepMins || 0;
+                  const pct = Math.max(6, Math.round((prep / maxHourPrep) * 100));
+                  const barTone = prep > 15 ? 'bg-destructive' : prep > 10 ? 'bg-amber-500' : prep > 0 ? 'bg-[#C8FF42]' : 'bg-muted';
+                  return (
+                    <div key={`prep-${bucket.hour}`} className="flex flex-col items-center gap-1 h-full justify-end">
+                      <div
+                        title={`${String(bucket.hour).padStart(2, '0')}:00 — Avg prep ${prep} min`}
+                        style={{ height: `${pct}%` }}
+                        className={`w-full rounded-t-md transition-all ${barTone}`}
+                      />
+                      <span className="text-[10px] font-mono text-muted-foreground">{String(bucket.hour).padStart(2, '0')}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </section>

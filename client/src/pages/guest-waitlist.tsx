@@ -117,7 +117,7 @@ function GuestWaitlistContent() {
         {isRinging && (
           <div role="alert" className="rounded-3xl bg-[#C8FF42] text-[#17132E] border-2 border-[#17132E] p-5 shadow-xl space-y-3">
             <div className="flex items-center gap-2.5">
-              <BellRing className="w-6 h-6 animate-bounce text-[#17132E]" aria-hidden="true" />
+              <BellRing className="w-6 h-6 motion-safe:animate-pulse text-[#17132E]" aria-hidden="true" />
               <strong className="text-base font-extrabold">Table Ready! ({entry.ticketCode})</strong>
             </div>
             <Button
@@ -144,7 +144,7 @@ function GuestWaitlistContent() {
               isReady ? 'bg-[#C8FF42] text-[#17132E]' : 'bg-[#EFEAFF] text-[#4B1FE0]'
             }`}
           >
-            {isReady ? <BellRing className="w-4 h-4 animate-bounce" aria-hidden="true" /> : <Users className="w-4 h-4" aria-hidden="true" />}
+            {isReady ? <BellRing className="w-4 h-4 motion-safe:animate-pulse" aria-hidden="true" /> : <Users className="w-4 h-4" aria-hidden="true" />}
             {entry.status.toUpperCase()}
           </span>
           <div className={`text-5xl font-black font-mono ${isReady ? 'text-[#C8FF42]' : ''}`}>{entry.ticketCode}</div>

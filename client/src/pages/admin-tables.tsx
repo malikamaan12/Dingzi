@@ -138,13 +138,13 @@ export default function AdminTablesPage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="manager-eyebrow">HOST STAND &amp; FLOOR INVENTORY</p>
-          <h1 className="text-3xl font-bold">Tables, Reservations &amp; Walk-In Waitlist</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Tables, Reservations &amp; Walk-In Waitlist</h1>
           <p className="text-sm text-muted-foreground">
             Manage floor zones, permanent table QRs, conflict-free bookings, and virtual walk-in waitlist paging.
           </p>
         </div>
         {cafe && (
-          <div className="flex flex-wrap gap-2">
+          <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-2 w-full sm:w-auto">
             <Button
               type="button"
               variant="outline"
@@ -259,9 +259,9 @@ export default function AdminTablesPage() {
                         href={`/waitlist/${entry.trackingToken}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                        className="min-h-11 md:min-h-9 px-3 rounded-xl border text-xs font-medium text-primary hover:bg-muted inline-flex items-center gap-1.5"
                       >
-                        Pass <ExternalLink className="w-3 h-3" />
+                        Pass <ExternalLink className="w-3.5 h-3.5" />
                       </a>
                     </div>
                   </div>

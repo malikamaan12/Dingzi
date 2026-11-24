@@ -47,9 +47,9 @@
 .staff-brand small{display:block;font-size:9px;line-height:1.6;color:hsl(var(--muted-foreground));margin-top:3px;}
 .staff-brand.is-compact{flex-direction:row;gap:11px;}.staff-brand.is-compact .staff-brand-icon{width:49px;height:35px;}.staff-brand.is-compact strong{font-size:9px;}.staff-brand.is-compact small{font-size:8px;}
 .staff-surface .staff-nav-label{font-size:9px;letter-spacing:.14em;text-transform:uppercase;font-weight:700;padding:0 12px;color:hsl(var(--muted-foreground));margin-bottom:12px;}
-.staff-surface [data-sidebar=menu-button]{height:auto;min-height:43px;padding:11px 12px;font-size:12px;border:1px solid transparent;border-radius:9px;margin-bottom:5px;transition:background .18s,border-color .18s;}
+.staff-surface [data-sidebar=menu-button]{height:auto;min-height:44px;padding:11px 12px;font-size:12px;border:1px solid transparent;border-radius:10px;margin-bottom:5px;transition:background .18s,border-color .18s;}
 .staff-surface [data-sidebar=menu-button]>svg{color:hsl(var(--sidebar-foreground)/.75);}
-.staff-surface [data-sidebar=menu-button][data-active=true]{background:linear-gradient(100deg,hsl(var(--primary)/.17),hsl(var(--primary)/.06));border-color:hsl(var(--primary)/.23);color:hsl(var(--primary));box-shadow:inset 3px 0 hsl(var(--primary));font-weight:600;}
+.staff-surface [data-sidebar=menu-button][data-active=true]{background:linear-gradient(100deg,hsl(var(--primary)/.17),hsl(var(--primary)/.07));border-color:hsl(var(--primary)/.32);color:hsl(var(--primary));font-weight:600;}
 .staff-surface [data-sidebar=menu-button][data-active=true]>svg{color:hsl(var(--primary));}
 .staff-surface [data-sidebar=footer]{border-top:1px solid hsl(var(--border));gap:14px;}
 .staff-sidebar-account{display:flex;gap:10px;align-items:center;min-width:0;padding:0 4px;}
@@ -90,21 +90,23 @@
 .staff-restaurant-card .staff-restaurant-actions button{justify-content:center;}
 .staff-restaurant-card .staff-restaurant-actions button.bg-destructive{background:transparent;color:hsl(var(--muted-foreground));border-color:hsl(var(--border));box-shadow:none;}
 .staff-restaurant-card .staff-restaurant-actions button.bg-destructive:hover{color:hsl(var(--destructive));border-color:hsl(var(--destructive)/.5);}
-.staff-login{min-height:100svh;display:flex;flex-direction:column;position:relative;isolation:isolate;overflow:hidden;background:radial-gradient(ellipse at 25% 40%,rgba(98,54,255,.16),transparent 48%),radial-gradient(ellipse at 82% 72%,rgba(200,255,66,.08),transparent 45%),hsl(var(--background));}
-.staff-login-top{display:flex;align-items:center;justify-content:space-between;padding:26px 40px;z-index:1;gap:20px;}
+.staff-login{min-height:100svh;min-height:100dvh;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);display:flex;flex-direction:column;position:relative;isolation:isolate;overflow:hidden;background:radial-gradient(ellipse at 25% 40%,rgba(98,54,255,.16),transparent 48%),radial-gradient(ellipse at 82% 72%,rgba(200,255,66,.08),transparent 45%),hsl(var(--background));}
+.staff-login-top{display:flex;align-items:center;justify-content:space-between;padding:22px 40px;z-index:1;gap:16px;}
 .staff-login-top>span{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:hsl(var(--muted-foreground));}
-.staff-login-stage{flex:1;display:grid;place-items:center;padding:35px 24px 60px;position:relative;}
+.staff-login-stage{flex:1;display:grid;place-items:center;padding:28px 18px 44px;position:relative;}
 .staff-login-watermark{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);width:min(78vw,640px);max-width:none;height:auto;z-index:-1;opacity:.08;filter:drop-shadow(0 0 70px rgba(98,54,255,.28));user-select:none;pointer-events:none;}
-.staff-login-card{width:100%;max-width:410px;padding:36px;background:hsl(var(--card)/.95);border:1px solid hsl(var(--primary)/.28);border-radius:22px;backdrop-filter:blur(24px);box-shadow:0 30px 100px #00000038;position:relative;}
+.staff-login-card{width:100%;max-width:410px;padding:34px 28px;background:hsl(var(--card)/.95);border:1px solid hsl(var(--primary)/.28);border-radius:22px;backdrop-filter:blur(24px);box-shadow:0 30px 100px #00000038;position:relative;}
 .staff-login-card:before{content:'';position:absolute;top:-1px;left:20%;width:60%;height:1px;background:linear-gradient(90deg,transparent,#6236FF,#C8FF42,transparent);}
-.staff-login-card>.staff-brand{justify-content:center;margin-bottom:32px;}.staff-login-card h1{font-size:30px;letter-spacing:-.045em;font-weight:750;text-align:center;}
-.staff-login-card .staff-login-description{text-align:center;color:hsl(var(--muted-foreground));font-size:12px;margin:10px 0 32px;line-height:1.7;}
-.staff-login-card label{font-size:11px;font-weight:600;}.staff-login-card input{height:45px;border-radius:10px;border-color:hsl(var(--input));font-size:12px;}
-.staff-password-toggle{position:absolute;right:5px;top:5px;height:35px;width:35px;border-radius:7px;color:hsl(var(--muted-foreground));display:grid;place-items:center;}.staff-password-toggle:focus-visible{outline:2px solid #4B1FE0;outline-offset:2px;}
-.staff-login-card .staff-sign-in{width:100%;height:46px;margin-top:5px;border-radius:12px;border:1px solid #4B1FE0;background:#6236FF;color:#FFFFFF;box-shadow:0 10px 26px rgba(98,54,255,.28);font-size:13px;font-weight:700;cursor:pointer;}
+.staff-login-card>.staff-brand{justify-content:center;margin-bottom:28px;}.staff-login-card h1{font-size:clamp(24px,6vw,30px);letter-spacing:-.045em;font-weight:750;text-align:center;}
+.staff-login-card .staff-login-description{text-align:center;color:hsl(var(--muted-foreground));font-size:13px;margin:10px 0 28px;line-height:1.65;}
+.staff-login-card label{font-size:12px;font-weight:600;}.staff-login-card input{height:46px;border-radius:10px;border-color:hsl(var(--input));font-size:16px;}
+@media(min-width:768px){.staff-login-card input{font-size:13px;}}
+.staff-password-toggle{position:absolute;inset-inline-end:2px;top:1px;height:44px;width:44px;border-radius:9px;color:hsl(var(--muted-foreground));display:grid;place-items:center;cursor:pointer;}.staff-password-toggle:focus-visible{outline:2px solid #4B1FE0;outline-offset:2px;}
+.staff-login-card .staff-sign-in{width:100%;min-height:48px;margin-top:5px;border-radius:12px;border:1px solid #4B1FE0;background:#6236FF;color:#FFFFFF;box-shadow:0 10px 26px rgba(98,54,255,.28);font-size:14px;font-weight:700;cursor:pointer;}
 .staff-login-card .staff-sign-in:hover{background:#4B1FE0;}
-.staff-login-help{font-size:10px;line-height:1.7;text-align:center;color:hsl(var(--muted-foreground));border-top:1px solid hsl(var(--border));padding-top:22px;margin-top:28px;}
-.staff-login-footer{padding:0 24px 25px;text-align:center;font-size:10px;letter-spacing:.08em;color:hsl(var(--muted-foreground));}
+.staff-login-help{font-size:11px;line-height:1.65;text-align:center;color:hsl(var(--muted-foreground));border-top:1px solid hsl(var(--border));padding-top:20px;margin-top:24px;}
+.staff-login-footer{padding:0 20px 22px;text-align:center;font-size:10px;letter-spacing:.08em;color:hsl(var(--muted-foreground));}
 @media(max-width:1200px){.staff-platform-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
-@media(max-width:760px){.staff-access-label{display:none;}.staff-platform-heading{align-items:flex-start;flex-direction:column;gap:16px;}.staff-platform-grid{grid-template-columns:1fr;}.staff-surface .manager-hero{padding:24px;}.staff-login-top{padding:20px;}.staff-login-top>span{font-size:8px;}.staff-login-card{padding:30px 25px;}.staff-login-stage{padding:20px 18px 40px;}.staff-login-watermark{width:600px;opacity:.1;}}
+@media(max-width:760px){.staff-access-label{display:none;}.staff-platform-heading{align-items:stretch;flex-direction:column;gap:14px;}.staff-platform-grid{grid-template-columns:1fr;}.staff-surface .manager-hero{padding:20px;}.staff-login-top{padding:16px 18px;}.staff-login-top>span{font-size:9px;}.staff-login-card{padding:26px 20px;}.staff-login-stage{padding:16px 14px 32px;}.staff-login-watermark{width:min(90vw,460px);opacity:.09;}}
+@media(max-width:420px){.staff-surface .manager-stat{padding:16px;}.staff-surface .manager-stat strong{font-size:24px;}}
 @media(prefers-reduced-motion:reduce){.staff-surface button,.staff-surface [data-sidebar=menu-button]{transition:none;}}

@@ -146,7 +146,7 @@ export default function AdminTeamPage() {
     <div className="space-y-6 max-w-[1300px]">
       <div>
         <p className="manager-eyebrow">ROLE-BASED ACCESS &amp; MULTI-BRANCH WORKSPACE</p>
-        <h1 className="text-3xl font-bold">Team Roles &amp; Branch Group</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold">Team Roles &amp; Branch Group</h1>
         <p className="text-sm text-muted-foreground">
           Provision dedicated logins for Barista KDS tablets, Host stands, Branch Managers, and Multi-Branch Tenant Owners.
         </p>
@@ -154,7 +154,7 @@ export default function AdminTeamPage() {
 
       {/* Multi-Branch Tenant Comparison Panel (Tenant Owner / Multi-Branch Staff) */}
       {branches.length > 0 && (
-        <section className="manager-panel p-6 space-y-4">
+        <section className="manager-panel p-4 sm:p-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="font-bold text-lg flex items-center gap-2">
@@ -167,7 +167,73 @@ export default function AdminTeamPage() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          {/* Mobile Branch Cards (< 768px) */}
+          <div className="grid gap-3 md:hidden">
+            {branches.map(b => {
+              const isCurrent = user?.cafeContext?.id === b.id;
+              return (
+                <article
+                  key={b.id}
+                  className={`rounded-2xl border p-4 space-y-3 ${isCurrent ? 'border-primary/40 bg-primary/5' : 'bg-card'}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <strong className="flex items-center gap-2 text-base">
+                        <Building2 className="w-4 h-4 text-primary shrink-0" />
+                        <span className="truncate">{b.name}</span>
+                      </strong>
+                      <Badge variant="outline" className="mt-1 text-[11px] font-mono">
+                        {b.orderingMode.replace(/_/g, ' ')}
+                      </Badge>
+                    </div>
+                    {isCurrent && <Badge className="bg-[#C8FF42] text-[#17132E] shrink-0">Active</Badge>}
+                  </div>
+                  <div className="grid grid-cols-3 gap-2 text-xs">
+                    <div className="rounded-xl bg-muted/40 p-2.5">
+                      <span className="text-[10px] text-muted-foreground block">Pagers</span>
+                      <strong className="font-mono text-sm">{b.totalTickets}</strong>
+                    </div>
+                    <div className="rounded-xl bg-muted/40 p-2.5">
+                      <span className="text-[10px] text-muted-foreground block">Avg Prep</span>
+                      <strong className="font-mono text-sm">{b.avgPrepMins}m</strong>
+                    </div>
+                    <div className="rounded-xl bg-muted/40 p-2.5">
+                      <span className="text-[10px] text-muted-foreground block">Peak Hour</span>
+                      <strong className="font-mono text-sm">{b.peakHour}</strong>
+                    </div>
+                    <div className="rounded-xl bg-muted/40 p-2.5">
+                      <span className="text-[10px] text-muted-foreground block">Orders</span>
+                      <strong className="font-mono text-sm">{b.totalOrders}</strong>
+                    </div>
+                    <div className="rounded-xl bg-muted/40 p-2.5">
+                      <span className="text-[10px] text-muted-foreground block">Revenue</span>
+                      <strong className="font-mono text-xs truncate block">{b.revenue} {b.currency}</strong>
+                    </div>
+                    <div className="rounded-xl bg-muted/40 p-2.5">
+                      <span className="text-[10px] text-muted-foreground block">Bookings</span>
+                      <strong className="font-mono text-sm">{b.reservations}</strong>
+                    </div>
+                  </div>
+                  {!isCurrent && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={switchBranchMutation.isPending}
+                      onClick={() => switchBranchMutation.mutate(b.id)}
+                      className="w-full min-h-11 rounded-xl cursor-pointer gap-1.5"
+                    >
+                      <ArrowRightLeft className="w-4 h-4" />
+                      <span>Switch Active Workspace</span>
+                    </Button>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+
+          {/* Desktop Comparison Table (md+) */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-sm text-left">
               <thead className="border-b text-xs uppercase text-muted-foreground">
                 <tr>

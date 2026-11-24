@@ -941,9 +941,9 @@ function CustomerMenuContent() {
                           aria-label="Decrease item quantity"
                           disabled={itemQty <= 1}
                           onClick={() => setItemQty(q => Math.max(1, q - 1))}
-                          className="w-9 h-9 rounded-lg bg-white border border-[#E5E2F2] grid place-items-center disabled:opacity-40 cursor-pointer"
+                          className="w-11 h-11 rounded-xl bg-white border border-[#E5E2F2] grid place-items-center disabled:opacity-40 cursor-pointer"
                         >
-                          <Minus size={14} />
+                          <Minus size={15} />
                         </button>
                         <span className="w-8 text-center font-mono font-bold text-sm" data-testid="text-customizer-qty">
                           {itemQty}
@@ -953,9 +953,9 @@ function CustomerMenuContent() {
                           aria-label="Increase item quantity"
                           disabled={itemQty >= 25}
                           onClick={() => setItemQty(q => Math.min(25, q + 1))}
-                          className="w-9 h-9 rounded-lg bg-white border border-[#E5E2F2] grid place-items-center disabled:opacity-40 cursor-pointer"
+                          className="w-11 h-11 rounded-xl bg-white border border-[#E5E2F2] grid place-items-center disabled:opacity-40 cursor-pointer"
                         >
-                          <Plus size={14} />
+                          <Plus size={15} />
                         </button>
                       </div>
                     </div>
@@ -967,7 +967,7 @@ function CustomerMenuContent() {
                       placeholder={t('Special instructions for kitchen (optional)')}
                       aria-label={t('Special instructions for kitchen (optional)')}
                       data-testid="input-customizer-note"
-                      className="w-full h-11 px-3.5 rounded-xl border border-[#E5E2F2] bg-[#F6F5FC] text-xs text-[#17132E] placeholder:text-[#57507A] focus:outline-none focus:ring-2 focus:ring-[#4B1FE0]"
+                      className="w-full min-h-11 px-3.5 rounded-xl border border-[#E5E2F2] bg-[#F6F5FC] text-base sm:text-xs text-[#17132E] placeholder:text-[#57507A] focus:outline-none focus:ring-2 focus:ring-[#4B1FE0]"
                     />
                   </div>
                 )}
@@ -986,7 +986,7 @@ function CustomerMenuContent() {
                           type="button"
                           data-testid={`button-item-aggregator-${agg.platform}`}
                           onClick={() => handleItemAggregatorClick(agg, activeItem)}
-                          className="min-h-10 px-3 rounded-xl border border-[#E5E2F2] bg-white hover:bg-[#EFEAFF] text-xs font-semibold text-[#17132E] hover:text-[#4B1FE0] inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                          className="min-h-11 px-3.5 rounded-xl border border-[#E5E2F2] bg-white hover:bg-[#EFEAFF] text-xs font-semibold text-[#17132E] hover:text-[#4B1FE0] inline-flex items-center gap-1.5 transition-colors cursor-pointer"
                         >
                           <span>{agg.displayName}</span>
                           <ExternalLink size={12} />

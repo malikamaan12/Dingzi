@@ -65,7 +65,7 @@ export default function AdminMobileAppPage() {
     <div className="space-y-6 max-w-[1200px]">
       <div>
         <p className="manager-eyebrow">DINGZI MOBILE APP &amp; PWA ENGINE</p>
-        <h1 className="text-3xl font-bold">Dingzi Mobile App, PWA &amp; Lock-Screen Ringing</h1>
+        <h1 className="text-2xl sm:text-3xl font-bold">Dingzi Mobile App, PWA &amp; Lock-Screen Ringing</h1>
         <p className="text-sm text-muted-foreground">
           Configure encrypted VAPID Web Push, iOS/Android lock-screen audio keep-alive, and Capacitor native mobile builds for Dingzi.
         </p>

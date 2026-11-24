@@ -95,10 +95,13 @@ function AdminLayout({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="manager-root flex h-screen w-full bg-background text-foreground">
+    <div className="manager-root flex h-dvh min-h-svh w-full overflow-hidden bg-background text-foreground">
       <AppSidebar user={user} />
-      <div className="flex flex-col flex-1 overflow-hidden">
-        <header className="manager-header flex items-center justify-between gap-2 p-4 border-b bg-background">
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+        <header
+          style={{ paddingTop: 'max(0.625rem, env(safe-area-inset-top, 0px))' }}
+          className="manager-header flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 px-3 pb-2.5 sm:p-4 border-b bg-background"
+        >
           <SidebarTrigger data-testid="button-sidebar-toggle" />
           <div className="manager-cafe-title min-w-0">
             <strong>{cafe?.name || user?.cafeContext?.name || (user?.role === 'super_admin' ? 'Platform manager' : 'Café manager')}</strong>
@@ -122,7 +125,7 @@ function AdminLayout({ children }: { children: React.ReactNode }) {
                   toast({ title: 'Could not switch branch', description: (err as Error).message, variant: 'destructive' });
                 }
               }}
-              className="manager-select h-9 text-xs font-semibold max-w-[210px]"
+              className="manager-select order-last sm:order-none w-full sm:w-auto sm:max-w-[210px] font-semibold"
             >
               {(user?.accessibleBranches || []).map(b => (
                 <option key={b.id} value={b.id}>
@@ -131,14 +134,14 @@ function AdminLayout({ children }: { children: React.ReactNode }) {
               ))}
             </select>
           )}
-          <span className="staff-access-label hidden sm:inline-flex"><span/>{user?.role === 'super_admin' ? 'Platform access' : user?.tenantContext ? user.tenantContext.name : 'Café workspace'}</span>
+          <span className="staff-access-label hidden lg:inline-flex"><span/>{user?.role === 'super_admin' ? 'Platform access' : user?.tenantContext ? user.tenantContext.name : 'Café workspace'}</span>
           <StaffThemeToggle/>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button 
                 variant="ghost" 
                 size="icon" 
-                className="rounded-full"
+                className="rounded-full shrink-0"
                 data-testid="button-user-menu"
               >
                 <Avatar className="h-8 w-8">
@@ -161,7 +164,7 @@ function AdminLayout({ children }: { children: React.ReactNode }) {
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleLogout} data-testid="button-logout">
+              <DropdownMenuItem onClick={handleLogout} data-testid="button-logout" className="min-h-11 md:min-h-9 cursor-pointer">
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Log out</span>
               </DropdownMenuItem>
@@ -169,11 +172,11 @@ function AdminLayout({ children }: { children: React.ReactNode }) {
           </DropdownMenu>
         </header>
         {user?.role === 'super_admin' && user.cafeContext && <div className="cafe-access-banner" role="region" aria-label="Super admin café access"><ShieldCheck size={20}/><div><strong>Super admin · Managing {user.cafeContext.name}</strong><small>Café account: {user.cafeContext.owner?.email} · Signed in as {user.email}</small></div><Button variant="outline" size="sm" disabled={exiting} onClick={async () => { setExiting(true); try { await returnToPlatform(); } catch(e) { setExiting(false); toast({ title: 'Could not return to platform', description: (e as Error).message, variant: 'destructive' }); } }}>{exiting ? 'Returning…' : 'Return to platform'}</Button></div>}
-        {['localhost', '127.0.0.1'].includes(window.location.hostname) && <div className="px-4 py-2 border-b bg-muted text-muted-foreground text-xs flex flex-wrap items-center gap-x-3 gap-y-1" role="note"><span>Isolated local workspace · Separate server &amp; database (Port {window.location.port || '5200'}).</span>{Boolean(import.meta.env.VITE_MANAGEMENT_ORIGIN) && <a className="text-primary underline font-medium" href={MANAGEMENT_ORIGIN + '/login'} target="_blank" rel="noreferrer">Open live staff dashboard ↗</a>}</div>}
-        <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-8 md:pb-8">
+        {['localhost', '127.0.0.1'].includes(window.location.hostname) && <div className="hidden sm:flex px-4 py-2 border-b bg-muted text-muted-foreground text-xs flex-wrap items-center gap-x-3 gap-y-1" role="note"><span>Isolated local workspace · Separate server &amp; database (Port {window.location.port || '5200'}).</span>{Boolean(import.meta.env.VITE_MANAGEMENT_ORIGIN) && <a className="text-primary underline font-medium" href={MANAGEMENT_ORIGIN + '/login'} target="_blank" rel="noreferrer">Open live staff dashboard ↗</a>}</div>}
+        <main className="flex-1 overflow-y-auto overflow-x-hidden px-3.5 pt-4 pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))] sm:p-6 sm:pb-24 md:p-8 md:pb-8">
           {children}
         </main>
-        {user?.role !== 'super_admin' || user?.cafeContext ? <MobileStaffBottomNav /> : null}
+        <MobileStaffBottomNav />
       </div>
     </div>
   );
