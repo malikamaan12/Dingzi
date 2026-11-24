@@ -35,9 +35,8 @@
   },
   "triggers": { "crons": [] },
   "durable_objects": {
-    "bindings": [{ "name": "BRANCH_HUB", "class_name": "BranchRealtimeDO" }]
+    "bindings": [{ "name": "BRANCH_HUB", "class_name": "BranchRealtimeDO", "script_name": "dingzi-staff" }]
   },
-  "migrations": [{ "tag": "v1_branch_realtime_do", "new_sqlite_classes": ["BranchRealtimeDO"] }],
   "observability": { "enabled": true }
   // Bind a NEW Cloudflare account_id and Hyperdrive ID using scripts/configure-cloud.mjs.
   // Never connect this project to the legacy Cafe Menu account or database.

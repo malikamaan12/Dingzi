@@ -16,6 +16,8 @@
     "cloud:test": "tsx scripts/verify-workers.ts",
     "cloud:migrate": "node scripts/migrate-supabase.mjs",
     "cloud:deploy": "node scripts/deploy-cloud.mjs",
+    "cloud:seed": "node scripts/seed-cloud-portfolio.mjs",
+    "cloud:verify": "node scripts/verify-live-dingzi-cloud.mjs",
     "backup:all-cafes": "node scripts/export-all-cafes-backup.mjs",
     "backup:qstrawberry": "node scripts/export-qstrawberry-backup.mjs",
     "ci:build": "node scripts/ci-build.mjs",

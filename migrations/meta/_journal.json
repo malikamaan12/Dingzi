@@ -71,6 +71,13 @@
       "when": 1795472400000,
       "tag": "0009_tenants_staff_roles_and_orders",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795561200000,
+      "tag": "0010_foreign_key_indexes",
+      "breakpoints": true
     }
   ]
 }

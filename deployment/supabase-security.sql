@@ -1,6 +1,20 @@
 -- These tables are accessed only by the trusted server connection.
 -- Anonymous and browser-authenticated Supabase clients get no direct access.
-CREATE EXTENSION IF NOT EXISTS btree_gist;
+CREATE SCHEMA IF NOT EXISTS extensions;
+GRANT USAGE ON SCHEMA extensions TO PUBLIC;
+
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_extension e
+    JOIN pg_namespace n ON n.oid = e.extnamespace
+    WHERE e.extname = 'btree_gist' AND n.nspname = 'public'
+  ) THEN
+    ALTER EXTENSION btree_gist SET SCHEMA extensions;
+  ELSE
+    CREATE EXTENSION IF NOT EXISTS btree_gist WITH SCHEMA extensions;
+  END IF;
+END $$;
 
 DO $$
 DECLARE cafe_table text;
@@ -23,21 +37,22 @@ BEGIN
   END LOOP;
 END $$;
 
--- Application-scoped defense-in-depth RLS helper functions reading transaction-local session context
--- set via SET LOCAL app.current_user_id / app.current_tenant_id / app.current_branch_id / app.current_role.
+-- Application-scoped defense-in-depth RLS helper function with immutable search_path.
 CREATE OR REPLACE FUNCTION public.dingzi_branch_allowed(target_restaurant_id varchar)
 RETURNS boolean
 LANGUAGE sql
 STABLE
+SET search_path = ''
 AS $$
   SELECT
-    coalesce(current_setting('app.current_role', true), '') IN ('', 'super_admin', 'public')
-    OR current_setting('app.current_branch_id', true) = target_restaurant_id;
+    coalesce(pg_catalog.current_setting('app.current_role', true), '') IN ('', 'super_admin', 'public')
+    OR pg_catalog.current_setting('app.current_branch_id', true) = target_restaurant_id;
 $$;
 
--- Enforce database-level tstzrange exclusion constraint against overlapping table reservations in PostgreSQL 16.
+-- Enforce database-level tstzrange exclusion constraint against overlapping table reservations.
 DO $$
 BEGIN
+  PERFORM set_config('search_path', 'public, extensions', true);
   IF NOT EXISTS (
     SELECT 1 FROM pg_constraint WHERE conname = 'table_reservations_no_overlap'
   ) THEN
