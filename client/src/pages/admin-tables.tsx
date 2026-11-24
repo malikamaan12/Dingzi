@@ -135,20 +135,36 @@ export default function AdminTablesPage() {
           </p>
         </div>
         {cafe && (
-          <Button
-            type="button"
-            variant="outline"
-            className="cursor-pointer gap-2"
-            onClick={() =>
-              setQrModal({
-                title: `${cafe.name} · Host Stand Waitlist & Menu QR`,
-                url: `${window.location.origin}/menu/${cafe.id}`,
-              })
-            }
-          >
-            <QrCode className="w-4 h-4" />
-            Host Stand QR
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="cursor-pointer gap-2"
+              onClick={() =>
+                setQrModal({
+                  title: `${cafe.name} · Host Stand Walk-In Waitlist QR`,
+                  url: `${window.location.origin}/menu/${cafe.id}?action=waitlist`,
+                })
+              }
+            >
+              <QrCode className="w-4 h-4" />
+              Host Stand Waitlist QR
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="cursor-pointer gap-2"
+              onClick={() =>
+                setQrModal({
+                  title: `${cafe.name} · Advance Table Booking QR`,
+                  url: `${window.location.origin}/menu/${cafe.id}?action=reserve`,
+                })
+              }
+            >
+              <CalendarDays className="w-4 h-4" />
+              Table Booking QR
+            </Button>
+          </div>
         )}
       </div>
 
@@ -386,7 +402,7 @@ export default function AdminTablesPage() {
                       onClick={() =>
                         setQrModal({
                           title: `Table ${t.tableCode} Dine-In QR`,
-                          url: `${window.location.origin}/menu/${cafe.id}?table=${encodeURIComponent(t.tableCode)}`,
+                          url: `${window.location.origin}/table/${t.qrToken}`,
                         })
                       }
                       className="p-1.5 rounded-lg border hover:bg-muted cursor-pointer"

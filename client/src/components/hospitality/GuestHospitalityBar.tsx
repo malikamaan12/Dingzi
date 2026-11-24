@@ -21,6 +21,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { apiRequest } from '@/lib/queryClient';
+import { saveGuestPass } from '@/lib/guestSession';
 import { useMenuLanguage } from '@/lib/menuLanguage';
 import type { PublicCafe, PublicHospitalityConfig } from '@shared/schema';
 
@@ -34,6 +35,7 @@ export interface GuestCartItem {
   modifiers: Record<string, string[]>;
   modifierSummary: string[];
   unitTotal: string;
+  notes?: string;
 }
 
 interface Props {
@@ -42,6 +44,7 @@ interface Props {
   setCart: React.Dispatch<React.SetStateAction<GuestCartItem[]>>;
   initialTableCode?: string | null;
   initialBayId?: string | null;
+  initialAction?: string | null;
 }
 
 export default function GuestHospitalityBar({
@@ -50,6 +53,7 @@ export default function GuestHospitalityBar({
   setCart,
   initialTableCode,
   initialBayId,
+  initialAction,
 }: Props) {
   const { language, dir, t, label } = useMenuLanguage();
   const [, navigate] = useLocation();
@@ -125,6 +129,16 @@ export default function GuestHospitalityBar({
     }
   }, [initialBayId, initialTableCode]);
 
+  useEffect(() => {
+    if (!initialAction) return;
+    if (initialAction === 'waitlist' && restaurant.waitlistEnabled) setWaitlistOpen(true);
+    else if (initialAction === 'reserve' && restaurant.reservationsEnabled) setReserveOpen(true);
+    else if (initialAction === 'pager') setPagerOpen(true);
+    else if (initialAction === 'curbside' && restaurant.driveThruEnabled) setCurbsideOpen(true);
+    else if (initialAction === 'delivery') setDeliveryOpen(true);
+    else if (initialAction === 'cart' && restaurant.orderingMode !== 'browse_and_pager') setCartOpen(true);
+  }, [initialAction, restaurant.waitlistEnabled, restaurant.reservationsEnabled, restaurant.driveThruEnabled, restaurant.orderingMode]);
+
   const hospitalityQuery = useQuery<PublicHospitalityConfig>({
     queryKey: ['/api/public/hospitality', restaurant.id],
     queryFn: async () => {
@@ -162,6 +176,13 @@ export default function GuestHospitalityBar({
       return res.json();
     },
     onSuccess: data => {
+      saveGuestPass({
+        kind: 'pager',
+        trackingToken: data.trackingToken,
+        code: data.ticketCode,
+        restaurantId: restaurant.id,
+        restaurantName: restaurant.name,
+      });
       setPagerOpen(false);
       navigate(`/pager/${data.trackingToken}`);
     },
@@ -182,6 +203,14 @@ export default function GuestHospitalityBar({
       return res.json();
     },
     onSuccess: data => {
+      saveGuestPass({
+        kind: 'booking',
+        trackingToken: data.reservation.trackingToken,
+        code: data.table?.tableCode ? `Table ${data.table.tableCode}` : 'Reserved',
+        restaurantId: restaurant.id,
+        restaurantName: restaurant.name,
+        startAt: data.reservation.startAt,
+      });
       setReserveOpen(false);
       navigate(`/booking/${data.reservation.trackingToken}`);
     },
@@ -200,6 +229,13 @@ export default function GuestHospitalityBar({
       return res.json();
     },
     onSuccess: data => {
+      saveGuestPass({
+        kind: 'waitlist',
+        trackingToken: data.entry.trackingToken,
+        code: data.entry.ticketCode,
+        restaurantId: restaurant.id,
+        restaurantName: restaurant.name,
+      });
       setWaitlistOpen(false);
       navigate(`/waitlist/${data.entry.trackingToken}`);
     },
@@ -221,6 +257,13 @@ export default function GuestHospitalityBar({
       return res.json();
     },
     onSuccess: data => {
+      saveGuestPass({
+        kind: 'pager',
+        trackingToken: data.ticket.trackingToken,
+        code: data.ticket.ticketCode,
+        restaurantId: restaurant.id,
+        restaurantName: restaurant.name,
+      });
       setCurbsideOpen(false);
       navigate(`/pager/${data.ticket.trackingToken}`);
     },
@@ -246,6 +289,7 @@ export default function GuestHospitalityBar({
           quantity: item.quantity,
           variantId: item.variantId,
           modifiers: item.modifiers,
+          ...(item.notes ? { notes: item.notes } : {}),
         })),
       });
       return res.json();
@@ -269,6 +313,13 @@ export default function GuestHospitalityBar({
       setCart([]);
       setCartOpen(false);
       if (data.pager?.trackingToken) {
+        saveGuestPass({
+          kind: 'pager',
+          trackingToken: data.pager.trackingToken,
+          code: data.pager.ticketCode,
+          restaurantId: restaurant.id,
+          restaurantName: restaurant.name,
+        });
         navigate(`/pager/${data.pager.trackingToken}`);
       }
     },
@@ -290,6 +341,13 @@ export default function GuestHospitalityBar({
       setCart([]);
       setCartOpen(false);
       if (data?.pager?.trackingToken) {
+        saveGuestPass({
+          kind: 'pager',
+          trackingToken: data.pager.trackingToken,
+          code: data.pager.ticketCode,
+          restaurantId: restaurant.id,
+          restaurantName: restaurant.name,
+        });
         navigate(`/pager/${data.pager.trackingToken}`);
       }
     },
@@ -778,6 +836,9 @@ export default function GuestHospitalityBar({
                       {item.variantLabel && <span className="text-xs text-muted-foreground block">{item.variantLabel}</span>}
                       {item.modifierSummary.length > 0 && (
                         <span className="text-xs text-muted-foreground block">{item.modifierSummary.join(', ')}</span>
+                      )}
+                      {item.notes && (
+                        <span className="text-[11px] italic text-[#57507A] block">“{item.notes}”</span>
                       )}
                       <span className="text-xs font-semibold text-primary mt-1 block">
                         {(Number(item.unitTotal) * item.quantity).toFixed(2)} {restaurant.currency}

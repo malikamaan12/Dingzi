@@ -141,10 +141,11 @@ try {
     restaurantId: cafeB,
     channel: 'counter_pickup',
     customerName: 'Fatima',
-    items: [{ menuItemId: itemB.id, quantity: 2 }],
+    items: [{ menuItemId: itemB.id, quantity: 2, notes: 'Extra hot, oat milk' }],
   });
   assert.equal(onlineOrder.status, 201);
   assert.equal(onlineOrder.data.order.total, '44.00');
+  assert.equal(onlineOrder.data.order.lineItems[0].notes, 'Extra hot, oat milk');
   assert.equal(onlineOrder.data.order.paymentStatus, 'pending_online');
   assert.equal(onlineOrder.data.pager, null);
 
@@ -188,6 +189,11 @@ try {
     maxCovers: 4,
   }, cookieA);
   assert.equal(tableRes.status, 201);
+
+  const tableQrLookup = await api('GET', `/api/public/table/${tableRes.data.table.qrToken}`);
+  assert.equal(tableQrLookup.status, 200);
+  assert.equal(tableQrLookup.data.table.tableCode, 'T-01');
+  assert.equal(tableQrLookup.data.restaurant.id, cafeA);
 
   const slotIso = '2026-12-01T18:00:00+03:00';
   const [b1, b2] = await Promise.all([

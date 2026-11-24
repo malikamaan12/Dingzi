@@ -1,6 +1,6 @@
 /* Dingzi — Service Worker (PWA Shell + High-Priority Lock-Screen Web Push) */
-const CACHE_NAME = 'dingzi-pwa-shell-v1';
-const PRECACHE_URLS = ['/', '/manifest.webmanifest', '/icon-192.svg', '/icon-512.svg', '/favicon.svg'];
+const CACHE_NAME = 'dingzi-pwa-shell-v2';
+const PRECACHE_URLS = ['/manifest.webmanifest', '/icon-192.svg', '/icon-512.svg', '/favicon.svg'];
 
 self.addEventListener('install', event => {
   self.skipWaiting();
@@ -86,23 +86,43 @@ self.addEventListener('notificationclick', event => {
   );
 });
 
-// Network-first navigation with offline cache fallback for static shell assets
+// Safe asset & navigation fetch handler: never returns HTML for JS/CSS assets
 self.addEventListener('fetch', event => {
   const req = event.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/objects/')) return;
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/objects/') || url.pathname === '/sw.js') return;
 
-  event.respondWith(
-    fetch(req)
-      .then(res => {
-        if (res.ok && (url.pathname.startsWith('/assets/') || PRECACHE_URLS.includes(url.pathname))) {
-          const clone = res.clone();
-          caches.open(CACHE_NAME).then(c => c.put(req, clone)).catch(() => {});
-        }
-        return res;
-      })
-      .catch(() => caches.match(req).then(cached => cached || caches.match('/'))),
-  );
+  // HTML page navigations: always prefer live network, fall back to cached shell only when offline
+  if (req.mode === 'navigate') {
+    event.respondWith(
+      fetch(req)
+        .then(res => {
+          if (res.ok && (res.headers.get('content-type') || '').includes('text/html')) {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then(c => c.put('/', clone)).catch(() => {});
+          }
+          return res;
+        })
+        .catch(() => caches.match('/').then(cached => cached || Response.error())),
+    );
+    return;
+  }
+
+  // Hashed static assets & icons: never substitute index.html on miss or offline
+  if (url.pathname.startsWith('/assets/') || PRECACHE_URLS.includes(url.pathname)) {
+    event.respondWith(
+      fetch(req)
+        .then(res => {
+          const ct = res.headers.get('content-type') || '';
+          if (res.ok && !ct.includes('text/html')) {
+            const clone = res.clone();
+            caches.open(CACHE_NAME).then(c => c.put(req, clone)).catch(() => {});
+          }
+          return res;
+        })
+        .catch(() => caches.match(req).then(cached => cached || Response.error())),
+    );
+  }
 });

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { categoryEmoji, menuTone } from '@/lib/menuPalette';
+import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
+import { menuTone } from '@/lib/menuPalette';
+import { CategoryVectorIcon } from './CategoryVectorIcon';
 import type { Category } from '@shared/schema';
 import { useMenuLanguage } from '@/lib/menuLanguage';
 
@@ -62,8 +63,8 @@ export default function MenuCategoryBar({ categories, selected, allLabel, motion
   return <div className="guest-category-rail" data-before={edges.before} data-after={edges.after}>
     {(edges.before || edges.after) && <button className="guest-category-prev" aria-label={t('Previous categories')} disabled={!edges.before} onClick={() => move(-1)}>{rtl ? <ChevronRight size={18}/> : <ChevronLeft size={18}/>}</button>}
     <nav ref={rail} className="guest-category-bar" aria-label={t('Menu categories')}>
-      <button aria-pressed={!selected} onClick={event => choose(null, event.currentTarget)}><span aria-hidden="true">✦</span><span className="guest-category-label">{allLabel}</span></button>
-      {categories.map(category => <button key={category.id} data-tone={menuTone(category.title)} aria-pressed={selected === category.id} onClick={event => choose(category.id, event.currentTarget)}><span aria-hidden="true">{categoryEmoji(category.title)}</span><span className="guest-category-label">{label(category.title)}</span></button>)}
+      <button aria-pressed={!selected} onClick={event => choose(null, event.currentTarget)}><span aria-hidden="true"><Sparkles size={14} /></span><span className="guest-category-label">{allLabel}</span></button>
+      {categories.map(category => <button key={category.id} data-tone={menuTone(category.title)} aria-pressed={selected === category.id} onClick={event => choose(category.id, event.currentTarget)}><span aria-hidden="true"><CategoryVectorIcon title={category.title} size={15} /></span><span className="guest-category-label">{label(category.title)}</span></button>)}
     </nav>
     {(edges.before || edges.after) && <button className="guest-category-next" aria-label={t('More categories')} disabled={!edges.after} onClick={() => move(1)}>{rtl ? <ChevronLeft size={18}/> : <ChevronRight size={18}/>}</button>}
   </div>;

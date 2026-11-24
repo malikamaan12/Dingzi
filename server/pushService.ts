@@ -5,44 +5,14 @@ import {
   createVapidAuthHeader,
   encryptWebPushAes128Gcm,
   generateVapidKeys,
+  isAllowedPushEndpoint,
   type VapidKeyBundle,
 } from './webPushCrypto';
 
+export { isAllowedPushEndpoint };
+
 const VAPID_SETTING_KEY = 'vapid_key_bundle_v1';
 let cachedVapid: VapidKeyBundle | null = null;
-
-export function isAllowedPushEndpoint(endpointUrl: string): boolean {
-  let parsed: URL;
-  try {
-    parsed = new URL(endpointUrl);
-  } catch {
-    return false;
-  }
-  if (parsed.username || parsed.password) return false;
-  const host = parsed.hostname.toLowerCase();
-
-  if (
-    process.env.ALLOW_LOCAL_PUSH_TEST_ENDPOINT === 'true' &&
-    (host === '127.0.0.1' || host === 'localhost') &&
-    (parsed.protocol === 'http:' || parsed.protocol === 'https:')
-  ) {
-    return true;
-  }
-
-  if (parsed.protocol !== 'https:') return false;
-  if (
-    host === 'localhost' ||
-    host === '0.0.0.0' ||
-    host.startsWith('[') ||
-    host.endsWith('.local') ||
-    host.endsWith('.internal') ||
-    host.endsWith('.localhost') ||
-    /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)
-  ) {
-    return false;
-  }
-  return host.includes('.');
-}
 
 export async function getOrCreateVapidKeys(): Promise<VapidKeyBundle> {
   if (cachedVapid) return cachedVapid;

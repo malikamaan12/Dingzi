@@ -30,6 +30,7 @@ import {
   subscribeRingingState,
 } from '@/lib/lockScreenRinger';
 import { subscribeGuestLockScreenPush } from '@/lib/mobileBridge';
+import { dismissGuestPass, saveGuestPass } from '@/lib/guestSession';
 import { PwaInstallBanner } from '@/components/mobile/PwaInstallBanner';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
 
@@ -143,16 +144,33 @@ function VirtualPagerContent() {
 
   const prevStatusKey = `${ticket?.status || ''}:${ticket?.buzzCount || 0}`;
   const [seenKey, setSeenKey] = useState('');
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  useEffect(() => {
+    if (!ticket || !restaurant) return;
+    if (['waiting', 'preparing', 'ready'].includes(ticket.status)) {
+      saveGuestPass({
+        kind: 'pager',
+        trackingToken: token,
+        code: ticket.ticketCode,
+        restaurantId: restaurant.id,
+        restaurantName: restaurant.name,
+      });
+    } else if (['collected', 'no_show'].includes(ticket.status)) {
+      dismissGuestPass('pager', token);
+    }
+  }, [ticket, restaurant, token]);
+
   useEffect(() => {
     if (!ticket) return;
     if (seenKey && seenKey !== prevStatusKey) {
       if (ticket.status === 'ready') {
         startContinuousRinger({
-          cafeName: restaurant?.name || 'Café',
+          cafeName: restaurant?.name || 'Dingzi',
           ticketCode: ticket.ticketCode,
           subtitle: 'Your order is ready for pickup!',
         });
-      } else if (ticket.status === 'collected') {
+      } else if (ticket.status === 'collected' || ticket.status === 'no_show') {
         stopContinuousRinger();
       }
     }
@@ -660,12 +678,26 @@ function VirtualPagerContent() {
           </div>
         )}
 
-        <footer className="text-center pt-2">
+        <footer className="flex flex-wrap items-center justify-center gap-2 pt-2">
           <Link href={`/menu/${restaurant.id}`}>
             <Button variant="ghost" className="cursor-pointer min-h-11 text-sm">
               Back to {label(restaurant.name)} Menu
             </Button>
           </Link>
+          <Button
+            type="button"
+            variant="outline"
+            className="cursor-pointer min-h-11 text-xs rounded-xl"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(window.location.href);
+                setCopiedLink(true);
+                setTimeout(() => setCopiedLink(false), 2000);
+              } catch {}
+            }}
+          >
+            {copiedLink ? t('Pass link copied!') : t('Share Pass')}
+          </Button>
         </footer>
       </div>
     </div>

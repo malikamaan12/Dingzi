@@ -11,8 +11,8 @@ import {
   decryptWebPushAes128GcmForTest,
   encryptWebPushAes128Gcm,
   generateVapidKeys,
+  isAllowedPushEndpoint,
 } from '../server/webPushCrypto';
-import { isAllowedPushEndpoint } from '../server/pushService';
 
 const subtle = globalThis.crypto.subtle;
 
@@ -370,6 +370,7 @@ try {
     server.once('exit', resolve);
     setTimeout(resolve, 4000).unref();
   });
+  pushReceiver.closeAllConnections?.();
   await new Promise<void>(resolve => pushReceiver.close(() => resolve()));
   await fs.rm(testRoot, { recursive: true, force: true });
 }

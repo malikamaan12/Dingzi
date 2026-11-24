@@ -1,21 +1,31 @@
-import { Card, CardContent } from "@/components/ui/card";
-import { AlertCircle } from "lucide-react";
+import { Link } from 'wouter';
+import { ArrowLeft, Compass } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { DingziWordmark } from '@/components/staff-brand';
 
 export default function NotFound() {
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-gray-50">
-      <Card className="w-full max-w-md mx-4">
-        <CardContent className="pt-6">
-          <div className="flex mb-4 gap-2">
-            <AlertCircle className="h-8 w-8 text-red-500" />
-            <h1 className="text-2xl font-bold text-gray-900">404 Page Not Found</h1>
-          </div>
-
-          <p className="mt-4 text-sm text-gray-600">
-            Did you forget to add the page to the router?
+    <div className="min-h-screen w-full grid place-items-center bg-[#F6F5FC] text-[#17132E] p-6">
+      <div className="w-full max-w-md rounded-3xl border border-[#E5E2F2] bg-white p-8 text-center shadow-sm space-y-5">
+        <div className="flex justify-center">
+          <DingziWordmark tone="light" />
+        </div>
+        <div className="w-14 h-14 rounded-2xl bg-[#EFEAFF] text-[#4B1FE0] grid place-items-center mx-auto">
+          <Compass className="w-7 h-7" aria-hidden="true" />
+        </div>
+        <div className="space-y-1.5">
+          <h1 className="text-2xl font-bold">Page Not Found</h1>
+          <p className="text-sm text-[#57507A]">
+            That link doesn’t match an active menu, pager ticket, or workspace page.
           </p>
-        </CardContent>
-      </Card>
+        </div>
+        <Link href="/">
+          <Button className="w-full min-h-11 rounded-2xl cursor-pointer gap-2">
+            <ArrowLeft className="w-4 h-4" aria-hidden="true" />
+            <span>Explore Dingzi Venues</span>
+          </Button>
+        </Link>
+      </div>
     </div>
   );
 }

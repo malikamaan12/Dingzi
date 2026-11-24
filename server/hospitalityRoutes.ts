@@ -209,6 +209,28 @@ export function mountHospitalityRoutes(app: Express) {
     }
   });
 
+  // Resolve permanent Dine-In Table QR (/table/:qrToken)
+  app.get('/api/public/table/:qrToken', async (req, res, next) => {
+    try {
+      const qrToken = z.string().uuid().parse(req.params.qrToken);
+      const [table] = await db
+        .select()
+        .from(diningTables)
+        .where(and(eq(diningTables.qrToken, qrToken), eq(diningTables.isActive, true)));
+      if (!table) return res.status(404).json({ message: 'Dining table QR not found' });
+      const restaurant = await storage.getRestaurantById(table.restaurantId);
+      if (!restaurant || restaurant.hidden || restaurant.status !== 'active') {
+        return res.status(404).json({ message: 'Venue unavailable' });
+      }
+      const [zone] = table.zoneId
+        ? await db.select().from(diningZones).where(eq(diningZones.id, table.zoneId))
+        : [];
+      res.json({ restaurant: toPublicCafe(restaurant), table, zone: zone || null });
+    } catch (e) {
+      next(e);
+    }
+  });
+
   // Fetch public hospitality capabilities (zones, tables, bays, active delivery aggregators)
   app.get('/api/public/hospitality/:restaurantId', async (req, res, next) => {
     try {

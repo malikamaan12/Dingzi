@@ -9,6 +9,39 @@ export interface VapidKeyBundle {
   publicJwk: JsonWebKey;
 }
 
+export function isAllowedPushEndpoint(endpointUrl: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(endpointUrl);
+  } catch {
+    return false;
+  }
+  if (parsed.username || parsed.password) return false;
+  const host = parsed.hostname.toLowerCase();
+
+  if (
+    process.env.ALLOW_LOCAL_PUSH_TEST_ENDPOINT === 'true' &&
+    (host === '127.0.0.1' || host === 'localhost') &&
+    (parsed.protocol === 'http:' || parsed.protocol === 'https:')
+  ) {
+    return true;
+  }
+
+  if (parsed.protocol !== 'https:') return false;
+  if (
+    host === 'localhost' ||
+    host === '0.0.0.0' ||
+    host.startsWith('[') ||
+    host.endsWith('.local') ||
+    host.endsWith('.internal') ||
+    host.endsWith('.localhost') ||
+    /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)
+  ) {
+    return false;
+  }
+  return host.includes('.');
+}
+
 export function bytesToBase64Url(bytes: Uint8Array): string {
   let binary = '';
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);

@@ -57,7 +57,11 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 export async function registerPwaServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return null;
   try {
-    const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+    const registration = await navigator.serviceWorker.register('/sw.js', {
+      scope: '/',
+      updateViaCache: 'none',
+    });
+    void registration.update().catch(() => {});
     await navigator.serviceWorker.ready;
     return registration;
   } catch {

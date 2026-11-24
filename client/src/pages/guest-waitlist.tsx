@@ -13,6 +13,7 @@ import {
   subscribeRingingState,
 } from '@/lib/lockScreenRinger';
 import { subscribeGuestLockScreenPush } from '@/lib/mobileBridge';
+import { dismissGuestPass, saveGuestPass } from '@/lib/guestSession';
 import { PwaInstallBanner } from '@/components/mobile/PwaInstallBanner';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
 
@@ -47,6 +48,21 @@ function GuestWaitlistContent() {
   const data = query.data;
   const entry = data?.entry;
   const restaurant = data?.restaurant;
+
+  useEffect(() => {
+    if (!entry || !restaurant) return;
+    if (['waiting', 'ready'].includes(entry.status)) {
+      saveGuestPass({
+        kind: 'waitlist',
+        trackingToken: token,
+        code: entry.ticketCode,
+        restaurantId: restaurant.id,
+        restaurantName: restaurant.name,
+      });
+    } else {
+      dismissGuestPass('waitlist', token);
+    }
+  }, [entry, restaurant, token]);
 
   useRealtimeStream(token ? `/api/public/stream/waitlist/${token}` : null, ev => {
     void queryClient.invalidateQueries({ queryKey: ['/api/public/waitlist-ticket', token] });
