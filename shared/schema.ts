@@ -82,11 +82,25 @@ export const orderingModes = ['browse_and_pager', 'cart_pay_at_venue', 'full_onl
 export type OrderingMode = (typeof orderingModes)[number];
 export const paymentGateways = ['none', 'skipcash', 'sadad'] as const;
 export type PaymentGateway = (typeof paymentGateways)[number];
+export const staffRoles = ['tenant_owner', 'branch_manager', 'host_cashier', 'kds_barista'] as const;
+export type StaffRole = (typeof staffRoles)[number];
+export type EffectiveStaffRole = 'super_admin' | StaffRole;
+
+// Multi-Branch Tenant Brand Groups (PRD §2 & §3)
+export const tenants = pgTable("tenants", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  slug: varchar("slug", { length: 120 }).unique(),
+  ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type Tenant = typeof tenants.$inferSelect;
 
 // Restaurants / Branches table
 export const restaurants = pgTable("restaurants", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tenantId: varchar("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
   name: text("name").notNull(),
   slug: varchar("slug", { length: 120 }),
   theme: text("theme").notNull().default("e3"),
@@ -100,6 +114,8 @@ export const restaurants = pgTable("restaurants", {
   address: text("address"),
   phone: varchar("phone"),
   openingHours: text("opening_hours"),
+  openTime: varchar("open_time", { length: 5 }).notNull().default("08:00"),
+  closeTime: varchar("close_time", { length: 5 }).notNull().default("23:00"),
   qrCodeUrl: text("qr_code_url"),
   status: varchar("status").notNull().default("active"),
   hidden: boolean("hidden").notNull().default(false),
@@ -176,6 +192,8 @@ export const cafeProfileSchema = insertRestaurantSchema.pick({
   address: true,
   phone: true,
   openingHours: true,
+  openTime: true,
+  closeTime: true,
   orderingMode: true,
   paymentGateway: true,
   googleMapsReviewUrl: true,
@@ -198,6 +216,8 @@ export const cafeProfileSchema = insertRestaurantSchema.pick({
   address: z.string().trim().max(1000).nullable().optional(),
   phone: z.string().trim().max(40).nullable().optional(),
   openingHours: z.string().trim().max(250).nullable().optional(),
+  openTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use 24-hour HH:MM format').optional(),
+  closeTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use 24-hour HH:MM format').optional(),
   orderingMode: z.enum(orderingModes).optional(),
   paymentGateway: z.enum(paymentGateways).optional(),
   googleMapsReviewUrl: z.string().trim().url('Enter a valid URL').max(500).or(z.literal('')).nullable().optional().transform(v => v === '' ? null : v),
@@ -210,10 +230,46 @@ export const cafeProfileSchema = insertRestaurantSchema.pick({
   reservationDepositAmount: moneySchema.transform(String).optional(),
 }).strict();
 
+export const staffAssignments = pgTable("staff_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  restaurantId: varchar("restaurant_id").references(() => restaurants.id, { onDelete: "cascade" }),
+  tenantId: varchar("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+  staffRole: varchar("staff_role", { length: 32 }).notNull().default("branch_manager"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, table => [
+  check("staff_assignments_role_check", sql`${table.staffRole} in ('tenant_owner', 'branch_manager', 'host_cashier', 'kds_barista')`),
+]);
+export type StaffAssignment = typeof staffAssignments.$inferSelect;
+
+export const branchPaymentConfigs = pgTable("branch_payment_configs", {
+  restaurantId: varchar("restaurant_id").primaryKey().references(() => restaurants.id, { onDelete: "cascade" }),
+  skipcashKeyId: text("skipcash_key_id"),
+  skipcashSecretEnc: text("skipcash_secret_enc"),
+  skipcashCheckoutUrl: text("skipcash_checkout_url"),
+  sadadMerchantId: text("sadad_merchant_id"),
+  sadadSecretEnc: text("sadad_secret_enc"),
+  sadadCheckoutUrl: text("sadad_checkout_url"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type BranchPaymentConfig = typeof branchPaymentConfigs.$inferSelect;
+
 export type CafeAccessContext = Pick<Restaurant, 'id' | 'name' | 'theme'> & {
   owner: Pick<User, 'id' | 'email' | 'firstName' | 'lastName'> | null;
 };
-export type AuthUser = Omit<User, 'password'> & { cafeContext: CafeAccessContext | null };
+export interface AccessibleBranchSummary {
+  id: string;
+  name: string;
+  slug: string | null;
+  tenantId: string | null;
+}
+export type AuthUser = Omit<User, 'password'> & {
+  cafeContext: CafeAccessContext | null;
+  staffRole?: EffectiveStaffRole;
+  tenantContext?: Pick<Tenant, 'id' | 'name' | 'slug'> | null;
+  accessibleBranches?: AccessibleBranchSummary[];
+};
 
 export const accessAudit = pgTable('access_audit', {
   id: varchar('id').primaryKey().default(sql`gen_random_uuid()`),
@@ -416,6 +472,8 @@ export const globalMenuItems = pgTable("global_menu_items", {
   imageUrl: text("image_url"),
   sourceImageUrl: text("source_image_url"),
   tags: text("tags").array().notNull().default(sql`ARRAY[]::text[]`),
+  allergenTags: text("allergen_tags").array().notNull().default(sql`ARRAY[]::text[]`),
+  prepTimeMins: integer("prep_time_mins").notNull().default(10),
   variants: jsonb("variants").$type<LibraryPriceVariant[]>().notNull().default(sql`'[]'::jsonb`),
   modifierGroups: jsonb('modifier_groups').$type<MenuModifierGroup[]>().notNull().default(sql`'[]'::jsonb`),
   archived: boolean("archived").notNull().default(false),
@@ -579,6 +637,7 @@ export const tableReservations = pgTable("table_reservations", {
   restaurantId: varchar("restaurant_id").notNull().references(() => restaurants.id, { onDelete: "cascade" }),
   zoneId: varchar("zone_id").references(() => diningZones.id, { onDelete: "set null" }),
   tableId: varchar("table_id").notNull().references(() => diningTables.id, { onDelete: "cascade" }),
+  combinedTableIds: jsonb("combined_table_ids").$type<string[]>().notNull().default(sql`'[]'::jsonb`),
   guestName: text("guest_name").notNull(),
   guestPhone: varchar("guest_phone", { length: 40 }).notNull(),
   partySize: integer("party_size").notNull(),
@@ -587,6 +646,8 @@ export const tableReservations = pgTable("table_reservations", {
   status: varchar("status", { length: 24 }).notNull().default("confirmed"),
   depositStatus: varchar("deposit_status", { length: 24 }).notNull().default("none"),
   depositAmount: decimal("deposit_amount", { precision: 10, scale: 2 }).notNull().default("0"),
+  paymentProvider: varchar("payment_provider", { length: 32 }),
+  paymentReference: varchar("payment_reference", { length: 120 }),
   notes: text("notes"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   cancelledAt: timestamp("cancelled_at"),
@@ -679,6 +740,8 @@ export type PublicCafe = Pick<
   | 'address'
   | 'phone'
   | 'openingHours'
+  | 'openTime'
+  | 'closeTime'
   | 'orderingMode'
   | 'paymentGateway'
   | 'googleMapsReviewUrl'

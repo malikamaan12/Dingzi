@@ -12,7 +12,7 @@ import { mountPricingControls } from './pricingControls';
 import { rateLimit } from './httpSecurity';
 const profileFields = [
   'name','slug','theme','brandAccentHex','currency','timezone','logoUrl','coverMediaUrl','coverMediaType',
-  'cuisineType','address','phone','openingHours','orderingMode','paymentGateway','googleMapsReviewUrl',
+  'cuisineType','address','phone','openingHours','openTime','closeTime','orderingMode','paymentGateway','googleMapsReviewUrl',
   'reservationsEnabled','waitlistEnabled','driveThruEnabled','pagerMiniGameEnabled',
   'slotIntervalMins','defaultTurnDurationMins','reservationDepositAmount',
 ];
@@ -171,8 +171,8 @@ export function mountCafeControls(app: Express) {
       const visibleCatIds = new Set(cats.map(c => c.id));
       const items = allItems.filter(item => item.isAvailable && visibleCatIds.has(item.categoryId));
       const visibleIds = new Set(items.map(item => item.id));
-      const { name, slug, theme, brandAccentHex, currency, timezone, logoUrl, coverMediaUrl, coverMediaType, cuisineType, address, phone, openingHours, orderingMode, paymentGateway, googleMapsReviewUrl, reservationsEnabled, waitlistEnabled, driveThruEnabled, pagerMiniGameEnabled, slotIntervalMins, defaultTurnDurationMins, reservationDepositAmount } = restaurant;
-      res.json({ restaurant: { id, name, slug, theme, brandAccentHex, currency, timezone, logoUrl, coverMediaUrl, coverMediaType, cuisineType, address, phone, openingHours, orderingMode, paymentGateway, googleMapsReviewUrl, reservationsEnabled, waitlistEnabled, driveThruEnabled, pagerMiniGameEnabled, slotIntervalMins, defaultTurnDurationMins, reservationDepositAmount }, categories: cats, items, variants: allVariants.filter(v => visibleIds.has(v.menuItemId)) });
+      const { name, slug, theme, brandAccentHex, currency, timezone, logoUrl, coverMediaUrl, coverMediaType, cuisineType, address, phone, openingHours, openTime, closeTime, orderingMode, paymentGateway, googleMapsReviewUrl, reservationsEnabled, waitlistEnabled, driveThruEnabled, pagerMiniGameEnabled, slotIntervalMins, defaultTurnDurationMins, reservationDepositAmount } = restaurant;
+      res.json({ restaurant: { id, name, slug, theme, brandAccentHex, currency, timezone, logoUrl, coverMediaUrl, coverMediaType, cuisineType, address, phone, openingHours, openTime, closeTime, orderingMode, paymentGateway, googleMapsReviewUrl, reservationsEnabled, waitlistEnabled, driveThruEnabled, pagerMiniGameEnabled, slotIntervalMins, defaultTurnDurationMins, reservationDepositAmount }, categories: cats, items, variants: allVariants.filter(v => visibleIds.has(v.menuItemId)) });
     } catch (e) { next(e); }
   });
   app.put('/api/categories/:id', isAuthenticated, async (req, res, next) => {

@@ -55,9 +55,15 @@ export function publishRealtimeEvent(
   }
 }
 
-export function attachSseStream(res: Response, scope: RealtimeChannelScope) {
+export function attachSseStream(res: Response, scope: RealtimeChannelScope, branchId?: string) {
   if (process.env.CAFE_RUNTIME === 'workers') {
-    res.status(200).json({ mode: 'poll_or_ws', scope, at: new Date().toISOString() });
+    const resolvedBranch = scope.startsWith('branch:') ? scope.slice('branch:'.length) : branchId;
+    const wsUrl = scope.startsWith('branch:')
+      ? `/api/ws/staff/${resolvedBranch}`
+      : resolvedBranch
+        ? `/api/ws/public/${resolvedBranch}?scope=${encodeURIComponent(scope)}`
+        : null;
+    res.status(200).json({ mode: 'poll_or_ws', scope, branchId: resolvedBranch || null, wsUrl, at: new Date().toISOString() });
     return;
   }
   res.status(200);

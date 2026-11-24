@@ -5,6 +5,7 @@ WITH cafe AS (
   SELECT id, name, slug, theme, brand_accent_hex AS "brandAccentHex", currency, timezone,
     logo_url AS "logoUrl", cover_media_url AS "coverMediaUrl", cover_media_type AS "coverMediaType",
     cuisine_type AS "cuisineType", address, phone, opening_hours AS "openingHours",
+    open_time AS "openTime", close_time AS "closeTime",
     ordering_mode AS "orderingMode", payment_gateway AS "paymentGateway",
     google_maps_review_url AS "googleMapsReviewUrl", reservations_enabled AS "reservationsEnabled",
     waitlist_enabled AS "waitlistEnabled", drive_thru_enabled AS "driveThruEnabled",

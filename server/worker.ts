@@ -1,4 +1,5 @@
 import { handleAsNodeRequest } from 'cloudflare:node';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { ExecutionContext, ScheduledController } from '@cloudflare/workers-types';
 import { Client, types } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -40,6 +41,31 @@ function configured(env: WorkerEnvironment) {
     env.SUPABASE_SERVICE_ROLE_KEY && /^[a-z0-9-]+$/.test(env.STORAGE_BUCKET || '') &&
     /^[a-f0-9]{64}$/.test(env.PASSWORD_SERVICE_SECRET || '');
 }
+function verifySignedSessionCookie(cookieHeader: string | null, secret: string, secureCookie: boolean): string | null {
+  if (!cookieHeader || !secret) return null;
+  const targetName = secureCookie ? '__Host-cafe.sid' : 'connect.sid';
+  for (const part of cookieHeader.split(';')) {
+    const eqIdx = part.indexOf('=');
+    if (eqIdx === -1) continue;
+    const name = part.slice(0, eqIdx).trim();
+    if (name !== targetName) continue;
+    let raw = part.slice(eqIdx + 1).trim();
+    try { raw = decodeURIComponent(raw); } catch { return null; }
+    if (!raw.startsWith('s:')) return null;
+    const unsigned = raw.slice(2);
+    const dotIdx = unsigned.lastIndexOf('.');
+    if (dotIdx <= 0) return null;
+    const sid = unsigned.slice(0, dotIdx);
+    const providedSig = unsigned.slice(dotIdx + 1);
+    const expectedSig = createHmac('sha256', secret).update(sid).digest('base64').replace(/=+$/, '');
+    const a = Buffer.from(providedSig);
+    const b = Buffer.from(expectedSig);
+    if (a.length === b.length && timingSafeEqual(a, b)) return sid;
+    return null;
+  }
+  return null;
+}
+
 async function handleRequest(request: Request, env: WorkerEnvironment, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
     if (env.APPLICATION_SURFACE === 'public') {
@@ -76,6 +102,55 @@ async function handleRequest(request: Request, env: WorkerEnvironment, ctx: Exec
       if (url.pathname === '/api/health') {
         await client.query('SELECT 1'); await client.end();
         return Response.json({ ready: true }, { headers: { 'Cache-Control': 'no-store' } });
+      }
+      if (env.APPLICATION_SURFACE === 'management' && url.pathname.startsWith('/api/ws/staff/') && env.BRANCH_HUB) {
+        const match = url.pathname.match(/^\/api\/ws\/staff\/([a-f0-9-]{36})\/?$/i);
+        if (!match) {
+          await client.end();
+          return Response.json({ message: 'Invalid branch realtime room' }, { status: 400 });
+        }
+        const branchId = match[1];
+        const sid = verifySignedSessionCookie(
+          request.headers.get('Cookie'),
+          env.SESSION_SECRET,
+          (env as any).COOKIE_SECURE !== 'false',
+        );
+        if (!sid) {
+          await client.end();
+          return Response.json({ message: 'Unauthorized staff socket' }, { status: 401 });
+        }
+        const { rows } = await client.query<{ allowed: boolean }>(
+          `SELECT EXISTS (
+            SELECT 1 FROM sessions s
+            JOIN users u ON u.id = (s.sess->>'userId')
+            LEFT JOIN restaurants r ON r.id = $2
+            WHERE s.sid = $1
+              AND s.expire > now()
+              AND u.account_status = 'active'
+              AND (
+                u.role = 'super_admin'
+                OR r.user_id = u.id
+                OR EXISTS (
+                  SELECT 1 FROM staff_assignments sa
+                  WHERE sa.user_id = u.id AND sa.is_active = true
+                    AND (sa.restaurant_id = $2 OR (r.tenant_id IS NOT NULL AND sa.tenant_id = r.tenant_id))
+                )
+                OR EXISTS (
+                  SELECT 1 FROM tenants t
+                  WHERE r.tenant_id = t.id AND t.owner_user_id = u.id
+                )
+              )
+          ) AS allowed`,
+          [sid, branchId],
+        );
+        await client.end();
+        if (!rows[0]?.allowed) {
+          return Response.json({ message: 'Forbidden branch socket' }, { status: 403 });
+        }
+        const doUrl = new URL(request.url);
+        doUrl.searchParams.set('scope', 'staff');
+        const stub = env.BRANCH_HUB.get(env.BRANCH_HUB.idFromName(branchId));
+        return stub.fetch(new Request(doUrl.toString(), request) as any) as unknown as Response;
       }
       const menuId = guestMenuId(request);
       if (menuId) {

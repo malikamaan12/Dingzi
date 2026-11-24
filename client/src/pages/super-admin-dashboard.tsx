@@ -16,12 +16,13 @@ import {
   DialogFooter
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { 
   Building2, 
   Ban, 
   CheckCircle, 
-  Settings, QrCode, Eye, EyeOff, Plus, Phone, UtensilsCrossed, BarChart3
+  Settings, QrCode, Eye, EyeOff, Plus, Phone, UtensilsCrossed, BarChart3, Network
 } from "lucide-react";
 import type { Restaurant } from "@shared/schema";
 import PermanentMenuQR from "@/components/permanent-menu-qr";
@@ -46,7 +47,7 @@ function PortfolioAnalyticsPanel() {
       totalTickets: number;
       avgPrepMins: number;
       totalOrders: number;
-      reservationsCount: number;
+      reservations: number;
       aggregatorClicks: number;
     }[];
   }>({
@@ -93,7 +94,7 @@ function PortfolioAnalyticsPanel() {
                   <td className="py-2.5 px-3 text-right font-mono">{b.totalTickets}</td>
                   <td className="py-2.5 px-3 text-right font-mono">{b.avgPrepMins}m</td>
                   <td className="py-2.5 px-3 text-right font-mono">{b.totalOrders}</td>
-                  <td className="py-2.5 px-3 text-right font-mono">{b.reservationsCount}</td>
+                  <td className="py-2.5 px-3 text-right font-mono">{b.reservations}</td>
                   <td className="py-2.5 pl-3 text-right font-mono">{b.aggregatorClicks}</td>
                 </tr>
               ))}
@@ -179,6 +180,165 @@ function SuspendRestaurantDialog({
   );
 }
 
+function MultiBranchTenantGroupsPanel({ restaurants }: { restaurants: RestaurantWithOwner[] }) {
+  const { toast } = useToast();
+  const [name, setName] = useState('');
+  const [slug, setSlug] = useState('');
+  const [ownerUserId, setOwnerUserId] = useState('');
+
+  const tenantsQuery = useQuery<{
+    tenants: {
+      id: string;
+      name: string;
+      slug: string | null;
+      ownerUserId: string | null;
+      ownerEmail: string | null;
+      branches: { id: string; name: string; slug: string | null }[];
+    }[];
+  }>({
+    queryKey: ['/api/super-admin/tenants'],
+  });
+
+  const usersQuery = useQuery<{ id: string; email: string; role: string }[]>({
+    queryKey: ['/api/super-admin/users'],
+  });
+
+  const createTenantMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('POST', '/api/super-admin/tenants', {
+        name: name.trim(),
+        slug: slug.trim().toLowerCase() || null,
+        ownerUserId: ownerUserId || null,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      setName('');
+      setSlug('');
+      setOwnerUserId('');
+      void queryClient.invalidateQueries({ queryKey: ['/api/super-admin/tenants'] });
+      toast({ title: 'Multi-branch tenant group created' });
+    },
+    onError: (e: Error) => toast({ title: 'Could not create tenant group', description: e.message, variant: 'destructive' }),
+  });
+
+  const linkBranchMutation = useMutation({
+    mutationFn: async ({ restaurantId, tenantId }: { restaurantId: string; tenantId: string | null }) => {
+      const res = await apiRequest('PUT', `/api/super-admin/restaurants/${restaurantId}/tenant`, { tenantId });
+      return res.json();
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['/api/super-admin/tenants'] });
+      void queryClient.invalidateQueries({ queryKey: ['/api/super-admin/restaurants'] });
+      toast({ title: 'Branch tenant assignment updated' });
+    },
+    onError: (e: Error) => toast({ title: 'Could not update branch group', description: e.message, variant: 'destructive' }),
+  });
+
+  const tenantsList = tenantsQuery.data?.tenants || [];
+  const eligibleOwners = (usersQuery.data || []).filter(u => u.role === 'admin');
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Network className="w-5 h-5 text-primary" />
+          Multi-Branch Brand &amp; Tenant Groups
+        </CardTitle>
+        <CardDescription>
+          Group multiple branches under one hospitality brand so a Tenant Owner can switch branches and compare SLAs side-by-side.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <form
+          onSubmit={e => {
+            e.preventDefault();
+            createTenantMutation.mutate();
+          }}
+          className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 items-end"
+        >
+          <div>
+            <Label className="text-xs">Brand / Group Name *</Label>
+            <Input value={name} onChange={e => setName(e.target.value)} placeholder="Urban Hospitality Group" required className="h-10" />
+          </div>
+          <div>
+            <Label className="text-xs">Group Slug (optional)</Label>
+            <Input value={slug} onChange={e => setSlug(e.target.value)} placeholder="urban-group" className="h-10 font-mono" />
+          </div>
+          <div>
+            <Label className="text-xs">Tenant Owner Account</Label>
+            <select
+              className="manager-select w-full h-10 text-sm"
+              value={ownerUserId}
+              onChange={e => setOwnerUserId(e.target.value)}
+            >
+              <option value="">Assign later…</option>
+              {eligibleOwners.map(u => (
+                <option key={u.id} value={u.id}>
+                  {u.email}
+                </option>
+              ))}
+            </select>
+          </div>
+          <Button type="submit" disabled={!name.trim() || createTenantMutation.isPending} className="h-10 cursor-pointer gap-1.5">
+            <Plus className="w-4 h-4" />
+            <span>Create Brand Group</span>
+          </Button>
+        </form>
+
+        {tenantsList.length > 0 && (
+          <div className="grid md:grid-cols-2 gap-3 pt-2">
+            {tenantsList.map(t => (
+              <div key={t.id} className="rounded-xl border p-3.5 space-y-2 text-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <strong>{t.name}</strong>
+                  <Badge variant="outline">{t.branches.length} branches</Badge>
+                </div>
+                {t.ownerEmail && <p className="text-xs text-muted-foreground">Owner: {t.ownerEmail}</p>}
+                <div className="flex flex-wrap gap-1.5">
+                  {t.branches.map(b => (
+                    <Badge key={b.id} className="bg-[#EFEAFF] text-[#4B1FE0] border border-[#E5E2F2]">
+                      {b.name}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {tenantsList.length > 0 && restaurants.length > 0 && (
+          <div className="pt-2 border-t grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+            {restaurants.map(r => (
+              <div key={r.id} className="rounded-xl border p-2.5 flex items-center justify-between gap-2 text-xs">
+                <span className="font-semibold truncate">{r.name}</span>
+                <select
+                  aria-label={`Assign tenant group for ${r.name}`}
+                  className="manager-select h-8 text-xs max-w-[160px]"
+                  value={(r as any).tenantId || ''}
+                  onChange={e =>
+                    linkBranchMutation.mutate({
+                      restaurantId: r.id,
+                      tenantId: e.target.value || null,
+                    })
+                  }
+                >
+                  <option value="">Standalone Café</option>
+                  {tenantsList.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function SuperAdminDashboard() {
   const { toast } = useToast();
   const [qrRestaurant, setQrRestaurant] = useState<RestaurantWithOwner | null>(null);
@@ -186,22 +346,6 @@ export default function SuperAdminDashboard() {
 
   const { data: restaurants, isLoading } = useQuery<RestaurantWithOwner[]>({
     queryKey: ["/api/super-admin/restaurants"],
-  });
-  const { data: portfolioAnalytics } = useQuery<{
-    branches: {
-      id: string;
-      name: string;
-      slug: string | null;
-      orderingMode: string;
-      currency: string;
-      totalTickets: number;
-      avgPrepMins: number;
-      totalOrders: number;
-      reservations: number;
-      aggregatorClicks: number;
-    }[];
-  }>({
-    queryKey: ["/api/super-admin/portfolio-analytics"],
   });
 
   const activateMutation = useMutation({
@@ -254,44 +398,9 @@ export default function SuperAdminDashboard() {
 
       <div className="manager-stats">{stats.map(stat=><div className="manager-stat" key={stat.label}><stat.icon/><strong>{stat.count}</strong><span>{stat.label}</span></div>)}</div>
 
-      {portfolioAnalytics && portfolioAnalytics.branches.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Multi-Branch Hospitality Comparison</CardTitle>
-            <CardDescription>Side-by-side prep-time SLA, virtual pagers, orders, table bookings, and outbound aggregator clicks.</CardDescription>
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="border-b text-xs uppercase text-muted-foreground">
-                <tr>
-                  <th className="py-2 pr-4">Branch</th>
-                  <th className="py-2 pr-4">Mode</th>
-                  <th className="py-2 pr-4">Pagers</th>
-                  <th className="py-2 pr-4">Avg Prep</th>
-                  <th className="py-2 pr-4">Orders</th>
-                  <th className="py-2 pr-4">Reservations</th>
-                  <th className="py-2">Aggregator Clicks</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {portfolioAnalytics.branches.map(b => (
-                  <tr key={b.id}>
-                    <td className="py-2.5 pr-4 font-semibold">{b.name}</td>
-                    <td className="py-2.5 pr-4"><Badge variant="outline">{b.orderingMode.replace(/_/g, ' ')}</Badge></td>
-                    <td className="py-2.5 pr-4 font-mono">{b.totalTickets}</td>
-                    <td className="py-2.5 pr-4 font-mono">{b.avgPrepMins}m</td>
-                    <td className="py-2.5 pr-4 font-mono">{b.totalOrders}</td>
-                    <td className="py-2.5 pr-4 font-mono">{b.reservations}</td>
-                    <td className="py-2.5 font-mono">{b.aggregatorClicks}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
-      )}
-
       <PortfolioAnalyticsPanel />
+
+      <MultiBranchTenantGroupsPanel restaurants={restaurants || []} />
 
       <div className="staff-platform-grid">
         {restaurants && restaurants.length === 0 && (

@@ -5,15 +5,21 @@ import { z } from 'zod';
 import { db } from './db';
 import { storage } from './storage';
 import { isAuthenticated, isSuperAdmin } from './localAuth';
-import { getManagedCafe } from './accessControl';
+import { authUser, getAccessibleBranches, getEffectiveStaffRole, getManagedCafe } from './accessControl';
 import { rateLimit } from './httpSecurity';
 import { attachSseStream, publishRealtimeEvent } from './realtimeHub';
 import { deferRequestTask } from './workerContext';
 import { dispatchPushAlertToScopes } from './pushService';
+import { withTenantRlsTransaction } from './rlsContext';
+import bcrypt from './passwords';
 import {
   createPaymentCheckoutSession,
+  decryptGatewaySecret,
+  encryptGatewaySecret,
+  maskGatewayValue,
   signGatewayPayload,
   verifyGatewaySignature,
+  type BranchGatewaySecrets,
 } from './payments/gateways';
 import {
   customizationTotal,
@@ -25,20 +31,199 @@ import {
 import {
   aggregatorClicks,
   aggregatorLinks,
+  branchPaymentConfigs,
   diningTables,
   diningZones,
+  emailSchema,
   guestOrders,
   pagerTickets,
+  passwordSchema,
   restaurants,
   serviceBays,
+  sessions,
+  staffAssignments,
+  staffRoles,
   tableReservations,
+  tenants,
+  users,
   waitlistEntries,
+  type DiningTable,
   type OrderLineItem,
   type PublicCafe,
   type Restaurant,
+  type TableReservation,
 } from '@shared/schema';
 
 const REBUZZ_COOLDOWN_MS = 20_000;
+const DEPOSIT_HOLD_TTL_MS = 15 * 60_000;
+
+async function loadBranchGatewaySecrets(restaurantId: string): Promise<BranchGatewaySecrets | undefined> {
+  const [cfg] = await db
+    .select()
+    .from(branchPaymentConfigs)
+    .where(eq(branchPaymentConfigs.restaurantId, restaurantId));
+  if (!cfg) return undefined;
+  return {
+    skipcashKeyId: cfg.skipcashKeyId,
+    skipcashSecret: decryptGatewaySecret(cfg.skipcashSecretEnc),
+    skipcashCheckoutUrl: cfg.skipcashCheckoutUrl,
+    sadadMerchantId: cfg.sadadMerchantId,
+    sadadSecret: decryptGatewaySecret(cfg.sadadSecretEnc),
+    sadadCheckoutUrl: cfg.sadadCheckoutUrl,
+  };
+}
+
+function parseHhMmToMins(hhmm?: string | null, fallbackMins = 8 * 60): number {
+  if (!hhmm || !/^([01]\d|2[0-3]):[0-5]\d$/.test(hhmm)) return fallbackMins;
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
+
+function resolveBranchOperatingMinutes(restaurant: Pick<Restaurant, 'openTime' | 'closeTime' | 'openingHours'>): {
+  openMins: number;
+  closeMins: number;
+} {
+  let openStr = restaurant.openTime || '08:00';
+  let closeStr = restaurant.closeTime || '23:00';
+  if (
+    openStr === '08:00' &&
+    closeStr === '23:00' &&
+    restaurant.openingHours &&
+    /([01]?\d|2[0-3]):[0-5]\d/.test(restaurant.openingHours)
+  ) {
+    const matches = Array.from(restaurant.openingHours.matchAll(/\b([01]?\d|2[0-3]):([0-5]\d)\b/g));
+    if (matches.length >= 2) {
+      openStr = `${matches[0][1].padStart(2, '0')}:${matches[0][2]}`;
+      closeStr = `${matches[1][1].padStart(2, '0')}:${matches[1][2]}`;
+    }
+  }
+  const openMins = parseHhMmToMins(openStr, 8 * 60);
+  let closeMins = parseHhMmToMins(closeStr, 23 * 60);
+  if (closeMins <= openMins) {
+    // Late-night operating window wrapping past midnight (e.g. 14:00 -> 01:00)
+    closeMins += 24 * 60;
+  }
+  return { openMins, closeMins };
+}
+
+function reservationBlocksWindow(
+  res: Pick<TableReservation, 'status' | 'startAt' | 'endAt' | 'createdAt'>,
+  slotStartMs: number,
+  slotEndMs: number,
+  nowMs: number,
+): boolean {
+  if (res.status === 'pending_deposit') {
+    const ageMs = nowMs - new Date(res.createdAt).getTime();
+    if (ageMs > DEPOSIT_HOLD_TTL_MS) return false;
+  } else if (res.status !== 'confirmed' && res.status !== 'seated') {
+    return false;
+  }
+  return new Date(res.startAt).getTime() < slotEndMs && new Date(res.endAt).getTime() > slotStartMs;
+}
+
+function busyTableIdsForWindow(
+  reservations: Pick<TableReservation, 'tableId' | 'combinedTableIds' | 'status' | 'startAt' | 'endAt' | 'createdAt'>[],
+  slotStart: Date,
+  slotEnd: Date,
+): Set<string> {
+  const busy = new Set<string>();
+  const startMs = slotStart.getTime();
+  const endMs = slotEnd.getTime();
+  const nowMs = Date.now();
+  for (const r of reservations) {
+    if (!reservationBlocksWindow(r, startMs, endMs, nowMs)) continue;
+    busy.add(r.tableId);
+    for (const id of r.combinedTableIds || []) {
+      busy.add(id);
+    }
+  }
+  return busy;
+}
+
+/**
+ * Finds either the best-fit single table or the tightest combination of 2..4
+ * `isCombinable = true` tables in the same dining zone whose combined `maxCovers >= partySize`.
+ */
+function findTableAllocation(
+  allActiveTables: DiningTable[],
+  busyIds: Set<string>,
+  partySize: number,
+  zoneId?: string | null,
+): DiningTable[] | null {
+  const zoneFiltered = allActiveTables.filter(t => !busyIds.has(t.id) && (!zoneId || t.zoneId === zoneId));
+
+  // 1. Prefer a single table fitting minCovers..maxCovers with minimum wasted capacity
+  const singleFits = zoneFiltered
+    .filter(t => t.minCovers <= partySize && t.maxCovers >= partySize)
+    .sort((a, b) => a.maxCovers - b.maxCovers || a.tableCode.localeCompare(b.tableCode));
+  if (singleFits.length > 0) {
+    return [singleFits[0]];
+  }
+
+  // 2. Pair 2..4 combinable tables within the same zone
+  const byZone = new Map<string, DiningTable[]>();
+  for (const t of zoneFiltered) {
+    if (!t.isCombinable) continue;
+    const arr = byZone.get(t.zoneId) || [];
+    arr.push(t);
+    byZone.set(t.zoneId, arr);
+  }
+
+  let bestCombo: DiningTable[] | null = null;
+  let bestCovers = Infinity;
+
+  for (const zoneTables of Array.from(byZone.values())) {
+    if (zoneTables.length < 2) continue;
+    const sorted = [...zoneTables].sort((a, b) => b.maxCovers - a.maxCovers || a.tableCode.localeCompare(b.tableCode));
+    const maxTotal = sorted.reduce((s, t) => s + t.maxCovers, 0);
+    if (maxTotal < partySize) continue;
+
+    // Search combinations of size 2..Math.min(4, sorted.length)
+    const limit = Math.min(sorted.length, 10);
+    const candidates = sorted.slice(0, limit);
+
+    const search = (startIdx: number, chosen: DiningTable[], sumCovers: number) => {
+      if (sumCovers >= partySize && chosen.length >= 2) {
+        if (
+          sumCovers < bestCovers ||
+          (sumCovers === bestCovers && bestCombo && chosen.length < bestCombo.length)
+        ) {
+          bestCombo = [...chosen];
+          bestCovers = sumCovers;
+        }
+        return;
+      }
+      if (chosen.length >= 4) return;
+      for (let i = startIdx; i < candidates.length; i++) {
+        chosen.push(candidates[i]);
+        search(i + 1, chosen, sumCovers + candidates[i].maxCovers);
+        chosen.pop();
+      }
+    };
+    search(0, [], 0);
+  }
+
+  return bestCombo;
+}
+
+function countAvailableSlotAllocations(
+  allActiveTables: DiningTable[],
+  busyIds: Set<string>,
+  partySize: number,
+  zoneId?: string | null,
+): { count: number; requiresCombination: boolean } {
+  const simulatedBusy = new Set(busyIds);
+  let count = 0;
+  let usedCombo = false;
+  while (count < 20) {
+    const alloc = findTableAllocation(allActiveTables, simulatedBusy, partySize, zoneId);
+    if (!alloc) break;
+    if (alloc.length > 1) usedCombo = true;
+    for (const t of alloc) simulatedBusy.add(t.id);
+    count++;
+  }
+  return { count, requiresCombination: count > 0 && usedCombo };
+}
 
 function toPublicCafe(restaurant: Restaurant): PublicCafe {
   const {
@@ -56,6 +241,8 @@ function toPublicCafe(restaurant: Restaurant): PublicCafe {
     address,
     phone,
     openingHours,
+    openTime,
+    closeTime,
     orderingMode,
     paymentGateway,
     googleMapsReviewUrl,
@@ -82,6 +269,8 @@ function toPublicCafe(restaurant: Restaurant): PublicCafe {
     address,
     phone,
     openingHours,
+    openTime,
+    closeTime,
     orderingMode,
     paymentGateway,
     googleMapsReviewUrl,
@@ -134,11 +323,11 @@ export function mountHospitalityRoutes(app: Express) {
     try {
       const token = z.string().uuid().parse(req.params.token);
       const [ticket] = await db
-        .select({ id: pagerTickets.id })
+        .select({ id: pagerTickets.id, restaurantId: pagerTickets.restaurantId })
         .from(pagerTickets)
         .where(eq(pagerTickets.trackingToken, token));
       if (!ticket) return res.status(404).json({ message: 'Pager ticket not found' });
-      attachSseStream(res, `pager:${token}`);
+      attachSseStream(res, `pager:${token}`, ticket.restaurantId);
     } catch (e) {
       next(e);
     }
@@ -148,11 +337,11 @@ export function mountHospitalityRoutes(app: Express) {
     try {
       const token = z.string().uuid().parse(req.params.token);
       const [entry] = await db
-        .select({ id: waitlistEntries.id })
+        .select({ id: waitlistEntries.id, restaurantId: waitlistEntries.restaurantId })
         .from(waitlistEntries)
         .where(eq(waitlistEntries.trackingToken, token));
       if (!entry) return res.status(404).json({ message: 'Waitlist ticket not found' });
-      attachSseStream(res, `waitlist:${token}`);
+      attachSseStream(res, `waitlist:${token}`, entry.restaurantId);
     } catch (e) {
       next(e);
     }
@@ -471,7 +660,9 @@ export function mountHospitalityRoutes(app: Express) {
 
       if (isOnlineCheckout) {
         const origin = `${req.protocol}://${req.get('host')}`;
+        const branchSecrets = await loadBranchGatewaySecrets(restaurant.id);
         const checkout = await createPaymentCheckoutSession({
+          targetKind: 'order',
           orderId: created.order.id,
           orderNumber: created.order.orderNumber,
           restaurantId: restaurant.id,
@@ -481,6 +672,7 @@ export function mountHospitalityRoutes(app: Express) {
           customerName: payload.customerName,
           customerPhone: payload.customerPhone,
           returnOrigin: origin,
+          branchSecrets,
         });
         await db
           .update(guestOrders)
@@ -580,8 +772,9 @@ export function mountHospitalityRoutes(app: Express) {
 
       const [order] = await db.select().from(guestOrders).where(eq(guestOrders.id, orderId));
       if (!order) return res.status(404).json({ message: 'Order not found' });
+      const branchSecrets = await loadBranchGatewaySecrets(order.restaurantId);
       const canonical = `${order.id}:${body.paymentReference}:${order.total}:${order.currency}`;
-      if (!verifyGatewaySignature(body.provider, canonical, body.signatureToken)) {
+      if (!verifyGatewaySignature(body.provider, canonical, body.signatureToken, branchSecrets)) {
         return res.status(403).json({ message: 'Invalid payment signature' });
       }
       const result = await finalizePaidOrder(order.id, body.provider, body.paymentReference);
@@ -604,26 +797,83 @@ export function mountHospitalityRoutes(app: Express) {
       const signature = req.get('X-Gateway-Signature') || '';
       const body = z
         .object({
-          orderId: z.string().uuid(),
+          orderId: z.string().uuid().optional(),
+          reservationId: z.string().uuid().optional(),
           paymentReference: z.string().min(4).max(120),
           amount: z.string(),
           currency: z.string(),
           status: z.enum(['paid', 'failed']),
         })
         .strict()
+        .refine(v => Boolean(v.orderId || v.reservationId), 'Specify orderId or reservationId')
         .parse(req.body);
-      const canonical = `${body.orderId}:${body.paymentReference}:${body.amount}:${body.currency}:${body.status}`;
-      if (!verifyGatewaySignature(provider, canonical, signature)) {
+
+      const targetId = (body.orderId || body.reservationId)!;
+      let restaurantIdForSecret: string | undefined;
+      if (body.orderId) {
+        const [o] = await db
+          .select({ restaurantId: guestOrders.restaurantId })
+          .from(guestOrders)
+          .where(eq(guestOrders.id, body.orderId));
+        restaurantIdForSecret = o?.restaurantId;
+      } else if (body.reservationId) {
+        const [r] = await db
+          .select({ restaurantId: tableReservations.restaurantId })
+          .from(tableReservations)
+          .where(eq(tableReservations.id, body.reservationId));
+        restaurantIdForSecret = r?.restaurantId;
+      }
+      const branchSecrets = restaurantIdForSecret ? await loadBranchGatewaySecrets(restaurantIdForSecret) : undefined;
+      const canonical = `${targetId}:${body.paymentReference}:${body.amount}:${body.currency}:${body.status}`;
+      if (!verifyGatewaySignature(provider, canonical, signature, branchSecrets)) {
         return res.status(401).json({ message: 'Invalid webhook signature' });
       }
+
+      if (body.reservationId) {
+        const [existingRes] = await db
+          .select()
+          .from(tableReservations)
+          .where(eq(tableReservations.id, body.reservationId));
+        if (!existingRes) return res.status(404).json({ message: 'Reservation not found' });
+        if (body.status === 'failed') {
+          await db
+            .update(tableReservations)
+            .set({
+              status: 'cancelled',
+              depositStatus: 'failed',
+              paymentProvider: provider,
+              paymentReference: body.paymentReference,
+              cancelledAt: new Date(),
+            })
+            .where(eq(tableReservations.id, existingRes.id));
+          return res.json({ received: true, status: 'failed' });
+        }
+        const [confirmedRes] = await db
+          .update(tableReservations)
+          .set({
+            status: 'confirmed',
+            depositStatus: 'paid',
+            paymentProvider: provider,
+            paymentReference: body.paymentReference,
+          })
+          .where(eq(tableReservations.id, existingRes.id))
+          .returning();
+        publishRealtimeEvent([`branch:${existingRes.restaurantId}`], {
+          type: 'reservation.updated',
+          branchId: existingRes.restaurantId,
+          data: { reservation: confirmedRes },
+        });
+        return res.json({ received: true, status: 'paid', trackingToken: confirmedRes.trackingToken });
+      }
+
       if (body.status === 'failed') {
         await db
           .update(guestOrders)
           .set({ paymentStatus: 'failed', paymentReference: body.paymentReference })
-          .where(eq(guestOrders.id, body.orderId));
+          .where(eq(guestOrders.id, body.orderId!));
         return res.json({ received: true, status: 'failed' });
       }
-      const result = await finalizePaidOrder(body.orderId, provider, body.paymentReference);
+      const result = await finalizePaidOrder(body.orderId!, provider, body.paymentReference);
       if (!result.alreadyPaid) {
         publishRealtimeEvent([`branch:${result.order.restaurantId}`], {
           type: 'order.paid',
@@ -839,7 +1089,7 @@ export function mountHospitalityRoutes(app: Express) {
     }
   });
 
-  // Pillar 3: Public Table Reservation Availability & Conflict-Free Booking
+  // Pillar 3: Public Table Reservation Availability & Conflict-Free Booking (Single + Combinable Tables + Dynamic Hours + Deposit Checkout)
   app.get('/api/public/reservations/:restaurantId/availability', async (req, res, next) => {
     try {
       const restaurantId = z.string().uuid().parse(req.params.restaurantId);
@@ -852,61 +1102,77 @@ export function mountHospitalityRoutes(app: Express) {
         return res.status(404).json({ message: 'Table reservations are not enabled for this branch' });
       }
 
-      const candidateTables = (
-        await db
-          .select()
-          .from(diningTables)
-          .where(and(eq(diningTables.restaurantId, restaurantId), eq(diningTables.isActive, true)))
-      ).filter(
-        t =>
-          t.minCovers <= partySize &&
-          t.maxCovers >= partySize &&
-          (!zoneId || t.zoneId === zoneId),
-      );
+      const activeTables = await db
+        .select()
+        .from(diningTables)
+        .where(and(eq(diningTables.restaurantId, restaurantId), eq(diningTables.isActive, true)))
+        .orderBy(asc(diningTables.maxCovers), asc(diningTables.tableCode));
 
-      if (!candidateTables.length) {
-        return res.json({ slots: [], durationMins: restaurant.defaultTurnDurationMins });
+      if (!findTableAllocation(activeTables, new Set(), partySize, zoneId)) {
+        return res.json({
+          slots: [],
+          durationMins: restaurant.defaultTurnDurationMins,
+          openTime: restaurant.openTime,
+          closeTime: restaurant.closeTime,
+        });
       }
 
-      const dayStart = new Date(`${date}T00:00:00.000Z`);
-      const dayEnd = new Date(`${date}T23:59:59.999Z`);
+      const windowStart = new Date(`${date}T00:00:00.000Z`);
+      const windowEnd = new Date(windowStart.getTime() + 48 * 3_600_000);
       const existingBookings = await db
         .select()
         .from(tableReservations)
         .where(
           and(
             eq(tableReservations.restaurantId, restaurantId),
-            inArray(tableReservations.status, ['confirmed', 'seated']),
-            lt(tableReservations.startAt, dayEnd),
-            gt(tableReservations.endAt, dayStart),
+            inArray(tableReservations.status, ['confirmed', 'seated', 'pending_deposit']),
+            lt(tableReservations.startAt, windowEnd),
+            gt(tableReservations.endAt, windowStart),
           ),
         );
 
       const interval = restaurant.slotIntervalMins || 30;
       const duration = restaurant.defaultTurnDurationMins || 90;
-      const slots: { time: string; startIso: string; availableTables: number }[] = [];
+      const { openMins, closeMins } = resolveBranchOperatingMinutes(restaurant);
+      const lastSeatingMins = Math.max(openMins, closeMins - 30);
+      const baseMidnightMs = new Date(`${date}T00:00:00+03:00`).getTime();
 
-      // Offer slots from 09:00 to 22:00 UTC+3 equivalent (stored as ISO timestamps)
-      for (let mins = 9 * 60; mins <= 22 * 60; mins += interval) {
-        const hh = String(Math.floor(mins / 60)).padStart(2, '0');
-        const mm = String(mins % 60).padStart(2, '0');
-        const slotStart = new Date(`${date}T${hh}:${mm}:00+03:00`);
+      const slots: {
+        time: string;
+        startIso: string;
+        availableTables: number;
+        requiresCombination: boolean;
+      }[] = [];
+
+      for (let mins = openMins; mins <= lastSeatingMins; mins += interval) {
+        const displayMins = ((mins % (24 * 60)) + 24 * 60) % (24 * 60);
+        const hh = String(Math.floor(displayMins / 60)).padStart(2, '0');
+        const mm = String(displayMins % 60).padStart(2, '0');
+        const slotStart = new Date(baseMidnightMs + mins * 60_000);
         const slotEnd = new Date(slotStart.getTime() + duration * 60_000);
-        const freeCount = candidateTables.filter(
-          table =>
-            !existingBookings.some(
-              b =>
-                b.tableId === table.id &&
-                new Date(b.startAt).getTime() < slotEnd.getTime() &&
-                new Date(b.endAt).getTime() > slotStart.getTime(),
-            ),
-        ).length;
-        if (freeCount > 0) {
-          slots.push({ time: `${hh}:${mm}`, startIso: slotStart.toISOString(), availableTables: freeCount });
+        const busyIds = busyTableIdsForWindow(existingBookings, slotStart, slotEnd);
+        const { count, requiresCombination } = countAvailableSlotAllocations(
+          activeTables,
+          busyIds,
+          partySize,
+          zoneId,
+        );
+        if (count > 0) {
+          slots.push({
+            time: `${hh}:${mm}`,
+            startIso: slotStart.toISOString(),
+            availableTables: count,
+            requiresCombination,
+          });
         }
       }
 
-      res.json({ slots, durationMins: duration });
+      res.json({
+        slots,
+        durationMins: duration,
+        openTime: restaurant.openTime,
+        closeTime: restaurant.closeTime,
+      });
     } catch (e) {
       next(e);
     }
@@ -934,68 +1200,112 @@ export function mountHospitalityRoutes(app: Express) {
 
       const startAt = new Date(body.startIso);
       const endAt = new Date(startAt.getTime() + (restaurant.defaultTurnDurationMins || 90) * 60_000);
+      const requiresDeposit =
+        restaurant.orderingMode === 'full_online_checkout' &&
+        Number(restaurant.reservationDepositAmount || 0) > 0;
+      const depositAmt = requiresDeposit ? Number(restaurant.reservationDepositAmount).toFixed(2) : '0.00';
+      const gateway: 'skipcash' | 'sadad' = restaurant.paymentGateway === 'sadad' ? 'sadad' : 'skipcash';
 
-      // Lock candidate tables inside a single transaction so concurrent bookings can never double-book.
-      const booked = await db.transaction(async tx => {
-        const tables = await tx
-          .select()
-          .from(diningTables)
-          .where(and(eq(diningTables.restaurantId, restaurantId), eq(diningTables.isActive, true)))
-          .orderBy(asc(diningTables.maxCovers), asc(diningTables.tableCode))
-          .for('update');
+      // Lock all active branch tables inside a single transaction so concurrent single or combinable bookings never double-book.
+      const booked = await withTenantRlsTransaction(
+        { role: 'public', tenantId: restaurant.tenantId, branchId: restaurantId },
+        async tx => {
+          const tables = await tx
+            .select()
+            .from(diningTables)
+            .where(and(eq(diningTables.restaurantId, restaurantId), eq(diningTables.isActive, true)))
+            .orderBy(asc(diningTables.maxCovers), asc(diningTables.tableCode))
+            .for('update');
 
-        const eligible = tables.filter(
-          t =>
-            t.minCovers <= body.partySize &&
-            t.maxCovers >= body.partySize &&
-            (!body.zoneId || t.zoneId === body.zoneId),
-        );
-        if (!eligible.length) {
-          throw Object.assign(new Error('No table fits that party size in the selected dining zone.'), { status: 409 });
-        }
+          if (!findTableAllocation(tables, new Set(), body.partySize, body.zoneId)) {
+            throw Object.assign(
+              new Error('No table or combinable table pair fits that party size in the selected dining zone.'),
+              { status: 409 },
+            );
+          }
 
-        const overlapping = await tx
-          .select({ tableId: tableReservations.tableId })
-          .from(tableReservations)
-          .where(
-            and(
-              eq(tableReservations.restaurantId, restaurantId),
-              inArray(tableReservations.status, ['confirmed', 'seated']),
-              lt(tableReservations.startAt, endAt),
-              gt(tableReservations.endAt, startAt),
-            ),
-          );
-        const busyIds = new Set(overlapping.map(o => o.tableId));
-        const chosenTable = eligible.find(t => !busyIds.has(t.id));
-        if (!chosenTable) {
-          throw Object.assign(
-            new Error('That time slot was just taken. Please pick another available time.'),
-            { status: 409 },
-          );
-        }
+          const overlapping = await tx
+            .select({
+              tableId: tableReservations.tableId,
+              combinedTableIds: tableReservations.combinedTableIds,
+              status: tableReservations.status,
+              startAt: tableReservations.startAt,
+              endAt: tableReservations.endAt,
+              createdAt: tableReservations.createdAt,
+            })
+            .from(tableReservations)
+            .where(
+              and(
+                eq(tableReservations.restaurantId, restaurantId),
+                inArray(tableReservations.status, ['confirmed', 'seated', 'pending_deposit']),
+                lt(tableReservations.startAt, endAt),
+                gt(tableReservations.endAt, startAt),
+              ),
+            );
 
-        const depositAmt =
-          restaurant.orderingMode === 'full_online_checkout' ? String(restaurant.reservationDepositAmount || '0') : '0';
-        const [reservation] = await tx
-          .insert(tableReservations)
-          .values({
-            restaurantId,
-            zoneId: chosenTable.zoneId,
-            tableId: chosenTable.id,
-            guestName: body.guestName,
-            guestPhone: body.guestPhone,
-            partySize: body.partySize,
-            startAt,
-            endAt,
-            status: 'confirmed',
-            depositStatus: Number(depositAmt) > 0 ? 'paid_simulated' : 'none',
-            depositAmount: depositAmt,
-            notes: body.notes || null,
-          })
-          .returning();
+          const busyIds = busyTableIdsForWindow(overlapping, startAt, endAt);
+          const chosenTables = findTableAllocation(tables, busyIds, body.partySize, body.zoneId);
+          if (!chosenTables || chosenTables.length === 0) {
+            throw Object.assign(
+              new Error('That time slot was just taken. Please pick another available time.'),
+              { status: 409 },
+            );
+          }
 
-        return { reservation, table: chosenTable };
-      });
+          const primaryTable = chosenTables[0];
+          const combinedIds = chosenTables.map(t => t.id);
+
+          const [reservation] = await tx
+            .insert(tableReservations)
+            .values({
+              restaurantId,
+              zoneId: primaryTable.zoneId,
+              tableId: primaryTable.id,
+              combinedTableIds: combinedIds,
+              guestName: body.guestName,
+              guestPhone: body.guestPhone,
+              partySize: body.partySize,
+              startAt,
+              endAt,
+              status: requiresDeposit ? 'pending_deposit' : 'confirmed',
+              depositStatus: requiresDeposit ? 'pending_online' : 'none',
+              depositAmount: depositAmt,
+              paymentProvider: requiresDeposit ? gateway : null,
+              notes: body.notes || null,
+            })
+            .returning();
+
+          return { reservation, table: primaryTable, combinedTables: chosenTables };
+        },
+      );
+
+      if (requiresDeposit) {
+        const origin = `${req.protocol}://${req.get('host')}`;
+        const branchSecrets = await loadBranchGatewaySecrets(restaurantId);
+        const checkout = await createPaymentCheckoutSession({
+          targetKind: 'reservation',
+          orderId: booked.reservation.id,
+          orderNumber: `RES-${booked.reservation.id.slice(0, 8).toUpperCase()}`,
+          restaurantId,
+          amount: depositAmt,
+          currency: restaurant.currency,
+          provider: gateway,
+          customerName: body.guestName,
+          customerPhone: body.guestPhone,
+          returnOrigin: origin,
+          branchSecrets,
+        });
+        await db
+          .update(tableReservations)
+          .set({ paymentReference: checkout.paymentReference })
+          .where(eq(tableReservations.id, booked.reservation.id));
+
+        return res.status(201).json({
+          ...booked,
+          reservation: { ...booked.reservation, paymentReference: checkout.paymentReference },
+          checkout,
+        });
+      }
 
       publishRealtimeEvent([`branch:${restaurantId}`], {
         type: 'reservation.updated',
@@ -1003,7 +1313,70 @@ export function mountHospitalityRoutes(app: Express) {
         data: booked,
       });
 
-      res.status(201).json(booked);
+      res.status(201).json({ ...booked, checkout: null });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/public/reservations/:id/confirm-deposit', async (req, res, next) => {
+    try {
+      const reservationId = z.string().uuid().parse(req.params.id);
+      const body = z
+        .object({
+          provider: z.enum(['skipcash', 'sadad']),
+          paymentReference: z.string().min(4).max(120),
+          signatureToken: z.string().length(64),
+        })
+        .strict()
+        .parse(req.body);
+
+      const [existing] = await db
+        .select()
+        .from(tableReservations)
+        .where(eq(tableReservations.id, reservationId));
+      if (!existing) return res.status(404).json({ message: 'Reservation not found' });
+
+      const restaurant = await storage.getRestaurantById(existing.restaurantId);
+      if (!restaurant) return res.status(404).json({ message: 'Venue not found' });
+
+      const branchSecrets = await loadBranchGatewaySecrets(restaurant.id);
+      const canonical = `${existing.id}:${body.paymentReference}:${existing.depositAmount}:${restaurant.currency}`;
+      if (!verifyGatewaySignature(body.provider, canonical, body.signatureToken, branchSecrets)) {
+        return res.status(403).json({ message: 'Invalid deposit payment signature' });
+      }
+
+      const [confirmed] =
+        existing.status === 'confirmed' && existing.depositStatus === 'paid'
+          ? [existing]
+          : await db
+              .update(tableReservations)
+              .set({
+                status: 'confirmed',
+                depositStatus: 'paid',
+                paymentProvider: body.provider,
+                paymentReference: body.paymentReference,
+              })
+              .where(eq(tableReservations.id, existing.id))
+              .returning();
+
+      const tableIds =
+        confirmed.combinedTableIds && confirmed.combinedTableIds.length > 0
+          ? confirmed.combinedTableIds
+          : [confirmed.tableId];
+      const combinedTables = await db
+        .select()
+        .from(diningTables)
+        .where(inArray(diningTables.id, tableIds));
+      const primaryTable = combinedTables.find(t => t.id === confirmed.tableId) || combinedTables[0] || null;
+
+      publishRealtimeEvent([`branch:${existing.restaurantId}`], {
+        type: 'reservation.updated',
+        branchId: existing.restaurantId,
+        data: { reservation: confirmed, table: primaryTable, combinedTables },
+      });
+
+      res.json({ reservation: confirmed, table: primaryTable, combinedTables });
     } catch (e) {
       next(e);
     }
@@ -1014,13 +1387,43 @@ export function mountHospitalityRoutes(app: Express) {
       const token = z.string().uuid().parse(req.params.token);
       const [reservation] = await db.select().from(tableReservations).where(eq(tableReservations.trackingToken, token));
       if (!reservation) return res.status(404).json({ message: 'Reservation not found' });
-      const [restaurant, [table], [zone]] = await Promise.all([
+      const tableIds =
+        reservation.combinedTableIds && reservation.combinedTableIds.length > 0
+          ? reservation.combinedTableIds
+          : [reservation.tableId];
+      const [restaurant, combinedTables, [zone]] = await Promise.all([
         storage.getRestaurantById(reservation.restaurantId),
-        db.select().from(diningTables).where(eq(diningTables.id, reservation.tableId)),
+        db.select().from(diningTables).where(inArray(diningTables.id, tableIds)),
         reservation.zoneId ? db.select().from(diningZones).where(eq(diningZones.id, reservation.zoneId)) : Promise.resolve([]),
       ]);
       if (!restaurant) return res.status(404).json({ message: 'Venue not found' });
-      res.json({ reservation, table: table || null, zone: zone || null, restaurant: toPublicCafe(restaurant) });
+      const primaryTable = combinedTables.find(t => t.id === reservation.tableId) || combinedTables[0] || null;
+
+      let pendingDepositCheckout = null;
+      if (reservation.status === 'pending_deposit' && Number(reservation.depositAmount || 0) > 0) {
+        const origin = `${req.protocol}://${req.get('host')}`;
+        const branchSecrets = await loadBranchGatewaySecrets(restaurant.id);
+        const provider: 'skipcash' | 'sadad' =
+          reservation.paymentProvider === 'sadad' || restaurant.paymentGateway === 'sadad' ? 'sadad' : 'skipcash';
+        const ref = reservation.paymentReference || `DEP-${reservation.id.slice(0, 12).toUpperCase()}`;
+        const canonical = `${reservation.id}:${ref}:${reservation.depositAmount}:${restaurant.currency}`;
+        pendingDepositCheckout = {
+          provider,
+          paymentReference: ref,
+          checkoutMode: 'sandbox_interactive' as const,
+          checkoutUrl: `${origin}/api/public/reservations/${reservation.id}/confirm-deposit`,
+          signatureToken: signGatewayPayload(provider, canonical, branchSecrets),
+        };
+      }
+
+      res.json({
+        reservation,
+        table: primaryTable,
+        combinedTables,
+        zone: zone || null,
+        restaurant: toPublicCafe(restaurant),
+        pendingDepositCheckout,
+      });
     } catch (e) {
       next(e);
     }
@@ -1031,7 +1434,7 @@ export function mountHospitalityRoutes(app: Express) {
       const token = z.string().uuid().parse(req.params.token);
       const [existing] = await db.select().from(tableReservations).where(eq(tableReservations.trackingToken, token));
       if (!existing) return res.status(404).json({ message: 'Reservation not found' });
-      if (existing.status !== 'confirmed') {
+      if (existing.status !== 'confirmed' && existing.status !== 'pending_deposit') {
         return res.status(409).json({ message: `Reservation is already ${existing.status}.` });
       }
       const [cancelled] = await db
@@ -1918,6 +2321,648 @@ export function mountHospitalityRoutes(app: Express) {
       });
 
       res.json({ branches });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // ===== ORDERS & RECEIPTS CONSOLE + POS COUNTER ENTRY =====
+
+  app.get('/api/hospitality/orders', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const [orders, tickets] = await Promise.all([
+        db
+          .select()
+          .from(guestOrders)
+          .where(eq(guestOrders.restaurantId, cafe.id))
+          .orderBy(desc(guestOrders.createdAt))
+          .limit(250),
+        db
+          .select()
+          .from(pagerTickets)
+          .where(eq(pagerTickets.restaurantId, cafe.id))
+          .orderBy(desc(pagerTickets.queuedAt))
+          .limit(250),
+      ]);
+      res.json({ orders, tickets, currency: cafe.currency });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/hospitality/orders', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const body = z
+        .object({
+          channel: z.enum(['dine_in', 'counter_pickup', 'curbside', 'drive_thru']).default('counter_pickup'),
+          customerName: z.string().trim().min(1).max(120),
+          customerPhone: z.string().trim().max(40).optional().nullable(),
+          tableCode: z.string().trim().max(40).optional().nullable(),
+          paymentStatus: z.enum(['paid', 'pay_at_venue']).default('paid'),
+          notes: z.string().trim().max(500).optional().nullable(),
+          items: z
+            .array(
+              z
+                .object({
+                  menuItemId: z.string().uuid(),
+                  quantity: z.number().int().min(1).max(25),
+                  variantId: z.string().uuid().optional().nullable(),
+                  notes: z.string().trim().max(240).optional(),
+                })
+                .strict(),
+            )
+            .min(1)
+            .max(40),
+        })
+        .strict()
+        .parse(req.body);
+
+      const [allItems, allVariants] = await Promise.all([
+        storage.getMenuItemsByRestaurantId(cafe.id),
+        storage.getPriceVariantsByRestaurantId(cafe.id),
+      ]);
+      const itemMap = new Map(allItems.map(i => [i.id, i]));
+
+      let totalCents = 0;
+      let maxPrepMins = 6;
+      const computedLines: OrderLineItem[] = [];
+
+      for (const entry of body.items) {
+        const menuItem = itemMap.get(entry.menuItemId);
+        if (!menuItem) {
+          return res.status(400).json({ message: 'Selected item does not belong to this branch.' });
+        }
+        const itemVariants = allVariants.filter(v => v.menuItemId === menuItem.id);
+        const chosenVariant = menuItem.hasMultiplePricing
+          ? itemVariants.find(v => v.id === entry.variantId) || itemVariants[0]
+          : undefined;
+        const unitTotal = customizationTotal(
+          chosenVariant ? chosenVariant.price : menuItem.price,
+          chosenVariant ? chosenVariant.discount : menuItem.discount,
+          [],
+        );
+        const unitCents = Math.round(Number(unitTotal) * 100);
+        const lineCents = unitCents * entry.quantity;
+        totalCents += lineCents;
+        maxPrepMins = Math.max(maxPrepMins, menuItem.prepTimeMins || 8);
+
+        computedLines.push({
+          menuItemId: menuItem.id,
+          name: menuItem.name,
+          quantity: entry.quantity,
+          variantId: chosenVariant?.id || null,
+          variantLabel: chosenVariant?.label || null,
+          modifiers: [],
+          unitTotal,
+          lineTotal: (lineCents / 100).toFixed(2),
+          notes: entry.notes,
+        });
+      }
+
+      const totalFormatted = (totalCents / 100).toFixed(2);
+      const ticketDate = branchLocalDate(cafe.timezone);
+
+      const created = await withTenantRlsTransaction(
+        { userId: req.user.id, role: req.effectiveStaffRole, tenantId: cafe.tenantId, branchId: cafe.id },
+        async tx => {
+          const { seq, code } = await nextDailyPagerCode(tx as any, cafe.id, ticketDate);
+          const orderNumber = `POS-${ticketDate.slice(5).replace('-', '')}-${String(seq).padStart(3, '0')}`;
+          const [order] = await tx
+            .insert(guestOrders)
+            .values({
+              restaurantId: cafe.id,
+              orderNumber,
+              channel: body.channel,
+              orderingMode: cafe.orderingMode,
+              paymentStatus: body.paymentStatus,
+              paymentProvider: 'venue',
+              paymentIdempotencyKey: randomUUID(),
+              customerName: body.customerName,
+              customerPhone: body.customerPhone || null,
+              tableCode: body.tableCode || null,
+              notes: body.notes || null,
+              currency: cafe.currency,
+              subtotal: totalFormatted,
+              total: totalFormatted,
+              lineItems: computedLines,
+              paidAt: body.paymentStatus === 'paid' ? new Date() : null,
+            })
+            .returning();
+
+          const [pager] = await tx
+            .insert(pagerTickets)
+            .values({
+              restaurantId: cafe.id,
+              orderId: order.id,
+              ticketCode: code,
+              ticketDate,
+              dailySeq: seq,
+              source: 'pos_invoice',
+              status: 'waiting',
+              customerName: body.customerName,
+              notes: body.notes || null,
+              estimatedPrepMins: maxPrepMins,
+            })
+            .returning();
+
+          return { order, pager };
+        },
+      );
+
+      publishRealtimeEvent([`branch:${cafe.id}`, `pager:${created.pager.trackingToken}`], {
+        type: 'order.created',
+        branchId: cafe.id,
+        data: created,
+      });
+
+      res.status(201).json(created);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/hospitality/orders/:id/payment-status', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const orderId = z.string().uuid().parse(req.params.id);
+      const { paymentStatus } = z
+        .object({ paymentStatus: z.enum(['paid', 'pay_at_venue', 'refunded', 'failed']) })
+        .strict()
+        .parse(req.body);
+
+      const [updated] = await db
+        .update(guestOrders)
+        .set({
+          paymentStatus,
+          ...(paymentStatus === 'paid' ? { paidAt: new Date() } : {}),
+        })
+        .where(and(eq(guestOrders.id, orderId), eq(guestOrders.restaurantId, cafe.id)))
+        .returning();
+      if (!updated) return res.status(404).json({ message: 'Order not found in this branch' });
+
+      publishRealtimeEvent([`branch:${cafe.id}`], {
+        type: 'order.paid',
+        branchId: cafe.id,
+        data: { order: updated },
+      });
+
+      res.json({ order: updated });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // ===== ISOLATED ENCRYPTED MERCHANT PAYMENT CREDENTIALS VAULT =====
+
+  app.get('/api/hospitality/payment-config', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const [cfg] = await db
+        .select()
+        .from(branchPaymentConfigs)
+        .where(eq(branchPaymentConfigs.restaurantId, cafe.id));
+
+      res.json({
+        skipcashKeyMasked: maskGatewayValue(cfg?.skipcashKeyId),
+        hasSkipcashSecret: Boolean(cfg?.skipcashSecretEnc),
+        skipcashCheckoutUrl: cfg?.skipcashCheckoutUrl || '',
+        sadadMerchantMasked: maskGatewayValue(cfg?.sadadMerchantId),
+        hasSadadSecret: Boolean(cfg?.sadadSecretEnc),
+        sadadCheckoutUrl: cfg?.sadadCheckoutUrl || '',
+        updatedAt: cfg?.updatedAt || null,
+      });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.put('/api/hospitality/payment-config', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const body = z
+        .object({
+          skipcashKeyId: z.string().trim().max(160).optional().nullable(),
+          skipcashSecret: z.string().trim().max(240).optional().nullable(),
+          skipcashCheckoutUrl: z.string().trim().url().max(400).or(z.literal('')).optional().nullable(),
+          sadadMerchantId: z.string().trim().max(160).optional().nullable(),
+          sadadSecret: z.string().trim().max(240).optional().nullable(),
+          sadadCheckoutUrl: z.string().trim().url().max(400).or(z.literal('')).optional().nullable(),
+        })
+        .strict()
+        .parse(req.body);
+
+      const [existing] = await db
+        .select()
+        .from(branchPaymentConfigs)
+        .where(eq(branchPaymentConfigs.restaurantId, cafe.id));
+
+      const values = {
+        restaurantId: cafe.id,
+        skipcashKeyId:
+          body.skipcashKeyId !== undefined ? body.skipcashKeyId || null : existing?.skipcashKeyId || null,
+        skipcashSecretEnc:
+          body.skipcashSecret && body.skipcashSecret.length > 0
+            ? encryptGatewaySecret(body.skipcashSecret)
+            : body.skipcashSecret === ''
+              ? null
+              : existing?.skipcashSecretEnc || null,
+        skipcashCheckoutUrl:
+          body.skipcashCheckoutUrl !== undefined
+            ? body.skipcashCheckoutUrl || null
+            : existing?.skipcashCheckoutUrl || null,
+        sadadMerchantId:
+          body.sadadMerchantId !== undefined ? body.sadadMerchantId || null : existing?.sadadMerchantId || null,
+        sadadSecretEnc:
+          body.sadadSecret && body.sadadSecret.length > 0
+            ? encryptGatewaySecret(body.sadadSecret)
+            : body.sadadSecret === ''
+              ? null
+              : existing?.sadadSecretEnc || null,
+        sadadCheckoutUrl:
+          body.sadadCheckoutUrl !== undefined ? body.sadadCheckoutUrl || null : existing?.sadadCheckoutUrl || null,
+        updatedAt: new Date(),
+      };
+
+      await db
+        .insert(branchPaymentConfigs)
+        .values(values)
+        .onConflictDoUpdate({ target: branchPaymentConfigs.restaurantId, set: values });
+
+      res.json({
+        skipcashKeyMasked: maskGatewayValue(values.skipcashKeyId),
+        hasSkipcashSecret: Boolean(values.skipcashSecretEnc),
+        skipcashCheckoutUrl: values.skipcashCheckoutUrl || '',
+        sadadMerchantMasked: maskGatewayValue(values.sadadMerchantId),
+        hasSadadSecret: Boolean(values.sadadSecretEnc),
+        sadadCheckoutUrl: values.sadadCheckoutUrl || '',
+        updatedAt: values.updatedAt,
+      });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // ===== STAFF RBAC TEAM CONSOLE & MULTI-BRANCH TENANT OWNER CONTROLS =====
+
+  app.get('/api/hospitality/team', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const staffRole = await getEffectiveStaffRole(req);
+      const accessibleBranches = await getAccessibleBranches(req);
+
+      const assignments = await db
+        .select({
+          id: staffAssignments.id,
+          userId: staffAssignments.userId,
+          restaurantId: staffAssignments.restaurantId,
+          tenantId: staffAssignments.tenantId,
+          staffRole: staffAssignments.staffRole,
+          isActive: staffAssignments.isActive,
+          createdAt: staffAssignments.createdAt,
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          accountStatus: users.accountStatus,
+        })
+        .from(staffAssignments)
+        .innerJoin(users, eq(users.id, staffAssignments.userId))
+        .where(
+          cafe.tenantId
+            ? sql`(${staffAssignments.restaurantId} = ${cafe.id} OR ${staffAssignments.tenantId} = ${cafe.tenantId})`
+            : eq(staffAssignments.restaurantId, cafe.id),
+        )
+        .orderBy(asc(staffAssignments.createdAt));
+
+      const [primaryOwner] = await db
+        .select({
+          id: users.id,
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          accountStatus: users.accountStatus,
+        })
+        .from(users)
+        .where(eq(users.id, cafe.userId));
+
+      res.json({
+        primaryManager: primaryOwner || null,
+        assignments: assignments.filter(a => a.isActive),
+        callerRole: staffRole,
+        accessibleBranches,
+      });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/hospitality/team', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const callerRole = await getEffectiveStaffRole(req);
+
+      const body = z
+        .object({
+          email: emailSchema,
+          password: passwordSchema.optional(),
+          firstName: z.string().trim().min(1).max(100),
+          lastName: z.string().trim().min(1).max(100),
+          staffRole: z.enum(staffRoles),
+          applyTenantWide: z.boolean().default(false),
+        })
+        .strict()
+        .parse(req.body);
+
+      if (body.staffRole === 'tenant_owner' && callerRole !== 'tenant_owner' && callerRole !== 'super_admin') {
+        return res.status(403).json({ message: 'Only a Tenant Owner or Super Admin can assign Tenant Owner access.' });
+      }
+      if ((body.staffRole === 'tenant_owner' || body.applyTenantWide) && !cafe.tenantId) {
+        return res.status(400).json({ message: 'Link this branch to a Multi-Branch Tenant Group first.' });
+      }
+
+      const created = await db.transaction(async tx => {
+        let [user] = await tx
+          .select()
+          .from(users)
+          .where(sql`lower(${users.email}) = ${body.email}`)
+          .for('update');
+
+        if (!user) {
+          if (!body.password) {
+            throw Object.assign(new Error('Provide an initial password (10+ characters) for a new staff account.'), {
+              status: 400,
+            });
+          }
+          const hashedPassword = await bcrypt.hash(body.password, 12);
+          [user] = await tx
+            .insert(users)
+            .values({
+              email: body.email,
+              password: hashedPassword,
+              firstName: body.firstName,
+              lastName: body.lastName,
+              role: 'admin',
+            })
+            .returning();
+        } else if (user.role === 'super_admin') {
+          throw Object.assign(new Error('Super admin accounts already have full workspace elevation.'), { status: 409 });
+        } else if (user.accountStatus !== 'active') {
+          throw Object.assign(new Error('This staff account is frozen or deleted.'), { status: 409 });
+        }
+
+        const targetTenantId = body.staffRole === 'tenant_owner' || body.applyTenantWide ? cafe.tenantId : null;
+        const targetRestaurantId = targetTenantId ? null : cafe.id;
+
+        const [assignment] = await tx
+          .insert(staffAssignments)
+          .values({
+            userId: user.id,
+            restaurantId: targetRestaurantId,
+            tenantId: targetTenantId,
+            staffRole: body.staffRole,
+            isActive: true,
+          })
+          .returning();
+
+        return {
+          assignment,
+          user: {
+            id: user.id,
+            email: user.email,
+            firstName: user.firstName,
+            lastName: user.lastName,
+          },
+        };
+      });
+
+      res.status(201).json(created);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.delete('/api/hospitality/team/:assignmentId', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const callerRole = await getEffectiveStaffRole(req);
+      const assignmentId = z.string().uuid().parse(req.params.assignmentId);
+
+      const [target] = await db
+        .select()
+        .from(staffAssignments)
+        .where(eq(staffAssignments.id, assignmentId));
+      if (!target) return res.status(404).json({ message: 'Staff assignment not found' });
+
+      if (
+        target.restaurantId !== cafe.id &&
+        (!cafe.tenantId || target.tenantId !== cafe.tenantId)
+      ) {
+        return res.status(403).json({ message: 'Assignment belongs to another branch' });
+      }
+      if (target.staffRole === 'tenant_owner' && callerRole !== 'tenant_owner' && callerRole !== 'super_admin') {
+        return res.status(403).json({ message: 'Only a Tenant Owner or Super Admin can revoke Tenant Owner access.' });
+      }
+
+      await db.transaction(async tx => {
+        await tx
+          .update(staffAssignments)
+          .set({ isActive: false })
+          .where(eq(staffAssignments.id, assignmentId));
+        await tx.delete(sessions).where(sql`${sessions.sess}->>'userId' = ${target.userId}`);
+      });
+
+      res.json({ success: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Multi-Branch Switcher for Tenant Owners & Multi-Branch Staff
+  app.post('/api/hospitality/switch-branch', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const { restaurantId } = z.object({ restaurantId: z.string().uuid() }).strict().parse(req.body);
+      const accessible = await getAccessibleBranches(req);
+      if (!accessible.some(b => b.id === restaurantId)) {
+        return res.status(403).json({ message: 'You do not have access to that branch.' });
+      }
+      req.session.cafeId = restaurantId;
+      await new Promise<void>((resolve, reject) => req.session.save((err: Error) => (err ? reject(err) : resolve())));
+      req.managedCafeResolved = false;
+      res.json(await authUser(req));
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Scoped Multi-Branch Comparison Analytics for Tenant Owners (PRD §3)
+  app.get('/api/hospitality/tenant-analytics', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const accessible = await getAccessibleBranches(req);
+      const branchIds = accessible.map(b => b.id);
+      if (!branchIds.length) return res.json({ branches: [] });
+
+      const [cafes, tickets, orders, reservations, clicks] = await Promise.all([
+        db.select().from(restaurants).where(inArray(restaurants.id, branchIds)).orderBy(asc(restaurants.name)),
+        db.select().from(pagerTickets).where(inArray(pagerTickets.restaurantId, branchIds)),
+        db.select().from(guestOrders).where(inArray(guestOrders.restaurantId, branchIds)),
+        db.select().from(tableReservations).where(inArray(tableReservations.restaurantId, branchIds)),
+        db.select().from(aggregatorClicks).where(inArray(aggregatorClicks.restaurantId, branchIds)),
+      ]);
+
+      const branches = cafes.map(cafe => {
+        const branchTickets = tickets.filter(t => t.restaurantId === cafe.id);
+        const readyTickets = branchTickets.filter(t => t.readyAt && t.queuedAt);
+        const avgPrepMins = readyTickets.length
+          ? Number(
+              (
+                readyTickets.reduce(
+                  (sum, t) => sum + Math.max(0, (new Date(t.readyAt!).getTime() - new Date(t.queuedAt).getTime()) / 60_000),
+                  0,
+                ) / readyTickets.length
+              ).toFixed(1),
+            )
+          : 0;
+        const hourlyCounts = Array.from({ length: 24 }, () => 0);
+        for (const t of branchTickets) hourlyCounts[new Date(t.queuedAt).getHours()]++;
+        let peakHour = 0;
+        for (let h = 1; h < 24; h++) if (hourlyCounts[h] > hourlyCounts[peakHour]) peakHour = h;
+
+        const branchOrders = orders.filter(o => o.restaurantId === cafe.id);
+        const revenue = branchOrders
+          .filter(o => o.paymentStatus === 'paid' || o.paymentStatus === 'pay_at_venue')
+          .reduce((sum, o) => sum + Number(o.total), 0)
+          .toFixed(2);
+        const branchRes = reservations.filter(r => r.restaurantId === cafe.id && r.status !== 'cancelled');
+        const branchClicks = clicks.filter(c => c.restaurantId === cafe.id);
+        return {
+          id: cafe.id,
+          name: cafe.name,
+          slug: cafe.slug,
+          orderingMode: cafe.orderingMode,
+          currency: cafe.currency,
+          totalTickets: branchTickets.length,
+          avgPrepMins,
+          peakHour: branchTickets.length > 0 ? `${String(peakHour).padStart(2, '0')}:00` : '—',
+          totalOrders: branchOrders.length,
+          revenue,
+          reservations: branchRes.length,
+          aggregatorClicks: branchClicks.length,
+        };
+      });
+
+      res.json({ branches });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Super-Admin Multi-Branch Brand / Tenant Group Provisioning
+  app.get('/api/super-admin/tenants', isSuperAdmin, async (_req, res, next) => {
+    try {
+      const [allTenants, allCafes, allUsers] = await Promise.all([
+        db.select().from(tenants).orderBy(asc(tenants.name)),
+        storage.getAllRestaurants(),
+        storage.getAllUsers(),
+      ]);
+      const userMap = new Map(allUsers.map(u => [u.id, u]));
+      res.json({
+        tenants: allTenants.map(t => {
+          const owner = t.ownerUserId ? userMap.get(t.ownerUserId) : undefined;
+          return {
+            ...t,
+            ownerEmail: owner?.email || null,
+            branches: allCafes.filter(c => c.tenantId === t.id).map(c => ({ id: c.id, name: c.name, slug: c.slug })),
+          };
+        }),
+      });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/super-admin/tenants', isSuperAdmin, async (req, res, next) => {
+    try {
+      const body = z
+        .object({
+          name: z.string().trim().min(1).max(150),
+          slug: z
+            .string()
+            .trim()
+            .toLowerCase()
+            .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)
+            .max(120)
+            .optional()
+            .nullable(),
+          ownerUserId: z.string().uuid().optional().nullable(),
+          restaurantIds: z.array(z.string().uuid()).max(50).optional(),
+        })
+        .strict()
+        .parse(req.body);
+
+      const created = await db.transaction(async tx => {
+        const [tenant] = await tx
+          .insert(tenants)
+          .values({
+            name: body.name,
+            slug: body.slug || null,
+            ownerUserId: body.ownerUserId || null,
+          })
+          .returning();
+
+        if (body.restaurantIds?.length) {
+          await tx
+            .update(restaurants)
+            .set({ tenantId: tenant.id, updatedAt: new Date() })
+            .where(inArray(restaurants.id, body.restaurantIds));
+        }
+
+        if (body.ownerUserId) {
+          await tx.insert(staffAssignments).values({
+            userId: body.ownerUserId,
+            tenantId: tenant.id,
+            staffRole: 'tenant_owner',
+            isActive: true,
+          });
+        }
+
+        return tenant;
+      });
+
+      res.status(201).json({ tenant: created });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.put('/api/super-admin/restaurants/:id/tenant', isSuperAdmin, async (req, res, next) => {
+    try {
+      const restaurantId = z.string().uuid().parse(req.params.id);
+      const { tenantId } = z
+        .object({ tenantId: z.string().uuid().nullable() })
+        .strict()
+        .parse(req.body);
+
+      if (tenantId) {
+        const [t] = await db.select().from(tenants).where(eq(tenants.id, tenantId));
+        if (!t) return res.status(404).json({ message: 'Tenant group not found' });
+      }
+
+      const [updated] = await db
+        .update(restaurants)
+        .set({ tenantId, updatedAt: new Date() })
+        .where(eq(restaurants.id, restaurantId))
+        .returning();
+      if (!updated) return res.status(404).json({ message: 'Restaurant not found' });
+      res.json({ restaurant: updated });
     } catch (e) {
       next(e);
     }

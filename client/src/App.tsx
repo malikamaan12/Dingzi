@@ -46,6 +46,9 @@ const AdminDriveThru = lazy(() => import('@/pages/admin-drive-thru'));
 const AdminDelivery = lazy(() => import('@/pages/admin-delivery'));
 const AdminAnalytics = lazy(() => import('@/pages/admin-analytics'));
 const AdminMobileApp = lazy(() => import('@/pages/admin-mobile-app'));
+const AdminOrders = lazy(() => import('@/pages/admin-orders'));
+const AdminTeam = lazy(() => import('@/pages/admin-team'));
+import { apiRequest } from '@/lib/queryClient';
 import { MobileStaffBottomNav } from '@/components/mobile/MobileStaffBottomNav';
 const VirtualPagerPage = lazy(() => import('@/pages/virtual-pager'));
 const GuestWaitlistPage = lazy(() => import('@/pages/guest-waitlist'));
@@ -95,10 +98,40 @@ function AdminLayout({ children }: { children: React.ReactNode }) {
     <div className="manager-root flex h-screen w-full bg-background text-foreground">
       <AppSidebar user={user} />
       <div className="flex flex-col flex-1 overflow-hidden">
-        <header className="manager-header flex items-center justify-between p-4 border-b bg-background">
+        <header className="manager-header flex items-center justify-between gap-2 p-4 border-b bg-background">
           <SidebarTrigger data-testid="button-sidebar-toggle" />
-          <div className="manager-cafe-title"><strong>{cafe?.name || user?.cafeContext?.name || (user?.role === 'super_admin' ? 'Platform manager' : 'Café manager')}</strong><small>{user?.email} · {user?.role === 'super_admin' ? 'Super admin' : 'Café manager'}</small></div>
-          <span className="staff-access-label"><span/>{user?.role === 'super_admin' ? 'Platform access' : 'Café workspace'}</span>
+          <div className="manager-cafe-title min-w-0">
+            <strong>{cafe?.name || user?.cafeContext?.name || (user?.role === 'super_admin' ? 'Platform manager' : 'Café manager')}</strong>
+            <small>{user?.email} · {user?.role === 'super_admin' ? 'Super admin' : (user?.staffRole || 'branch_manager').replace('_', ' ')}</small>
+          </div>
+          {(user?.accessibleBranches?.length || 0) > 1 && (
+            <select
+              aria-label="Switch active branch workspace"
+              data-testid="select-branch-switcher"
+              value={cafe?.id || user?.cafeContext?.id || ''}
+              onChange={async e => {
+                const nextId = e.target.value;
+                if (!nextId) return;
+                try {
+                  const res = await apiRequest('POST', '/api/hospitality/switch-branch', { restaurantId: nextId });
+                  const updated = await res.json();
+                  queryClient.setQueryData(['/api/auth/user'], updated);
+                  void queryClient.invalidateQueries();
+                  toast({ title: `Switched to ${updated.cafeContext?.name || 'branch'}` });
+                } catch (err) {
+                  toast({ title: 'Could not switch branch', description: (err as Error).message, variant: 'destructive' });
+                }
+              }}
+              className="manager-select h-9 text-xs font-semibold max-w-[210px]"
+            >
+              {(user?.accessibleBranches || []).map(b => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </select>
+          )}
+          <span className="staff-access-label hidden sm:inline-flex"><span/>{user?.role === 'super_admin' ? 'Platform access' : user?.tenantContext ? user.tenantContext.name : 'Café workspace'}</span>
           <StaffThemeToggle/>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -224,9 +257,13 @@ function StaffRouter() {
           <Redirect to={isSuperAdmin ? '/super-admin' : '/admin'}/>
         </Route>
         <Route path="/admin">
-          <AdminLayout>
-            <AdminDashboard />
-          </AdminLayout>
+          {user?.staffRole === 'kds_barista' || user?.staffRole === 'host_cashier' ? (
+            <Redirect to="/admin/kds" />
+          ) : (
+            <AdminLayout>
+              <AdminDashboard />
+            </AdminLayout>
+          )}
         </Route>
         <Route path="/admin/restaurant">
           <AdminLayout>
@@ -246,10 +283,12 @@ function StaffRouter() {
         <Route path="/admin/settings"><AdminLayout><CafeSettings /></AdminLayout></Route>
         <Route path="/admin/library"><AdminLayout><MenuLibrary /></AdminLayout></Route>
         <Route path="/admin/kds"><AdminLayout><AdminKds /></AdminLayout></Route>
+        <Route path="/admin/orders"><AdminLayout><AdminOrders /></AdminLayout></Route>
         <Route path="/admin/tables"><AdminLayout><AdminTables /></AdminLayout></Route>
         <Route path="/admin/drive-thru"><AdminLayout><AdminDriveThru /></AdminLayout></Route>
         <Route path="/admin/delivery"><AdminLayout><AdminDelivery /></AdminLayout></Route>
         <Route path="/admin/analytics"><AdminLayout><AdminAnalytics /></AdminLayout></Route>
+        <Route path="/admin/team"><AdminLayout><AdminTeam /></AdminLayout></Route>
         <Route path="/admin/mobile-app"><AdminLayout><AdminMobileApp /></AdminLayout></Route>
         <Route path="/admin/qr-code">
           <AdminLayout>

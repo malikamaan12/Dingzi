@@ -79,6 +79,16 @@ export default function GuestHospitalityBar({
   const [resPhone, setResPhone] = useState('');
   const [resNotes, setResNotes] = useState('');
   const [resError, setResError] = useState('');
+  const [pendingDepositGateway, setPendingDepositGateway] = useState<{
+    reservationId: string;
+    trackingToken: string;
+    tableLabel: string;
+    startAt: string;
+    amount: string;
+    provider: 'skipcash' | 'sadad';
+    paymentReference: string;
+    signatureToken: string;
+  } | null>(null);
 
   // Waitlist state
   const [wlName, setWlName] = useState('');
@@ -154,7 +164,9 @@ export default function GuestHospitalityBar({
   const zones = config?.zones || [];
   const bays = config?.bays || [];
 
-  const availabilityQuery = useQuery<{ slots: { time: string; startIso: string; availableTables: number }[] }>({
+  const availabilityQuery = useQuery<{
+    slots: { time: string; startIso: string; availableTables: number; requiresCombination?: boolean }[];
+  }>({
     enabled: reserveOpen && Boolean(resDate),
     queryKey: ['/api/public/reservations/availability', restaurant.id, resDate, resParty, resZone],
     queryFn: async () => {
@@ -203,16 +215,74 @@ export default function GuestHospitalityBar({
       return res.json();
     },
     onSuccess: data => {
+      const tableCodes =
+        data.combinedTables && data.combinedTables.length > 1
+          ? `Tables ${data.combinedTables.map((t: any) => t.tableCode).join('+')}`
+          : data.table?.tableCode
+            ? `Table ${data.table.tableCode}`
+            : 'Reserved';
+
+      if (data.checkout?.checkoutMode === 'sandbox_interactive') {
+        setPendingDepositGateway({
+          reservationId: data.reservation.id,
+          trackingToken: data.reservation.trackingToken,
+          tableLabel: tableCodes,
+          startAt: data.reservation.startAt,
+          amount: String(data.reservation.depositAmount),
+          provider: data.checkout.provider,
+          paymentReference: data.checkout.paymentReference,
+          signatureToken: data.checkout.signatureToken,
+        });
+        return;
+      }
+      if (data.checkout?.checkoutMode === 'hosted_redirect') {
+        window.location.href = data.checkout.checkoutUrl;
+        return;
+      }
+
       saveGuestPass({
         kind: 'booking',
         trackingToken: data.reservation.trackingToken,
-        code: data.table?.tableCode ? `Table ${data.table.tableCode}` : 'Reserved',
+        code: tableCodes,
         restaurantId: restaurant.id,
         restaurantName: restaurant.name,
         startAt: data.reservation.startAt,
       });
       setReserveOpen(false);
       navigate(`/booking/${data.reservation.trackingToken}`);
+    },
+    onError: (e: Error) => setResError(e.message),
+  });
+
+  const confirmDepositMutation = useMutation({
+    mutationFn: async () => {
+      if (!pendingDepositGateway) return;
+      const res = await apiRequest(
+        'POST',
+        `/api/public/reservations/${pendingDepositGateway.reservationId}/confirm-deposit`,
+        {
+          provider: pendingDepositGateway.provider,
+          paymentReference: pendingDepositGateway.paymentReference,
+          signatureToken: pendingDepositGateway.signatureToken,
+        },
+      );
+      return res.json();
+    },
+    onSuccess: data => {
+      const passInfo = pendingDepositGateway;
+      setPendingDepositGateway(null);
+      setReserveOpen(false);
+      if (data?.reservation?.trackingToken) {
+        saveGuestPass({
+          kind: 'booking',
+          trackingToken: data.reservation.trackingToken,
+          code: passInfo?.tableLabel || 'Reserved',
+          restaurantId: restaurant.id,
+          restaurantName: restaurant.name,
+          startAt: data.reservation.startAt,
+        });
+        navigate(`/booking/${data.reservation.trackingToken}`);
+      }
     },
     onError: (e: Error) => setResError(e.message),
   });
@@ -518,7 +588,7 @@ export default function GuestHospitalityBar({
       </Dialog>
 
       {/* 2. Advance Table Reservation Dialog */}
-      <Dialog open={reserveOpen} onOpenChange={setReserveOpen}>
+      <Dialog open={reserveOpen} onOpenChange={open => { setReserveOpen(open); if (!open) setPendingDepositGateway(null); }}>
         <DialogContent dir={dir} lang={language} className="max-w-md rounded-3xl max-h-[90vh] overflow-y-auto">
           <DialogTitle className="flex items-center gap-2">
             <CalendarDays className="w-5 h-5 text-primary" />
@@ -527,6 +597,37 @@ export default function GuestHospitalityBar({
           <DialogDescription>
             Conflict-free instant table allocation for {label(restaurant.name)}.
           </DialogDescription>
+          {pendingDepositGateway ? (
+            <div className="mt-3 rounded-2xl border-2 border-primary/30 bg-card p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold uppercase px-2.5 py-1 rounded-lg bg-[#EFEAFF] text-[#4B1FE0]">
+                  {pendingDepositGateway.provider.toUpperCase()} Deposit Hold
+                </span>
+                <span className="font-mono text-xs text-muted-foreground">{pendingDepositGateway.tableLabel}</span>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Refundable / deductible table deposit</p>
+                <p className="text-2xl font-black mt-1">
+                  {pendingDepositGateway.amount} {restaurant.currency}
+                </p>
+              </div>
+              {resError && <p className="text-xs text-destructive font-medium">{resError}</p>}
+              <Button
+                type="button"
+                data-testid="button-confirm-reservation-deposit"
+                onClick={() => confirmDepositMutation.mutate()}
+                disabled={confirmDepositMutation.isPending}
+                className="w-full min-h-12 cursor-pointer gap-2"
+              >
+                <CreditCard className="w-4 h-4" />
+                <span>
+                  {confirmDepositMutation.isPending
+                    ? 'Verifying Deposit…'
+                    : `Authorize ${pendingDepositGateway.amount} ${restaurant.currency} Deposit`}
+                </span>
+              </Button>
+            </div>
+          ) : (
           <form
             onSubmit={e => {
               e.preventDefault();
@@ -580,7 +681,10 @@ export default function GuestHospitalityBar({
                           : 'bg-[#F6F5FC] border-[#E5E2F2] text-[#17132E] hover:bg-[#EFEAFF] hover:text-[#4B1FE0]'
                       }`}
                     >
-                      {slot.time}
+                      <span className="block">{slot.time}</span>
+                      {slot.requiresCombination && (
+                        <span className="block text-[9px] uppercase tracking-tight text-[#4B1FE0]">Joined</span>
+                      )}
                     </button>
                   ))
                 )}
@@ -614,6 +718,7 @@ export default function GuestHospitalityBar({
               {reserveMutation.isPending ? 'Booking…' : t('Confirm Reservation')}
             </Button>
           </form>
+          )}
         </DialogContent>
       </Dialog>
 

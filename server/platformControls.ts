@@ -10,7 +10,7 @@ import { rateLimit } from './httpSecurity';
 import { categories, menuItems, restaurants, sessions, users, insertCategorySchema, insertMenuItemSchema, cafeProfileSchema, passwordSchema, emailSchema } from '@shared/schema';
 
 const profileSchema = cafeProfileSchema.partial().extend({
-  name: z.string().trim().min(1).max(150).optional(), theme: z.enum(['e3','forest','terracotta','ocean','plum']).optional(),
+  name: z.string().trim().min(1).max(150).optional(), theme: z.enum(['dingzi','e3','forest','terracotta','ocean','plum']).optional(),
   currency: z.enum(['SAR','QAR','INR','AED','USD','EUR','GBP']).optional(),
   timezone: z.string().refine(v => { try { new Intl.DateTimeFormat('en', { timeZone: v }); return true; } catch { return false; } }).optional(),
   status: z.enum(['active','suspended','pending']).optional(), hidden: z.boolean().optional(),

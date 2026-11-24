@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   Clock,
   Coffee,
+  Download,
   ExternalLink,
   Gamepad2,
   MapPin,
@@ -464,7 +465,7 @@ function VirtualPagerContent() {
 
         {/* Order Summary */}
         {data.order && (
-          <section className="rounded-2xl border bg-card p-4 space-y-2 text-sm">
+          <section className="rounded-2xl border bg-card p-4 space-y-2.5 text-sm">
             <div className="flex items-center justify-between font-semibold">
               <span>{data.order.orderNumber}</span>
               <span className="px-2.5 py-0.5 rounded-full text-xs bg-muted">
@@ -478,11 +479,43 @@ function VirtualPagerContent() {
                     <strong className="text-foreground">{line.quantity}× {label(line.name)}</strong>
                     {line.variantLabel ? ` (${line.variantLabel})` : ''}
                     {line.modifiers?.length ? ` · ${line.modifiers.map((m: any) => m.label).join(', ')}` : ''}
+                    {line.notes ? ` · “${line.notes}”` : ''}
                   </span>
                   <span className="font-medium text-foreground">{line.lineTotal}</span>
                 </li>
               ))}
             </ul>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              data-testid="button-download-guest-receipt"
+              onClick={() => {
+                const lines = [
+                  restaurant.name,
+                  `Order: ${data.order.orderNumber} · Pager: ${ticket.ticketCode}`,
+                  `Date: ${new Date(data.order.createdAt).toLocaleString()}`,
+                  `Status: ${data.order.paymentStatus.toUpperCase()}`,
+                  '--------------------------------',
+                  ...(data.order.lineItems || []).map(
+                    (l: any) => `${l.quantity}x ${l.name}${l.variantLabel ? ` (${l.variantLabel})` : ''} - ${l.lineTotal} ${data.order.currency}`,
+                  ),
+                  '--------------------------------',
+                  `TOTAL: ${data.order.total} ${data.order.currency}`,
+                ];
+                const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+                const u = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = u;
+                a.download = `dingzi-receipt-${data.order.orderNumber}.txt`;
+                a.click();
+                URL.revokeObjectURL(u);
+              }}
+              className="w-full min-h-10 rounded-xl text-xs cursor-pointer gap-1.5"
+            >
+              <Download className="w-3.5 h-3.5" aria-hidden="true" />
+              <span>Download Order Receipt</span>
+            </Button>
           </section>
         )}
 

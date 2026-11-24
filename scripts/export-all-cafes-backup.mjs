@@ -24,6 +24,8 @@ const extensionForMime = (mime) => ({
   'image/jpeg': 'jpg',
   'image/png': 'png',
   'image/webp': 'webp',
+  'image/gif': 'gif',
+  'video/mp4': 'mp4',
 }[mime] ?? 'bin');
 
 const mapWithConcurrency = async (values, limit, mapper) => {
@@ -53,55 +55,81 @@ const sqlArray = (values) => values === null || values === undefined
   : `ARRAY[${values.map(sqlLiteral).join(', ')}]::text[]`;
 const sqlJson = (value) => value === null || value === undefined ? 'NULL' : `${sqlLiteral(JSON.stringify(value))}::jsonb`;
 const sqlInsert = (table, columns, rows, formatter) => rows.length
-  ? `\nINSERT INTO cafe_menu_backup.${table} (${columns.map((column) => `"${column}"`).join(', ')}) VALUES\n${rows.map((row) => `  (${columns.map((column) => formatter(row, column)).join(', ')})`).join(',\n')}\nON CONFLICT (id) DO NOTHING;\n`
+  ? `\nINSERT INTO dingzi_backup.${table} (${columns.map((column) => `"${column}"`).join(', ')}) VALUES\n${rows.map((row) => `  (${columns.map((column) => formatter(row, column)).join(', ')})`).join(',\n')}\nON CONFLICT (id) DO NOTHING;\n`
   : '';
 
-const databaseSchemaSql = `-- Café Menu portable recovery schema and data export.
--- This file intentionally excludes user accounts, passwords, sessions, audit logs,
--- payment records, and secrets. It creates an isolated schema so it can be inspected
--- without modifying the production application tables.
-CREATE SCHEMA IF NOT EXISTS cafe_menu_backup;
+const databaseSchemaSql = `-- Dingzi Hospitality Platform portable recovery schema and data export.
+-- Intentionally excludes user accounts, passwords, sessions, audit logs, payment vault secrets,
+-- VAPID keys, push subscriptions, and billing records per PRD §6.4.
+CREATE SCHEMA IF NOT EXISTS dingzi_backup;
 
-CREATE TABLE IF NOT EXISTS cafe_menu_backup.restaurants (
-  id varchar PRIMARY KEY, user_id varchar NOT NULL, name text NOT NULL, theme text NOT NULL,
+CREATE TABLE IF NOT EXISTS dingzi_backup.tenants (
+  id varchar PRIMARY KEY, name text NOT NULL, slug varchar(120), created_at timestamp
+);
+CREATE TABLE IF NOT EXISTS dingzi_backup.restaurants (
+  id varchar PRIMARY KEY, user_id varchar NOT NULL, tenant_id varchar, name text NOT NULL,
+  slug varchar(120), theme text NOT NULL, brand_accent_hex varchar(7),
   currency varchar NOT NULL, timezone text NOT NULL, logo_url text, cover_media_url text,
   cover_media_type varchar, cuisine_type text, address text, phone varchar, opening_hours text,
-  qr_code_url text, status varchar NOT NULL, hidden boolean NOT NULL, upi_id text,
-  upi_qr_code_url text, active_since timestamp, subscription_status varchar NOT NULL,
-  subscription_plan varchar, monthly_fee numeric(10,2), last_payment_date timestamp,
-  next_payment_due timestamp, suspension_reason text, created_at timestamp, updated_at timestamp
+  open_time varchar(5), close_time varchar(5), ordering_mode varchar(40), payment_gateway varchar(40),
+  google_maps_review_url text, reservations_enabled boolean, waitlist_enabled boolean,
+  drive_thru_enabled boolean, pager_mini_game_enabled boolean, slot_interval_mins integer,
+  default_turn_duration_mins integer, reservation_deposit_amount numeric(10,2),
+  status varchar NOT NULL, hidden boolean NOT NULL, created_at timestamp, updated_at timestamp
 );
-CREATE TABLE IF NOT EXISTS cafe_menu_backup.categories (
+CREATE TABLE IF NOT EXISTS dingzi_backup.categories (
   id varchar PRIMARY KEY, restaurant_id varchar NOT NULL, title text NOT NULL,
+  is_visible boolean NOT NULL, available_from varchar(5), available_until varchar(5),
   "order" integer NOT NULL, created_at timestamp
 );
-CREATE TABLE IF NOT EXISTS cafe_menu_backup.menu_items (
+CREATE TABLE IF NOT EXISTS dingzi_backup.menu_items (
   id varchar PRIMARY KEY, category_id varchar NOT NULL, name text NOT NULL, description text,
   price numeric(10,2) NOT NULL, discount numeric(5,2), unit text NOT NULL, image_url text,
   is_available boolean NOT NULL, special_date varchar, has_multiple_pricing boolean NOT NULL,
-  tags text[] NOT NULL, "order" integer NOT NULL, created_at timestamp, updated_at timestamp,
-  modifier_groups jsonb NOT NULL
+  tags text[] NOT NULL, allergen_tags text[] NOT NULL, prep_time_mins integer NOT NULL,
+  aggregator_overrides jsonb NOT NULL, "order" integer NOT NULL,
+  created_at timestamp, updated_at timestamp, modifier_groups jsonb NOT NULL
 );
-CREATE TABLE IF NOT EXISTS cafe_menu_backup.menu_item_price_variants (
+CREATE TABLE IF NOT EXISTS dingzi_backup.menu_item_price_variants (
   id varchar PRIMARY KEY, menu_item_id varchar NOT NULL, label text NOT NULL,
   price numeric(10,2) NOT NULL, discount numeric(5,2), unit text NOT NULL,
   "order" integer NOT NULL, created_at timestamp
 );
-CREATE TABLE IF NOT EXISTS cafe_menu_backup.global_menu_items (
+CREATE TABLE IF NOT EXISTS dingzi_backup.dining_zones (
+  id varchar PRIMARY KEY, restaurant_id varchar NOT NULL, name text NOT NULL,
+  name_ar text, "order" integer NOT NULL, created_at timestamp
+);
+CREATE TABLE IF NOT EXISTS dingzi_backup.dining_tables (
+  id varchar PRIMARY KEY, restaurant_id varchar NOT NULL, zone_id varchar NOT NULL,
+  table_code varchar(40) NOT NULL, min_covers integer NOT NULL, max_covers integer NOT NULL,
+  is_combinable boolean NOT NULL, is_active boolean NOT NULL, qr_token varchar NOT NULL, created_at timestamp
+);
+CREATE TABLE IF NOT EXISTS dingzi_backup.service_bays (
+  id varchar PRIMARY KEY, restaurant_id varchar NOT NULL, code varchar(40) NOT NULL,
+  label text NOT NULL, bay_type varchar(20) NOT NULL, qr_token varchar NOT NULL,
+  is_active boolean NOT NULL, "order" integer NOT NULL, created_at timestamp
+);
+CREATE TABLE IF NOT EXISTS dingzi_backup.aggregator_links (
+  id varchar PRIMARY KEY, restaurant_id varchar NOT NULL, platform varchar(40) NOT NULL,
+  display_name text NOT NULL, url text NOT NULL, badge_en varchar(80), badge_ar varchar(80),
+  is_active boolean NOT NULL, "order" integer NOT NULL, created_at timestamp
+);
+CREATE TABLE IF NOT EXISTS dingzi_backup.global_menu_items (
   id varchar PRIMARY KEY, source_item_id varchar, source_cafe text NOT NULL, currency varchar NOT NULL,
   category_title text NOT NULL, name text NOT NULL, description text, price numeric(10,2) NOT NULL,
   unit text NOT NULL, image_url text, source_image_url text, tags text[] NOT NULL,
+  allergen_tags text[] NOT NULL, prep_time_mins integer NOT NULL,
   variants jsonb NOT NULL, modifier_groups jsonb NOT NULL, archived boolean NOT NULL,
   created_at timestamp, updated_at timestamp
 );
-CREATE TABLE IF NOT EXISTS cafe_menu_backup.media_objects (
+CREATE TABLE IF NOT EXISTS dingzi_backup.media_objects (
   id varchar PRIMARY KEY, owner_id varchar NOT NULL, mime text NOT NULL, size integer NOT NULL,
   created_at timestamp, filename text NOT NULL, sha256 varchar(64) NOT NULL
 );
 `;
 
 const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
-const folder = path.resolve('data', 'downloads', `all-cafes-backup-${stamp}`);
+const folder = path.resolve('data', 'downloads', `dingzi-portfolio-backup-${stamp}`);
 const mediaFolder = path.join(folder, 'media');
 await fs.mkdir(mediaFolder, { recursive: true });
 
@@ -109,6 +137,7 @@ const client = new Client({ connectionString: process.env.DATABASE_URL });
 await client.connect();
 try {
   await client.query('BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+  const tenants = (await client.query('SELECT id, name, slug, created_at FROM tenants ORDER BY created_at, id')).rows;
   const restaurants = (await client.query('SELECT * FROM restaurants ORDER BY created_at, id')).rows;
   assert.ok(restaurants.length, 'No cafés were found.');
   const restaurantIds = restaurants.map(({ id }) => id);
@@ -123,16 +152,20 @@ try {
   const variants = itemIds.length
     ? (await client.query('SELECT * FROM menu_item_price_variants WHERE menu_item_id = ANY($1) ORDER BY menu_item_id, "order", id', [itemIds])).rows
     : [];
+  const diningZones = (await client.query('SELECT * FROM dining_zones WHERE restaurant_id = ANY($1) ORDER BY restaurant_id, "order", id', [restaurantIds])).rows;
+  const diningTables = (await client.query('SELECT * FROM dining_tables WHERE restaurant_id = ANY($1) ORDER BY restaurant_id, table_code, id', [restaurantIds])).rows;
+  const serviceBays = (await client.query('SELECT * FROM service_bays WHERE restaurant_id = ANY($1) ORDER BY restaurant_id, "order", id', [restaurantIds])).rows;
+  const aggregatorLinks = (await client.query('SELECT * FROM aggregator_links WHERE restaurant_id = ANY($1) ORDER BY restaurant_id, "order", id', [restaurantIds])).rows;
   const globalMenuItems = (await client.query(`
     SELECT id, source_item_id, source_cafe, currency, category_title, name, description,
-      price, unit, image_url, source_image_url, tags, variants, modifier_groups, archived,
-      created_at, updated_at
+      price, unit, image_url, source_image_url, tags, allergen_tags, prep_time_mins,
+      variants, modifier_groups, archived, created_at, updated_at
     FROM global_menu_items
     ORDER BY created_at, id
   `)).rows;
 
   const mediaUrls = [
-    ...restaurants.flatMap(({ logo_url, cover_media_url, upi_qr_code_url }) => [logo_url, cover_media_url, upi_qr_code_url]),
+    ...restaurants.flatMap(({ logo_url, cover_media_url }) => [logo_url, cover_media_url]),
     ...items.map(({ image_url }) => image_url),
     ...globalMenuItems.flatMap(({ image_url, source_image_url }) => [image_url, source_image_url]),
   ];
@@ -159,84 +192,114 @@ try {
     return { ...row, filename: `media/${filename}`, sha256: createHash('sha256').update(bytes).digest('hex') };
   });
 
-  const cafes = restaurants.map((restaurant) => ({
-    restaurant,
-    categories: categories.filter((category) => category.restaurant_id === restaurant.id),
-    menuItems: items.filter((item) => categories.some((category) => category.id === item.category_id && category.restaurant_id === restaurant.id)),
-  })).map((cafe) => ({
-    ...cafe,
-    priceVariants: variants.filter((variant) => cafe.menuItems.some((item) => item.id === variant.menu_item_id)),
-  }));
+  const cafes = restaurants.map((restaurant) => {
+    const branchCats = categories.filter((c) => c.restaurant_id === restaurant.id);
+    const branchCatIds = new Set(branchCats.map((c) => c.id));
+    const branchItems = items.filter((item) => branchCatIds.has(item.category_id));
+    const branchItemIds = new Set(branchItems.map((i) => i.id));
+    return {
+      restaurant,
+      categories: branchCats,
+      menuItems: branchItems,
+      priceVariants: variants.filter((v) => branchItemIds.has(v.menu_item_id)),
+      diningZones: diningZones.filter((z) => z.restaurant_id === restaurant.id),
+      diningTables: diningTables.filter((t) => t.restaurant_id === restaurant.id),
+      serviceBays: serviceBays.filter((b) => b.restaurant_id === restaurant.id),
+      aggregatorLinks: aggregatorLinks.filter((a) => a.restaurant_id === restaurant.id),
+    };
+  });
 
   const snapshot = {
-    format: 1,
+    format: 2,
+    platform: 'Dingzi Hospitality Platform',
     exportedAt: new Date().toISOString(),
-    scope: 'All cafés and the shared menu library. User accounts, passwords, sessions, audit logs, payment records, and platform secrets are intentionally excluded.',
+    scope: 'All tenants, branches, menus, floor tables, curbside bays, aggregator storefronts, shared menu library, and private media. Secrets, accounts, sessions, and payment keys are excluded.',
+    tenants,
     cafes,
     sharedMenuLibrary: globalMenuItems,
     media,
   };
+
+  const tenantColumns = ['id', 'name', 'slug', 'created_at'];
   const restaurantColumns = [
-    'id', 'user_id', 'name', 'theme', 'currency', 'timezone', 'logo_url', 'cover_media_url',
-    'cover_media_type', 'cuisine_type', 'address', 'phone', 'opening_hours', 'qr_code_url',
-    'status', 'hidden', 'upi_id', 'upi_qr_code_url', 'active_since', 'subscription_status',
-    'subscription_plan', 'monthly_fee', 'last_payment_date', 'next_payment_due',
-    'suspension_reason', 'created_at', 'updated_at',
+    'id', 'user_id', 'tenant_id', 'name', 'slug', 'theme', 'brand_accent_hex',
+    'currency', 'timezone', 'logo_url', 'cover_media_url', 'cover_media_type',
+    'cuisine_type', 'address', 'phone', 'opening_hours', 'open_time', 'close_time',
+    'ordering_mode', 'payment_gateway', 'google_maps_review_url', 'reservations_enabled',
+    'waitlist_enabled', 'drive_thru_enabled', 'pager_mini_game_enabled', 'slot_interval_mins',
+    'default_turn_duration_mins', 'reservation_deposit_amount', 'status', 'hidden',
+    'created_at', 'updated_at',
   ];
-  const categoryColumns = ['id', 'restaurant_id', 'title', 'order', 'created_at'];
+  const categoryColumns = ['id', 'restaurant_id', 'title', 'is_visible', 'available_from', 'available_until', 'order', 'created_at'];
   const itemColumns = [
     'id', 'category_id', 'name', 'description', 'price', 'discount', 'unit', 'image_url',
-    'is_available', 'special_date', 'has_multiple_pricing', 'tags', 'order', 'created_at',
-    'updated_at', 'modifier_groups',
+    'is_available', 'special_date', 'has_multiple_pricing', 'tags', 'allergen_tags', 'prep_time_mins',
+    'aggregator_overrides', 'order', 'created_at', 'updated_at', 'modifier_groups',
   ];
   const variantColumns = ['id', 'menu_item_id', 'label', 'price', 'discount', 'unit', 'order', 'created_at'];
+  const zoneColumns = ['id', 'restaurant_id', 'name', 'name_ar', 'order', 'created_at'];
+  const tableColumns = ['id', 'restaurant_id', 'zone_id', 'table_code', 'min_covers', 'max_covers', 'is_combinable', 'is_active', 'qr_token', 'created_at'];
+  const bayColumns = ['id', 'restaurant_id', 'code', 'label', 'bay_type', 'qr_token', 'is_active', 'order', 'created_at'];
+  const aggColumns = ['id', 'restaurant_id', 'platform', 'display_name', 'url', 'badge_en', 'badge_ar', 'is_active', 'order', 'created_at'];
   const libraryColumns = [
     'id', 'source_item_id', 'source_cafe', 'currency', 'category_title', 'name', 'description',
-    'price', 'unit', 'image_url', 'source_image_url', 'tags', 'variants', 'modifier_groups',
-    'archived', 'created_at', 'updated_at',
+    'price', 'unit', 'image_url', 'source_image_url', 'tags', 'allergen_tags', 'prep_time_mins',
+    'variants', 'modifier_groups', 'archived', 'created_at', 'updated_at',
   ];
   const mediaColumns = ['id', 'owner_id', 'mime', 'size', 'created_at', 'filename', 'sha256'];
-  const scalar = (row, column) => ['price', 'discount', 'monthly_fee', 'size'].includes(column)
-    ? sqlNumber(row[column])
-    : sqlLiteral(row[column]);
+
+  const numericCols = new Set([
+    'price', 'discount', 'size', 'slot_interval_mins', 'default_turn_duration_mins',
+    'reservation_deposit_amount', 'prep_time_mins', 'min_covers', 'max_covers', 'order',
+  ]);
+  const scalar = (row, column) => numericCols.has(column) ? sqlNumber(row[column]) : sqlLiteral(row[column]);
+
   const schemaAndData = [
     databaseSchemaSql,
+    sqlInsert('tenants', tenantColumns, tenants, scalar),
     sqlInsert('restaurants', restaurantColumns, restaurants, scalar),
     sqlInsert('categories', categoryColumns, categories, scalar),
     sqlInsert('menu_items', itemColumns, items, (row, column) => {
-      if (column === 'tags') return sqlArray(row[column]);
-      if (column === 'modifier_groups') return sqlJson(row[column]);
+      if (column === 'tags' || column === 'allergen_tags') return sqlArray(row[column]);
+      if (column === 'modifier_groups' || column === 'aggregator_overrides') return sqlJson(row[column]);
       return scalar(row, column);
     }),
     sqlInsert('menu_item_price_variants', variantColumns, variants, scalar),
+    sqlInsert('dining_zones', zoneColumns, diningZones, scalar),
+    sqlInsert('dining_tables', tableColumns, diningTables, scalar),
+    sqlInsert('service_bays', bayColumns, serviceBays, scalar),
+    sqlInsert('aggregator_links', aggColumns, aggregatorLinks, scalar),
     sqlInsert('global_menu_items', libraryColumns, globalMenuItems, (row, column) => {
-      if (column === 'tags') return sqlArray(row[column]);
+      if (column === 'tags' || column === 'allergen_tags') return sqlArray(row[column]);
       if (column === 'variants' || column === 'modifier_groups') return sqlJson(row[column]);
       return scalar(row, column);
     }),
     sqlInsert('media_objects', mediaColumns, media, scalar),
   ].join('\n');
+
   await fs.writeFile(path.join(folder, 'database.json'), JSON.stringify(snapshot, null, 2), { mode: 0o600 });
   await fs.writeFile(path.join(folder, 'schema-and-data.sql'), schemaAndData, { mode: 0o600 });
   await fs.writeFile(path.join(folder, 'README.txt'), [
-    'All-cafes recovery export.',
+    'Dingzi Hospitality Platform — Isolated Portfolio Recovery Export.',
     '',
-    'Contains: each café profile, categories, menu items, price variants, modifier/topping configurations, the shared menu library, and referenced private media files.',
-    'Excluded: user accounts, passwords, sessions, access logs, payment records, and platform secrets.',
+    'Contains: tenants, branches, categories, menu items, variants, modifiers, dining zones & permanent QR tables, curbside bays, aggregator links, shared menu library, and private media files.',
+    'Excluded: user accounts, passwords, sessions, access logs, encrypted payment gateway secrets, VAPID keys, and push subscriptions.',
     '',
-    'schema-and-data.sql creates a separate cafe_menu_backup PostgreSQL schema containing the exported records. The media objects table maps each record to its matching file in media/.',
-    'Restore order: restaurant, categories, menu items, price variants, shared menu library, then media objects/files. Assign each restored restaurant to an authorized manager account during recovery.',
+    'schema-and-data.sql creates an isolated dingzi_backup PostgreSQL schema.',
     'Keep this archive private.',
     '',
   ].join('\n'), { mode: 0o600 });
+
   console.log(JSON.stringify({
     folder,
     exportedAt: snapshot.exportedAt,
-    cafes: cafes.map(({ restaurant, categories: cafeCategories, menuItems, priceVariants }) => ({
+    tenants: tenants.length,
+    cafes: cafes.map(({ restaurant, categories: c, menuItems: m, diningTables: t, serviceBays: b }) => ({
       name: restaurant.name,
-      categories: cafeCategories.length,
-      items: menuItems.length,
-      variants: priceVariants.length,
+      categories: c.length,
+      items: m.length,
+      tables: t.length,
+      bays: b.length,
     })),
     sharedLibraryItems: globalMenuItems.length,
     media: media.length,

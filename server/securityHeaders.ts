@@ -1,6 +1,6 @@
 // Shared by Express and the Worker so assets and early error responses receive
 // the same protections as API responses. Inline styles are used by the UI.
-export const CONTENT_SECURITY_POLICY = "default-src 'self'; script-src 'self'; worker-src 'self'; manifest-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+export const CONTENT_SECURITY_POLICY = "default-src 'self'; script-src 'self'; worker-src 'self'; manifest-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' data: blob:; connect-src 'self' ws: wss:; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
 export function securityHeaders(production: boolean, https: boolean): Record<string, string> {
   return {
@@ -15,6 +15,7 @@ export function securityHeaders(production: boolean, https: boolean): Record<str
 }
 
 export function secureWorkerResponse(request: Request, response: Response): Response {
+  if (response.status === 101) return response;
   const headers = new Headers(response.headers);
   for (const [name, value] of Object.entries(securityHeaders(true, new URL(request.url).protocol === 'https:'))) {
     // Keep a stricter CSP on the public-origin denial page.

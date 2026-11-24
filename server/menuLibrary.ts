@@ -3,6 +3,7 @@ import { and, asc, eq, inArray } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from './db';
 import { isAuthenticated } from './localAuth';
+import { getAccessibleBranches } from './accessControl';
 import { ObjectStorageService } from './localObjects';
 import { categories, globalMenuItems, menuItems, menuItemPriceVariants, restaurants } from '@shared/schema';
 
@@ -21,8 +22,10 @@ export function mountMenuLibrary(app: Express) {
 
   app.get('/api/menu-library/targets', isAuthenticated, async (req: any, res, next) => {
     try {
+      const accessible = req.user.role === 'super_admin' ? [] : await getAccessibleBranches(req);
+      const accessibleIds = accessible.map(b => b.id);
       const targets = await db.select({ id: restaurants.id, name: restaurants.name, currency: restaurants.currency, theme: restaurants.theme }).from(restaurants)
-        .where(req.user.role === 'super_admin' ? undefined : eq(restaurants.userId, req.user.id)).orderBy(asc(restaurants.name));
+        .where(req.user.role === 'super_admin' ? undefined : accessibleIds.length > 0 ? inArray(restaurants.id, accessibleIds) : eq(restaurants.userId, req.user.id)).orderBy(asc(restaurants.name));
       const cats = targets.length ? await db.select().from(categories).where(inArray(categories.restaurantId, targets.map(c => c.id))).orderBy(asc(categories.order)) : [];
       res.json(targets.map(c => ({ ...c, categories: cats.filter(cat => cat.restaurantId === c.id) })));
     } catch (e) { next(e); }
@@ -32,9 +35,12 @@ export function mountMenuLibrary(app: Express) {
     const copies: string[] = [];
     try {
       const input = z.object({ restaurantId: idSchema, itemIds: itemIdsSchema.optional() }).parse(req.body);
+      const accessible = req.user.role === 'super_admin' ? [] : await getAccessibleBranches(req);
+      const canAccessBranch = (cafeId: string, ownerId: string) =>
+        req.user.role === 'super_admin' || ownerId === req.user.id || accessible.some(b => b.id === cafeId);
       const result = await db.transaction(async tx => {
         const [cafe] = await tx.select().from(restaurants).where(eq(restaurants.id, input.restaurantId)).for('update');
-        if (!cafe || (req.user.role !== 'super_admin' && cafe.userId !== req.user.id)) return null;
+        if (!cafe || !canAccessBranch(cafe.id, cafe.userId)) return null;
         const source = await tx.select({ item: menuItems, category: categories }).from(menuItems).innerJoin(categories, eq(menuItems.categoryId, categories.id))
           .where(and(eq(categories.restaurantId, cafe.id), input.itemIds ? inArray(menuItems.id, input.itemIds) : undefined)).orderBy(asc(categories.order), asc(menuItems.order));
         if (input.itemIds && source.length !== input.itemIds.length) throw new Error('Choose items from this café');
@@ -49,7 +55,8 @@ export function mountMenuLibrary(app: Express) {
           }
           const values = { sourceItemId: item.id, publisherId: cafe.userId, sourceCafe: cafe.name, currency: cafe.currency,
             categoryTitle: category.title, name: item.name, description: item.description, price: item.price, unit: item.unit,
-            tags: item.tags || [], sourceImageUrl: item.imageUrl, imageUrl, modifierGroups: item.modifierGroups || [],
+            tags: item.tags || [], allergenTags: item.allergenTags || [], prepTimeMins: item.prepTimeMins || 10,
+            sourceImageUrl: item.imageUrl, imageUrl, modifierGroups: item.modifierGroups || [],
             variants: item.hasMultiplePricing ? variants.filter(v => v.menuItemId === item.id).map(({ label, price, unit }) => ({ label, price, unit })) : [],
             archived: false, updatedAt: new Date() };
           await tx.insert(globalMenuItems).values(values).onConflictDoUpdate({ target: globalMenuItems.sourceItemId, set: values });
@@ -70,10 +77,13 @@ export function mountMenuLibrary(app: Express) {
     try {
       const input = z.object({ restaurantId: idSchema, itemIds: itemIdsSchema, categoryId: idSchema.optional(),
         isAvailable: z.boolean().default(false), acceptCurrencyDifference: z.boolean().default(false) }).parse(req.body);
+      const accessible = req.user.role === 'super_admin' ? [] : await getAccessibleBranches(req);
+      const canAccessBranch = (cafeId: string, ownerId: string) =>
+        req.user.role === 'super_admin' || ownerId === req.user.id || accessible.some(b => b.id === cafeId);
       const result = await db.transaction(async tx => {
         // Serialize imports into a café so simultaneous clicks cannot create duplicates.
         const [cafe] = await tx.select().from(restaurants).where(eq(restaurants.id, input.restaurantId)).for('update');
-        if (!cafe || (req.user.role !== 'super_admin' && cafe.userId !== req.user.id)) return { error: 'Choose a café you manage', status: 403 };
+        if (!cafe || !canAccessBranch(cafe.id, cafe.userId)) return { error: 'Choose a café you manage', status: 403 };
         if (process.env.CAFE_RUNTIME === 'workers' && input.itemIds.length > 1) return { error: 'Add library items one at a time', status: 400 };
         const templates = await tx.select().from(globalMenuItems).where(and(inArray(globalMenuItems.id, input.itemIds), eq(globalMenuItems.archived, false))).orderBy(asc(globalMenuItems.categoryTitle), asc(globalMenuItems.name));
         if (templates.length !== input.itemIds.length) return { error: 'Some library items are no longer available. Refresh and try again.', status: 400 };
@@ -98,7 +108,8 @@ export function mountMenuLibrary(app: Express) {
           const order = nextOrder.get(category.id) || 0;
           nextOrder.set(category.id, order + 1);
           const [item] = await tx.insert(menuItems).values({ categoryId: category.id, name: template.name, description: template.description,
-            price: template.price, unit: template.unit, imageUrl, tags: template.tags, modifierGroups: template.modifierGroups || [], hasMultiplePricing: template.variants.length > 0,
+            price: template.price, unit: template.unit, imageUrl, tags: template.tags, allergenTags: template.allergenTags || [],
+            prepTimeMins: template.prepTimeMins || 10, modifierGroups: template.modifierGroups || [], hasMultiplePricing: template.variants.length > 0,
             discount: '0', specialDate: null, isAvailable: input.isAvailable, order }).returning();
           if (template.variants.length) await tx.insert(menuItemPriceVariants).values(template.variants.map((v, order) => ({ ...v, menuItemId: item.id, discount: '0', order })));
           names.add(key); createdIds.push(item.id);

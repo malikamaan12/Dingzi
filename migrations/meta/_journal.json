@@ -64,6 +64,13 @@
       "when": 1795386000000,
       "tag": "0008_pwa_mobile_push",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795472400000,
+      "tag": "0009_tenants_staff_roles_and_orders",
+      "breakpoints": true
     }
   ]
 }

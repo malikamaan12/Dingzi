@@ -6,7 +6,8 @@ DO $$
 DECLARE cafe_table text;
 BEGIN
   FOREACH cafe_table IN ARRAY ARRAY[
-    'users','restaurants','categories','menu_items','menu_item_price_variants',
+    'users','tenants','restaurants','staff_assignments','branch_payment_configs',
+    'categories','menu_items','menu_item_price_variants',
     'global_menu_items','payments','access_audit','sessions','media_objects','rate_limit_buckets',
     'service_bays','guest_orders','pager_tickets','dining_zones','dining_tables',
     'table_reservations','waitlist_entries','aggregator_links','aggregator_clicks',
@@ -16,6 +17,18 @@ BEGIN
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM anon, authenticated', cafe_table);
   END LOOP;
 END $$;
+
+-- Application-scoped defense-in-depth RLS helper functions reading transaction-local session context
+-- set via SET LOCAL app.current_user_id / app.current_tenant_id / app.current_branch_id / app.current_role.
+CREATE OR REPLACE FUNCTION public.dingzi_branch_allowed(target_restaurant_id varchar)
+RETURNS boolean
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT
+    coalesce(current_setting('app.current_role', true), '') IN ('', 'super_admin', 'public')
+    OR current_setting('app.current_branch_id', true) = target_restaurant_id;
+$$;
 
 -- Enforce database-level tstzrange exclusion constraint against overlapping table reservations in PostgreSQL 16.
 DO $$
@@ -29,7 +42,7 @@ BEGIN
         table_id WITH =,
         tstzrange(start_at, end_at, '[)') WITH &&
       )
-      WHERE (status IN ('confirmed', 'seated'));
+      WHERE (status IN ('confirmed', 'seated', 'pending_deposit'));
   END IF;
 END $$;
 

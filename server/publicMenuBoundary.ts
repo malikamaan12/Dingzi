@@ -11,7 +11,7 @@ const legacyPublicApi = new RegExp(
 );
 const hospitalityPublicGet = /^\/api\/public\/[a-z0-9/_-]+$/i;
 const hospitalityPublicPost =
-  /^\/api\/(?:public\/(?:orders|pager\/lookup|pager\/[a-f0-9-]{36}\/feedback|payments\/[a-f0-9-]{36}\/confirm-sandbox|reservations\/[a-f0-9-]{36}|booking\/[a-f0-9-]{36}\/cancel|waitlist\/[a-f0-9-]{36}|waitlist-ticket\/[a-f0-9-]{36}\/respond|curbside\/checkin|aggregator-click|push\/subscribe|push\/unsubscribe|push\/test)|webhooks\/payments\/(?:skipcash|sadad))\/?$/i;
+  /^\/api\/(?:public\/(?:orders|pager\/lookup|pager\/[a-f0-9-]{36}\/feedback|payments\/[a-f0-9-]{36}\/confirm-sandbox|reservations\/[a-f0-9-]{36}|reservations\/[a-f0-9-]{36}\/confirm-deposit|booking\/[a-f0-9-]{36}\/cancel|waitlist\/[a-f0-9-]{36}|waitlist-ticket\/[a-f0-9-]{36}\/respond|curbside\/checkin|aggregator-click|push\/subscribe|push\/unsubscribe|push\/test)|webhooks\/payments\/(?:skipcash|sadad))\/?$/i;
 const photo = new RegExp(`^/objects/${uuid}$`, 'i');
 const pwaStatic = new Set([
   '/manifest.webmanifest',

@@ -317,7 +317,173 @@ try {
   assert.equal(snoozedMod.status, 200);
   assert.equal(snoozedMod.data.item.modifierGroups[0].options[0].isAvailable, false);
 
-  console.log('PASS: All 6 Dingzi PRD modules verified (Menu Studio allergens/overrides, 1-tap modifier snooze, Auto Pager + 20s cooldown, concurrent table exclusion, curbside bay dispatch, aggregator telemetry, portfolio analytics, and full branch backup).');
+  // 8. Combinable Multi-Table Allocation + Dynamic Late-Night Operating Hours + Interactive Deposit Checkout
+  assert.equal((await api('POST', '/api/restaurant', {
+    name: 'Pearl Drive-Thru Roasters',
+    slug: 'pearl-drive',
+    orderingMode: 'full_online_checkout',
+    paymentGateway: 'sadad',
+    driveThruEnabled: true,
+    reservationsEnabled: true,
+    openTime: '14:00',
+    closeTime: '01:00',
+    reservationDepositAmount: '50.00',
+    currency: 'QAR',
+  }, cookieB)).status, 200);
+
+  // Save encrypted per-branch Sadad credentials in isolated vault & verify secret is masked and absent from backup
+  const savedVault = await api('PUT', '/api/hospitality/payment-config', {
+    sadadMerchantId: 'SADAD-PEARL-9876',
+    sadadSecret: 'pearl-live-signing-secret-key-2026',
+  }, cookieB);
+  assert.equal(savedVault.status, 200);
+  assert.equal(savedVault.data.hasSadadSecret, true);
+  assert.equal(savedVault.data.sadadMerchantMasked, '••••••••9876');
+  assert.ok(!JSON.stringify(savedVault.data).includes('pearl-live-signing-secret-key-2026'));
+  const backupB = await api('GET', '/api/cafe-backup', undefined, cookieB);
+  assert.ok(!JSON.stringify(backupB.data).includes('pearl-live-signing-secret-key-2026'));
+
+  const zoneB = (await api('POST', '/api/hospitality/zones', { name: 'Seafront Terrace', nameAr: 'تراس البحر' }, cookieB)).data.zone;
+  await api('POST', '/api/hospitality/tables', {
+    zoneId: zoneB.id,
+    tableCode: 'P-01',
+    minCovers: 2,
+    maxCovers: 4,
+    isCombinable: true,
+  }, cookieB);
+  await api('POST', '/api/hospitality/tables', {
+    zoneId: zoneB.id,
+    tableCode: 'P-02',
+    minCovers: 2,
+    maxCovers: 4,
+    isCombinable: true,
+  }, cookieB);
+
+  // Verify late-night operating hours (14:00 -> 01:00) exclude morning 10:00 and include 00:00, with requiresCombination=true for party of 7
+  const availCombo = await api('GET', `/api/public/reservations/${cafeB}/availability?date=2026-12-05&partySize=7&zoneId=${zoneB.id}`);
+  assert.equal(availCombo.status, 200);
+  assert.ok(!availCombo.data.slots.some((s: any) => s.time === '10:00'), '10:00 must be outside 14:00-01:00 operating window');
+  const midnightSlot = availCombo.data.slots.find((s: any) => s.time === '00:00');
+  assert.ok(midnightSlot, 'Late-night wrap-around 00:00 slot must be available');
+  assert.equal(midnightSlot.requiresCombination, true);
+
+  // Book party of 7 -> pairs P-01 + P-02 in pending_deposit state and requires Sadad deposit confirmation
+  const comboBook = await api('POST', `/api/public/reservations/${cafeB}`, {
+    guestName: 'Al-Mansoori Family',
+    guestPhone: '+97455119999',
+    partySize: 7,
+    zoneId: zoneB.id,
+    startIso: midnightSlot.startIso,
+  });
+  assert.equal(comboBook.status, 201);
+  assert.equal(comboBook.data.combinedTables.length, 2);
+  assert.equal(comboBook.data.reservation.status, 'pending_deposit');
+  assert.equal(comboBook.data.checkout.provider, 'sadad');
+
+  // Neither P-01 nor P-02 can be double-booked during the same window now!
+  const overlapSingle = await api('POST', `/api/public/reservations/${cafeB}`, {
+    guestName: 'Overlap Attempt',
+    guestPhone: '+97455220000',
+    partySize: 3,
+    zoneId: zoneB.id,
+    startIso: midnightSlot.startIso,
+  });
+  assert.equal(overlapSingle.status, 409, 'Combined table allocation must block overlapping single-table bookings on both paired tables');
+
+  const depositConfirmed = await api('POST', `/api/public/reservations/${comboBook.data.reservation.id}/confirm-deposit`, {
+    provider: comboBook.data.checkout.provider,
+    paymentReference: comboBook.data.checkout.paymentReference,
+    signatureToken: comboBook.data.checkout.signatureToken,
+  });
+  assert.equal(depositConfirmed.status, 200);
+  assert.equal(depositConfirmed.data.reservation.status, 'confirmed');
+  assert.equal(depositConfirmed.data.reservation.depositStatus, 'paid');
+
+  // 9. Role Matrix Enforcement (kds_barista & host_cashier) + Counter POS Orders + Multi-Branch Tenant Owner Switching
+  const staffPass = 'Staff-Role-' + randomBytes(6).toString('hex');
+  const baristaCreate = await api('POST', '/api/hospitality/team', {
+    email: 'barista@pearl.qa',
+    password: staffPass,
+    firstName: 'Omar',
+    lastName: 'Barista',
+    staffRole: 'kds_barista',
+  }, cookieB);
+  assert.equal(baristaCreate.status, 201);
+
+  const cashierCreate = await api('POST', '/api/hospitality/team', {
+    email: 'cashier@pearl.qa',
+    password: staffPass,
+    firstName: 'Huda',
+    lastName: 'Cashier',
+    staffRole: 'host_cashier',
+  }, cookieB);
+  assert.equal(cashierCreate.status, 201);
+
+  const baristaCookie = (await api('POST', '/api/login', { email: 'barista@pearl.qa', password: staffPass })).cookie;
+  const cashierCookie = (await api('POST', '/api/login', { email: 'cashier@pearl.qa', password: staffPass })).cookie;
+
+  // Barista can snooze items & view KDS, but CANNOT modify restaurant profile or payment vault (403)
+  assert.equal((await api('GET', '/api/hospitality/pagers', undefined, baristaCookie)).status, 200);
+  assert.equal((await api('POST', '/api/restaurant', { name: 'Unauthorized Rename' }, baristaCookie)).status, 403);
+  assert.equal((await api('PUT', '/api/hospitality/payment-config', { sadadMerchantId: 'HACK' }, baristaCookie)).status, 403);
+
+  // Cashier can ring up a Counter POS order & settle Pay-at-Venue, but CANNOT delete dining tables (403)
+  const posOrder = await api('POST', '/api/hospitality/orders', {
+    channel: 'counter_pickup',
+    customerName: 'Counter Guest',
+    paymentStatus: 'pay_at_venue',
+    items: [{ menuItemId: itemB.id, quantity: 1 }],
+  }, cashierCookie);
+  assert.equal(posOrder.status, 201);
+  assert.equal(posOrder.data.order.paymentStatus, 'pay_at_venue');
+  assert.ok(posOrder.data.pager.ticketCode);
+
+  const settledPos = await api('POST', `/api/hospitality/orders/${posOrder.data.order.id}/payment-status`, {
+    paymentStatus: 'paid',
+  }, cashierCookie);
+  assert.equal(settledPos.status, 200);
+  assert.equal(settledPos.data.order.paymentStatus, 'paid');
+  assert.equal((await api('POST', '/api/hospitality/zones', { name: 'Forbidden Zone' }, cashierCookie)).status, 403);
+
+  // Super Admin links Cafe A & Cafe B into a Multi-Branch Tenant Group owned by Cafe A's manager -> Tenant Owner switches branches & views Tenant Analytics
+  const userA = (await api('GET', '/api/auth/user', undefined, cookieA)).data;
+  const tenantGroup = await api('POST', '/api/super-admin/tenants', {
+    name: 'Qatar Specialty Group',
+    slug: 'qatar-specialty-group',
+    ownerUserId: userA.id,
+    restaurantIds: [cafeA, cafeB],
+  }, superCookie);
+  assert.equal(tenantGroup.status, 201);
+
+  const tenantAnalytics = await api('GET', '/api/hospitality/tenant-analytics', undefined, cookieA);
+  assert.equal(tenantAnalytics.status, 200);
+  assert.equal(tenantAnalytics.data.branches.length, 2);
+
+  const switchedToB = await api('POST', '/api/hospitality/switch-branch', { restaurantId: cafeB }, cookieA);
+  assert.equal(switchedToB.status, 200);
+  assert.equal(switchedToB.data.cafeContext.id, cafeB);
+  assert.equal(switchedToB.data.staffRole, 'tenant_owner');
+
+  // Shared Menu Library hospitality parity (allergenTags & prepTimeMins copied across branches)
+  const pubLib = await api('POST', '/api/menu-library/publish', {
+    restaurantId: cafeB,
+    itemIds: [itemWithMod.data.id],
+  }, cookieA);
+  assert.equal(pubLib.status, 200);
+  const libList = await api('GET', '/api/menu-library', undefined, cookieA);
+  const libTemplate = libList.data.find((x: any) => x.name === 'Pistachio Cortado');
+  assert.deepEqual(libTemplate.allergenTags, ['Dairy', 'Nuts']);
+  assert.equal(libTemplate.prepTimeMins, 5);
+
+  const impLib = await api('POST', '/api/menu-library/import', {
+    restaurantId: cafeA,
+    itemIds: [libTemplate.id],
+    isAvailable: true,
+  }, cookieA);
+  assert.equal(impLib.status, 200);
+  assert.equal(impLib.data.added, 1);
+
+  console.log('PASS: All Dingzi PRD modules verified end-to-end (Menu Studio, 1-tap snooze, Auto Pager + 20s cooldown, late-night hours, combinable multi-table booking, interactive reservation deposits, encrypted gateway vault, POS orders/receipts, KDS/Cashier RBAC, Multi-Branch Tenant Owner switching/analytics, and Shared Menu Library hospitality parity).');
 } finally {
   server.kill('SIGTERM');
   await new Promise(resolve => { server.once('exit', resolve); setTimeout(resolve, 4000).unref(); });

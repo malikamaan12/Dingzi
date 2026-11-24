@@ -5,6 +5,7 @@ import {
   CalendarCheck2,
   CalendarPlus,
   Clock,
+  CreditCard,
   MapPin,
   Phone,
   Share2,
@@ -57,16 +58,43 @@ function GuestBookingContent() {
   const data = query.data;
   const reservation = data?.reservation;
   const table = data?.table;
+  const combinedTables: any[] = data?.combinedTables || [];
   const zone = data?.zone;
   const restaurant = data?.restaurant;
+  const pendingDepositCheckout = data?.pendingDepositCheckout;
+  const tableDisplayLabel =
+    combinedTables.length > 1
+      ? `Tables ${combinedTables.map(t => t.tableCode).join(' + ')}`
+      : table?.tableCode
+        ? `Table ${table.tableCode}`
+        : 'Reserved';
+
+  const confirmDepositMutation = useMutation({
+    mutationFn: async () => {
+      if (!pendingDepositCheckout || !reservation) return;
+      const res = await apiRequest(
+        'POST',
+        `/api/public/reservations/${reservation.id}/confirm-deposit`,
+        {
+          provider: pendingDepositCheckout.provider,
+          paymentReference: pendingDepositCheckout.paymentReference,
+          signatureToken: pendingDepositCheckout.signatureToken,
+        },
+      );
+      return res.json();
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['/api/public/booking', token] });
+    },
+  });
 
   useEffect(() => {
     if (!reservation || !restaurant) return;
-    if (reservation.status === 'confirmed' || reservation.status === 'seated') {
+    if (reservation.status === 'confirmed' || reservation.status === 'seated' || reservation.status === 'pending_deposit') {
       saveGuestPass({
         kind: 'booking',
         trackingToken: token,
-        code: table?.tableCode ? `Table ${table.tableCode}` : 'Reserved',
+        code: tableDisplayLabel,
         restaurantId: restaurant.id,
         restaurantName: restaurant.name,
         startAt: reservation.startAt,
@@ -74,7 +102,7 @@ function GuestBookingContent() {
     } else {
       dismissGuestPass('booking', token);
     }
-  }, [reservation, restaurant, table?.tableCode, token]);
+  }, [reservation, restaurant, tableDisplayLabel, token]);
 
   if (query.isLoading) {
     return <div className="min-h-screen grid place-items-center bg-[#F6F5FC] text-[#17132E] p-6">Loading reservation…</div>;
@@ -135,9 +163,9 @@ function GuestBookingContent() {
               }`}
             >
               <CalendarCheck2 className="w-4 h-4" aria-hidden="true" />
-              {reservation.status}
+              {reservation.status.replace('_', ' ')}
             </span>
-            {table && <span className="font-mono font-bold text-sm px-2.5 py-1 rounded-lg bg-muted">Table {table.tableCode}</span>}
+            <span className="font-mono font-bold text-sm px-2.5 py-1 rounded-lg bg-muted">{tableDisplayLabel}</span>
           </div>
 
           <div className="space-y-2.5 text-sm">
@@ -163,6 +191,27 @@ function GuestBookingContent() {
               <p className="text-xs rounded-xl bg-muted px-3 py-2 text-muted-foreground">“{reservation.notes}”</p>
             )}
           </div>
+
+          {reservation.status === 'pending_deposit' && pendingDepositCheckout && (
+            <div className="rounded-2xl border-2 border-[#6236FF]/30 bg-[#EFEAFF]/70 p-4 space-y-2.5">
+              <p className="text-xs font-semibold text-[#4B1FE0]">
+                Complete your {reservation.depositAmount} {restaurant.currency} deposit to confirm {tableDisplayLabel}.
+              </p>
+              <Button
+                type="button"
+                onClick={() => confirmDepositMutation.mutate()}
+                disabled={confirmDepositMutation.isPending}
+                className="w-full min-h-11 rounded-xl bg-[#6236FF] hover:bg-[#4B1FE0] text-white cursor-pointer gap-2"
+              >
+                <CreditCard className="w-4 h-4" />
+                <span>
+                  {confirmDepositMutation.isPending
+                    ? 'Verifying Deposit…'
+                    : `Pay ${reservation.depositAmount} ${restaurant.currency} Deposit`}
+                </span>
+              </Button>
+            </div>
+          )}
 
           {isConfirmed && (
             <div className="grid grid-cols-2 gap-2 pt-2">
@@ -220,7 +269,7 @@ function GuestBookingContent() {
             </div>
           )}
 
-          {isConfirmed && (
+          {(isConfirmed || reservation.status === 'pending_deposit') && (
             <Button
               type="button"
               variant="outline"

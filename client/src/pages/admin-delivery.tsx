@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { ArrowDown, ArrowUp, CreditCard, ExternalLink, Plus, Save, Trash2, Truck } from 'lucide-react';
+import { ArrowDown, ArrowUp, CreditCard, ExternalLink, KeyRound, Plus, Save, ShieldCheck, Trash2, Truck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -28,6 +28,16 @@ export default function AdminDeliveryAndCommercePage() {
   const [slotIntervalMins, setSlotIntervalMins] = useState(30);
   const [defaultTurnDurationMins, setDefaultTurnDurationMins] = useState(90);
   const [reservationDepositAmount, setReservationDepositAmount] = useState('0');
+  const [openTime, setOpenTime] = useState('08:00');
+  const [closeTime, setCloseTime] = useState('23:00');
+
+  // Isolated Payment Gateway Vault inputs (never pre-populated with raw secrets)
+  const [skipcashKeyId, setSkipcashKeyId] = useState('');
+  const [skipcashSecret, setSkipcashSecret] = useState('');
+  const [skipcashCheckoutUrl, setSkipcashCheckoutUrl] = useState('');
+  const [sadadMerchantId, setSadadMerchantId] = useState('');
+  const [sadadSecret, setSadadSecret] = useState('');
+  const [sadadCheckoutUrl, setSadadCheckoutUrl] = useState('');
 
   const [platform, setPlatform] = useState<'talabat' | 'snoonu' | 'keeta' | 'custom'>('talabat');
   const [displayName, setDisplayName] = useState('Talabat Qatar');
@@ -49,7 +59,51 @@ export default function AdminDeliveryAndCommercePage() {
     setSlotIntervalMins(cafe.slotIntervalMins || 30);
     setDefaultTurnDurationMins(cafe.defaultTurnDurationMins || 90);
     setReservationDepositAmount(String(cafe.reservationDepositAmount || '0'));
+    setOpenTime(cafe.openTime || '08:00');
+    setCloseTime(cafe.closeTime || '23:00');
   }, [cafe]);
+
+  const paymentConfigQuery = useQuery<{
+    skipcashKeyMasked: string | null;
+    hasSkipcashSecret: boolean;
+    skipcashCheckoutUrl: string;
+    sadadMerchantMasked: string | null;
+    hasSadadSecret: boolean;
+    sadadCheckoutUrl: string;
+    updatedAt: string | null;
+  }>({
+    queryKey: ['/api/hospitality/payment-config'],
+  });
+
+  useEffect(() => {
+    if (!paymentConfigQuery.data) return;
+    setSkipcashCheckoutUrl(paymentConfigQuery.data.skipcashCheckoutUrl || '');
+    setSadadCheckoutUrl(paymentConfigQuery.data.sadadCheckoutUrl || '');
+  }, [paymentConfigQuery.data]);
+
+  const saveGatewayVault = useMutation({
+    mutationFn: async () => {
+      const payload: Record<string, string | undefined> = {
+        skipcashCheckoutUrl: skipcashCheckoutUrl.trim(),
+        sadadCheckoutUrl: sadadCheckoutUrl.trim(),
+      };
+      if (skipcashKeyId.trim()) payload.skipcashKeyId = skipcashKeyId.trim();
+      if (skipcashSecret.trim()) payload.skipcashSecret = skipcashSecret.trim();
+      if (sadadMerchantId.trim()) payload.sadadMerchantId = sadadMerchantId.trim();
+      if (sadadSecret.trim()) payload.sadadSecret = sadadSecret.trim();
+      const res = await apiRequest('PUT', '/api/hospitality/payment-config', payload);
+      return res.json();
+    },
+    onSuccess: () => {
+      setSkipcashKeyId('');
+      setSkipcashSecret('');
+      setSadadMerchantId('');
+      setSadadSecret('');
+      void queryClient.invalidateQueries({ queryKey: ['/api/hospitality/payment-config'] });
+      toast({ title: 'Encrypted merchant payment vault updated' });
+    },
+    onError: (e: Error) => toast({ title: 'Could not update payment vault', description: e.message, variant: 'destructive' }),
+  });
 
   const aggQuery = useQuery<{ aggregators: any[] }>({
     queryKey: ['/api/hospitality/aggregators'],
@@ -69,6 +123,8 @@ export default function AdminDeliveryAndCommercePage() {
         waitlistEnabled,
         driveThruEnabled,
         pagerMiniGameEnabled,
+        openTime,
+        closeTime,
         slotIntervalMins: Number(slotIntervalMins) || 30,
         defaultTurnDurationMins: Number(defaultTurnDurationMins) || 90,
         reservationDepositAmount: String(Number(reservationDepositAmount || 0).toFixed(2)),
@@ -221,7 +277,25 @@ export default function AdminDeliveryAndCommercePage() {
           </div>
         </div>
 
-        <div className="grid sm:grid-cols-3 gap-4 pt-2 border-t">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4 pt-2 border-t">
+          <div>
+            <Label className="text-xs">Opens At (24h)</Label>
+            <Input
+              type="time"
+              value={openTime}
+              onChange={e => setOpenTime(e.target.value || '08:00')}
+              className="h-10 font-mono"
+            />
+          </div>
+          <div>
+            <Label className="text-xs">Closes At (supports past 00:00)</Label>
+            <Input
+              type="time"
+              value={closeTime}
+              onChange={e => setCloseTime(e.target.value || '23:00')}
+              className="h-10 font-mono"
+            />
+          </div>
           <div>
             <Label className="text-xs">Booking Slot Interval (mins)</Label>
             <Input
@@ -274,6 +348,115 @@ export default function AdminDeliveryAndCommercePage() {
             <span>Pager Wait Mini-Game</span>
             <Switch checked={pagerMiniGameEnabled} onCheckedChange={setPagerMiniGameEnabled} />
           </label>
+        </div>
+      </form>
+
+      {/* Isolated Merchant Payment Gateway Vault */}
+      <form
+        onSubmit={e => {
+          e.preventDefault();
+          saveGatewayVault.mutate();
+        }}
+        className="manager-panel p-6 space-y-4"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-bold text-lg flex items-center gap-2">
+              <KeyRound className="w-5 h-5 text-primary" />
+              Merchant Payment Gateway Vault (SkipCash &amp; Sadad)
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              Encrypted at rest with AES-256-GCM and excluded from JSON/SQL backups. Leave secret fields blank to keep existing keys.
+            </p>
+          </div>
+          <Button type="submit" variant="outline" className="cursor-pointer gap-2 min-h-10" disabled={saveGatewayVault.isPending}>
+            <ShieldCheck className="w-4 h-4 text-primary" />
+            <span>{saveGatewayVault.isPending ? 'Encrypting…' : 'Save Gateway Vault'}</span>
+          </Button>
+        </div>
+
+        <div className="grid md:grid-cols-2 gap-4">
+          <div className="rounded-2xl border p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <strong className="text-sm">SkipCash (Qatar Central Bank)</strong>
+              <Badge variant={paymentConfigQuery.data?.hasSkipcashSecret ? 'default' : 'outline'}>
+                {paymentConfigQuery.data?.hasSkipcashSecret
+                  ? `Vault Active (${paymentConfigQuery.data.skipcashKeyMasked || 'Secret Stored'})`
+                  : 'Sandbox HMAC Mode'}
+              </Badge>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-2.5">
+              <div>
+                <Label className="text-xs">Key ID</Label>
+                <Input
+                  value={skipcashKeyId}
+                  onChange={e => setSkipcashKeyId(e.target.value)}
+                  placeholder={paymentConfigQuery.data?.skipcashKeyMasked || 'sk_live_...'}
+                  className="h-10 font-mono text-xs"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Webhook / Signing Secret</Label>
+                <Input
+                  type="password"
+                  value={skipcashSecret}
+                  onChange={e => setSkipcashSecret(e.target.value)}
+                  placeholder={paymentConfigQuery.data?.hasSkipcashSecret ? '••••••••••••' : 'Enter secret…'}
+                  className="h-10 text-xs"
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Hosted Checkout Endpoint (optional)</Label>
+              <Input
+                value={skipcashCheckoutUrl}
+                onChange={e => setSkipcashCheckoutUrl(e.target.value)}
+                placeholder="https://api.skipcash.app/v1/payments"
+                className="h-10 font-mono text-xs"
+              />
+            </div>
+          </div>
+
+          <div className="rounded-2xl border p-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <strong className="text-sm">Sadad Qatar</strong>
+              <Badge variant={paymentConfigQuery.data?.hasSadadSecret ? 'default' : 'outline'}>
+                {paymentConfigQuery.data?.hasSadadSecret
+                  ? `Vault Active (${paymentConfigQuery.data.sadadMerchantMasked || 'Secret Stored'})`
+                  : 'Sandbox HMAC Mode'}
+              </Badge>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-2.5">
+              <div>
+                <Label className="text-xs">Merchant ID</Label>
+                <Input
+                  value={sadadMerchantId}
+                  onChange={e => setSadadMerchantId(e.target.value)}
+                  placeholder={paymentConfigQuery.data?.sadadMerchantMasked || 'SADAD-QA-...'}
+                  className="h-10 font-mono text-xs"
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Secret Key</Label>
+                <Input
+                  type="password"
+                  value={sadadSecret}
+                  onChange={e => setSadadSecret(e.target.value)}
+                  placeholder={paymentConfigQuery.data?.hasSadadSecret ? '••••••••••••' : 'Enter secret…'}
+                  className="h-10 text-xs"
+                />
+              </div>
+            </div>
+            <div>
+              <Label className="text-xs">Hosted Checkout Endpoint (optional)</Label>
+              <Input
+                value={sadadCheckoutUrl}
+                onChange={e => setSadadCheckoutUrl(e.target.value)}
+                placeholder="https://api.sadadqa.com/checkout"
+                className="h-10 font-mono text-xs"
+              />
+            </div>
+          </div>
         </div>
       </form>
 

@@ -120,6 +120,7 @@ try {
   assert.equal(pubVapid.cookie,'');
   assert.ok(typeof pubVapid.data.publicKey === 'string' && pubVapid.data.publicKey.length >= 80);
   await request(publicInstance,'GET','/api/hospitality/push/status',undefined,cookie,404);
+  await request(publicInstance,'GET',`/api/ws/staff/${cafe}`,undefined,cookie,404);
   for (const path of ['/api/cafes','/api/menu/public/'+cafe,'/api/restaurant/public/'+cafe,'/api/categories/public/'+cafe,'/api/menu-items/public/'+cafe,'/api/price-variants/public/restaurant/'+cafe]) {
     const guest = await request(publicInstance,'GET',path,undefined,cookie);
     assert.equal(guest.cookie,'');
@@ -154,6 +155,7 @@ try {
   assert.equal((await request(publicInstance,'GET',`/api/menu/public/${cafe}`)).data.items.length,0);
   await request(first,'PUT',`/api/menu-items/${mine.items[0].id}`,{isAvailable:true},cookie);
   const otherCookie = (await request(first,'POST','/api/login',{ email:'other@test.cafe',password })).cookie;
+  // When BRANCH_HUB is bound in Workers, /api/ws/staff/:id blocks anonymous & cross-branch sockets; without DO binding in unit options, Express returns 404 for unknown /api/ws/staff path.
   await request(first,'PUT',`/api/menu-items/${mine.items[0].id}`,{modifierGroups:[]},otherCookie,404);
   await request(second,'PUT',`/api/categories/${cat.id}`,{ title:'Stolen' },otherCookie,404);
   checks.push('Menu/category edits persist in Postgres; cross-café changes and forged browser origins are blocked.');
