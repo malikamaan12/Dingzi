@@ -267,7 +267,57 @@ try {
   assert.equal(analyticsA.data.summary.aggregatorClicksTotal, 1);
   assert.equal(analyticsA.data.clicksByPlatform.talabat, 1);
 
-  console.log('PASS: All 5 Hospitality Operating Platform pillars verified (tenant modes, SkipCash checkout, Auto Pager + 20s cooldown, concurrent table exclusion, curbside bay dispatch, and Talabat/Snoonu/Keeta click telemetry).');
+  // 6. Super-Admin Multi-Branch Portfolio Analytics & Full Hospitality Recovery Backup
+  const portfolio = await api('GET', '/api/super-admin/portfolio-analytics', undefined, superCookie);
+  assert.equal(portfolio.status, 200);
+  assert.ok(portfolio.data.branches.length >= 2, 'Portfolio analytics must include both provisioned branches');
+
+  const fullBackup = await api('GET', '/api/cafe-backup', undefined, cookieA);
+  assert.equal(fullBackup.status, 200);
+  assert.equal(fullBackup.data.diningZones.length, 1);
+  assert.equal(fullBackup.data.diningTables.length, 1);
+  assert.equal(fullBackup.data.aggregatorLinks.length, 1);
+
+  // 7. 1-Tap Modifier Option Snooze Verification
+  const modOptionId = randomUUID();
+  const modGroupId = randomUUID();
+  const itemWithMod = await api('POST', '/api/manager-menu', {
+    item: {
+      categoryId: catB.id,
+      name: 'Pistachio Cortado',
+      price: '24.00',
+      discount: '0',
+      unit: 'cup',
+      isAvailable: true,
+      hasMultiplePricing: false,
+      prepTimeMins: 5,
+      allergenTags: ['Dairy', 'Nuts'],
+      aggregatorOverrides: { talabat: 'https://www.talabat.com/qatar/pearl-drive/pistachio' },
+      modifierGroups: [
+        {
+          id: modGroupId,
+          title: 'Milk Choice',
+          selection: 'single',
+          minSelections: 0,
+          maxSelections: 1,
+          options: [{ id: modOptionId, label: 'Oat Milk', price: '3.00', isAvailable: true }],
+        },
+      ],
+    },
+    variants: [],
+  }, cookieB);
+  assert.equal(itemWithMod.status, 200);
+
+  const snoozedMod = await api(
+    'POST',
+    `/api/hospitality/items/${itemWithMod.data.id}/modifiers/${modOptionId}/snooze`,
+    { isAvailable: false },
+    cookieB,
+  );
+  assert.equal(snoozedMod.status, 200);
+  assert.equal(snoozedMod.data.item.modifierGroups[0].options[0].isAvailable, false);
+
+  console.log('PASS: All 6 Dingzi PRD modules verified (Menu Studio allergens/overrides, 1-tap modifier snooze, Auto Pager + 20s cooldown, concurrent table exclusion, curbside bay dispatch, aggregator telemetry, portfolio analytics, and full branch backup).');
 } finally {
   server.kill('SIGTERM');
   await new Promise(resolve => { server.once('exit', resolve); setTimeout(resolve, 4000).unref(); });

@@ -1402,6 +1402,34 @@ export function mountHospitalityRoutes(app: Express) {
     }
   });
 
+  // 1-Tap KDS Out-of-Stock Modifier Option Snooze (PRD §3 & §4.1.3)
+  app.post('/api/hospitality/items/:id/modifiers/:optionId/snooze', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const itemId = z.string().uuid().parse(req.params.id);
+      const optionId = z.string().uuid().parse(req.params.optionId);
+      const { isAvailable } = z.object({ isAvailable: z.boolean() }).strict().parse(req.body);
+      const items = await storage.getMenuItemsByRestaurantId(cafe.id);
+      const target = items.find(i => i.id === itemId);
+      if (!target) return res.status(404).json({ message: 'Item not found in this branch' });
+      let found = false;
+      const nextGroups = (target.modifierGroups || []).map(group => ({
+        ...group,
+        options: group.options.map(opt => {
+          if (opt.id !== optionId) return opt;
+          found = true;
+          return { ...opt, isAvailable };
+        }),
+      }));
+      if (!found) return res.status(404).json({ message: 'Modifier option not found on this item' });
+      const updated = await storage.updateMenuItem(itemId, { modifierGroups: nextGroups });
+      res.json({ item: updated });
+    } catch (e) {
+      next(e);
+    }
+  });
+
   // Pillar 3: Staff Floor Zones, Tables, Reservations & Waitlist Management
   app.get('/api/hospitality/floor', isAuthenticated, async (req: any, res, next) => {
     try {
@@ -1761,12 +1789,13 @@ export function mountHospitalityRoutes(app: Express) {
     try {
       const cafe = await getManagedCafe(req);
       if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
-      const [tickets, orders, reservations, waitlist, clicks] = await Promise.all([
+      const [tickets, orders, reservations, waitlist, clicks, allItems] = await Promise.all([
         db.select().from(pagerTickets).where(eq(pagerTickets.restaurantId, cafe.id)),
         db.select().from(guestOrders).where(eq(guestOrders.restaurantId, cafe.id)),
         db.select().from(tableReservations).where(eq(tableReservations.restaurantId, cafe.id)),
         db.select().from(waitlistEntries).where(eq(waitlistEntries.restaurantId, cafe.id)),
         db.select().from(aggregatorClicks).where(eq(aggregatorClicks.restaurantId, cafe.id)),
+        storage.getMenuItemsByRestaurantId(cafe.id),
       ]);
 
       const completedWithReady = tickets.filter(t => t.readyAt && t.queuedAt);
@@ -1781,20 +1810,39 @@ export function mountHospitalityRoutes(app: Express) {
         ? Math.round((withinSlaCount / prepDurationsMins.length) * 100)
         : 100;
 
-      const hourlyBuckets = Array.from({ length: 24 }, (_, hour) => ({ hour, tickets: 0, orders: 0 }));
+      const hourlyPrepSums = Array.from({ length: 24 }, () => ({ sum: 0, count: 0 }));
+      const hourlyBuckets = Array.from({ length: 24 }, (_, hour) => ({ hour, tickets: 0, orders: 0, avgPrepMins: 0 }));
       for (const t of tickets) {
         const hour = new Date(t.queuedAt).getHours();
         hourlyBuckets[hour].tickets++;
+        if (t.readyAt && t.queuedAt) {
+          hourlyPrepSums[hour].sum += Math.max(0, (new Date(t.readyAt).getTime() - new Date(t.queuedAt).getTime()) / 60_000);
+          hourlyPrepSums[hour].count++;
+        }
       }
       for (const o of orders) {
         const hour = new Date(o.createdAt).getHours();
         hourlyBuckets[hour].orders++;
       }
+      for (let h = 0; h < 24; h++) {
+        if (hourlyPrepSums[h].count > 0) {
+          hourlyBuckets[h].avgPrepMins = Number((hourlyPrepSums[h].sum / hourlyPrepSums[h].count).toFixed(1));
+        }
+      }
 
       const clicksByPlatform: Record<string, number> = {};
+      const clicksByItemId: Record<string, number> = {};
       for (const c of clicks) {
         clicksByPlatform[c.platform] = (clicksByPlatform[c.platform] || 0) + 1;
+        if (c.menuItemId) {
+          clicksByItemId[c.menuItemId] = (clicksByItemId[c.menuItemId] || 0) + 1;
+        }
       }
+      const itemNameById = new Map(allItems.map(i => [i.id, i.name]));
+      const topClickedItems = Object.entries(clicksByItemId)
+        .map(([itemId, count]) => ({ itemId, name: itemNameById.get(itemId) || 'Menu Item', clicks: count }))
+        .sort((a, b) => b.clicks - a.clicks)
+        .slice(0, 8);
 
       const ratings = tickets.map(t => t.rating).filter((r): r is number => typeof r === 'number');
       const avgRating = ratings.length
@@ -1820,6 +1868,7 @@ export function mountHospitalityRoutes(app: Express) {
           aggregatorClicksTotal: clicks.length,
         },
         clicksByPlatform,
+        topClickedItems,
         hourlyBuckets,
       });
     } catch (e) {

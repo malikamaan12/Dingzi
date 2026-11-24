@@ -23,6 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useManagerMenu } from '@/lib/managerMenu';
 import { useToast } from '@/hooks/use-toast';
+import { playStaffArrivalChime } from '@/lib/pagerAudio';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
 import { LocalQrBox } from '@/components/hospitality/LocalQrBox';
 import { subscribeStaffLockScreenPush } from '@/lib/mobileBridge';
@@ -35,6 +36,7 @@ export default function AdminKdsPage() {
   const [prepMins, setPrepMins] = useState(8);
   const [issuedQrTicket, setIssuedQrTicket] = useState<any | null>(null);
   const [kioskMode, setKioskMode] = useState(false);
+  const [channelFilter, setChannelFilter] = useState<'all' | 'orders' | 'curbside' | 'counter'>('all');
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -47,8 +49,11 @@ export default function AdminKdsPage() {
     refetchInterval: 5000,
   });
 
-  useRealtimeStream('/api/hospitality/stream', () => {
+  useRealtimeStream('/api/hospitality/stream', ev => {
     void queryClient.invalidateQueries({ queryKey: ['/api/hospitality/pagers'] });
+    if (ev.type === 'order.created' || ev.type === 'order.paid' || ev.type === 'curbside.arrived') {
+      playStaffArrivalChime();
+    }
   });
 
   const issueMutation = useMutation({
@@ -99,10 +104,27 @@ export default function AdminKdsPage() {
     },
   });
 
+  const snoozeModifierMutation = useMutation({
+    mutationFn: async ({ itemId, optionId, isAvailable }: { itemId: string; optionId: string; isAvailable: boolean }) => {
+      const res = await apiRequest('POST', `/api/hospitality/items/${itemId}/modifiers/${optionId}/snooze`, { isAvailable });
+      return res.json();
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['/api/manager-menu'] });
+      toast({ title: 'Modifier availability updated' });
+    },
+  });
+
   const tickets = kdsQuery.data?.tickets || [];
   const ordersById = new Map((kdsQuery.data?.orders || []).map(o => [o.id, o]));
   const baysById = new Map((kdsQuery.data?.bays || []).map(b => [b.id, b]));
-  const activeTickets = tickets.filter(t => ['waiting', 'preparing', 'ready'].includes(t.status));
+  const allActiveTickets = tickets.filter(t => ['waiting', 'preparing', 'ready'].includes(t.status));
+  const activeTickets = allActiveTickets.filter(t => {
+    if (channelFilter === 'orders') return Boolean(t.orderId);
+    if (channelFilter === 'curbside') return Boolean(t.bayId || t.licensePlate || t.source === 'curbside');
+    if (channelFilter === 'counter') return t.source === 'auto_number' || t.source === 'pos_invoice';
+    return true;
+  });
   const recentCompleted = tickets
     .filter(t => ['collected', 'no_show'].includes(t.status))
     .slice(-8)
@@ -291,7 +313,28 @@ export default function AdminKdsPage() {
 
       {/* Active KDS Queue Grid */}
       <section className="space-y-3">
-        <h2 className="text-lg font-bold">Active Prep &amp; Pickup Queue ({activeTickets.length})</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-bold">Active Prep &amp; Pickup Queue ({activeTickets.length})</h2>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Filter KDS tickets">
+            {[
+              { id: 'all', label: `All (${allActiveTickets.length})` },
+              { id: 'orders', label: 'In-App Orders' },
+              { id: 'curbside', label: 'Curbside & Drive-Thru' },
+              { id: 'counter', label: 'POS / Auto Pagers' },
+            ].map(tab => (
+              <Button
+                key={tab.id}
+                type="button"
+                size="sm"
+                variant={channelFilter === tab.id ? 'default' : 'outline'}
+                onClick={() => setChannelFilter(tab.id as any)}
+                className="h-9 text-xs cursor-pointer"
+              >
+                {tab.label}
+              </Button>
+            ))}
+          </div>
+        </div>
         {activeTickets.length === 0 ? (
           <div className="manager-panel p-10 text-center text-muted-foreground">
             Queue is clear — issue an Auto Pager above or place a guest order from the menu to test live alerts.
@@ -452,13 +495,13 @@ export default function AdminKdsPage() {
         )}
       </section>
 
-      {/* Quick 1-Tap Item Stock Snooze Bar */}
+      {/* Quick 1-Tap Item & Modifier Out-of-Stock Snooze Bar */}
       {(menuQuery.data?.items || []).length > 0 && (
-        <section className="manager-panel p-5 space-y-3">
+        <section className="manager-panel p-5 space-y-4">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="font-bold text-base">Quick 1-Tap Out-of-Stock Snooze</h2>
-              <p className="text-xs text-muted-foreground">Instantly hide or restore sold-out items on the live guest menu.</p>
+              <h2 className="font-bold text-base">Quick 1-Tap Item &amp; Modifier Snooze</h2>
+              <p className="text-xs text-muted-foreground">Instantly hide or restore sold-out items and toppings on the live guest menu.</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2 max-h-40 overflow-y-auto">
@@ -476,6 +519,41 @@ export default function AdminKdsPage() {
               </button>
             ))}
           </div>
+          {(menuQuery.data?.items || []).some(i => (i.modifierGroups || []).length > 0) && (
+            <div className="pt-3 border-t space-y-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Modifier &amp; Topping Options</p>
+              <div className="flex flex-wrap gap-2 max-h-36 overflow-y-auto">
+                {(menuQuery.data?.items || [])
+                  .flatMap(item =>
+                    (item.modifierGroups || []).flatMap(group =>
+                      group.options.map(opt => ({ item, group, opt })),
+                    ),
+                  )
+                  .slice(0, 24)
+                  .map(({ item, opt }) => (
+                    <button
+                      key={`${item.id}:${opt.id}`}
+                      type="button"
+                      onClick={() =>
+                        snoozeModifierMutation.mutate({
+                          itemId: item.id,
+                          optionId: opt.id,
+                          isAvailable: !opt.isAvailable,
+                        })
+                      }
+                      className={`px-2.5 min-h-9 rounded-lg border text-[11px] font-medium inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+                        opt.isAvailable ? 'bg-muted/40 hover:bg-muted' : 'bg-destructive/10 text-destructive border-destructive/30 line-through'
+                      }`}
+                    >
+                      {opt.isAvailable ? <PauseCircle className="w-3 h-3 text-muted-foreground" /> : <PlayCircle className="w-3 h-3" />}
+                      <span>
+                        {item.name}: <strong>{opt.label}</strong>
+                      </span>
+                    </button>
+                  ))}
+              </div>
+            </div>
+          )}
         </section>
       )}
 

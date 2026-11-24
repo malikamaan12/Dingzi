@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   BellRing,
   CalendarDays,
   Check,
+  Clock,
   ExternalLink,
   Plus,
   QrCode,
@@ -32,7 +33,14 @@ export default function AdminTablesPage() {
   const [tableCode, setTableCode] = useState('');
   const [minCovers, setMinCovers] = useState(1);
   const [maxCovers, setMaxCovers] = useState(4);
+  const [isCombinable, setIsCombinable] = useState(false);
   const [qrModal, setQrModal] = useState<{ title: string; url: string } | null>(null);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 5000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const floorQuery = useQuery<{
     zones: any[];
@@ -79,6 +87,7 @@ export default function AdminTablesPage() {
         tableCode: tableCode.trim(),
         minCovers,
         maxCovers,
+        isCombinable,
       });
       return res.json();
     },
@@ -181,57 +190,83 @@ export default function AdminTablesPage() {
             <p className="text-sm text-muted-foreground py-6 text-center">No walk-in parties waiting right now.</p>
           ) : (
             <div className="space-y-3">
-              {waitlist.map(entry => (
-                <div key={entry.id} className="rounded-2xl border p-4 bg-card flex flex-wrap items-center justify-between gap-3">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-black text-lg">{entry.ticketCode}</span>
-                      <Badge variant={entry.status === 'ready' ? 'default' : 'secondary'}>{entry.status}</Badge>
-                      {entry.guestResponse === 'on_my_way' && (
-                        <Badge className="bg-emerald-600 text-white">On My Way!</Badge>
-                      )}
+              {waitlist.map(entry => {
+                const holdSecsLeft = entry.holdExpiresAt
+                  ? Math.max(0, Math.ceil((new Date(entry.holdExpiresAt).getTime() - now) / 1000))
+                  : null;
+                const holdLabel =
+                  holdSecsLeft !== null
+                    ? holdSecsLeft > 0
+                      ? `Hold ${Math.floor(holdSecsLeft / 60)}:${String(holdSecsLeft % 60).padStart(2, '0')}`
+                      : 'Hold expired'
+                    : null;
+                return (
+                  <div key={entry.id} className="rounded-2xl border p-4 bg-card flex flex-wrap items-center justify-between gap-3">
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono font-black text-lg">{entry.ticketCode}</span>
+                        <Badge variant={entry.status === 'ready' ? 'default' : 'secondary'}>{entry.status}</Badge>
+                        {entry.guestResponse === 'on_my_way' && (
+                          <Badge className="bg-[#C8FF42] text-[#17132E] hover:bg-[#C8FF42] font-extrabold border-0">On My Way!</Badge>
+                        )}
+                        {holdLabel && (
+                          <span className="inline-flex items-center gap-1 text-xs font-mono px-2 py-0.5 rounded bg-muted">
+                            <Clock className="w-3 h-3" />
+                            {holdLabel}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-sm font-medium">
+                        {entry.guestName} · Party of {entry.partySize}
+                        {entry.zoneId && zoneById.get(entry.zoneId) ? ` · ${zoneById.get(entry.zoneId).name}` : ''}
+                      </p>
                     </div>
-                    <p className="text-sm font-medium">
-                      {entry.guestName} · Party of {entry.partySize}
-                      {entry.zoneId && zoneById.get(entry.zoneId) ? ` · ${zoneById.get(entry.zoneId).name}` : ''}
-                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="min-h-10 cursor-pointer gap-1 bg-[#C8FF42] hover:bg-[#b8f52c] text-[#17132E] font-extrabold border-0"
+                        onClick={() =>
+                          waitlistAction.mutate({
+                            id: entry.id,
+                            action: entry.status === 'ready' ? 'rebuzz' : 'ready',
+                          })
+                        }
+                      >
+                        <BellRing className="w-3.5 h-3.5" />
+                        {entry.status === 'ready' ? `Re-buzz (${entry.buzzCount})` : 'Table Ready (10m)'}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="min-h-10 cursor-pointer gap-1"
+                        onClick={() => waitlistAction.mutate({ id: entry.id, action: 'seated' })}
+                      >
+                        <Check className="w-3.5 h-3.5" />
+                        Seat
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="text-muted-foreground hover:text-destructive cursor-pointer"
+                        onClick={() => waitlistAction.mutate({ id: entry.id, action: 'expired' })}
+                      >
+                        Expire
+                      </Button>
+                      <a
+                        href={`/waitlist/${entry.trackingToken}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-primary hover:underline inline-flex items-center gap-1"
+                      >
+                        Pass <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      className="min-h-10 cursor-pointer gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-                      onClick={() =>
-                        waitlistAction.mutate({
-                          id: entry.id,
-                          action: entry.status === 'ready' ? 'rebuzz' : 'ready',
-                        })
-                      }
-                    >
-                      <BellRing className="w-3.5 h-3.5" />
-                      {entry.status === 'ready' ? `Re-buzz (${entry.buzzCount})` : 'Table Ready (10m)'}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      className="min-h-10 cursor-pointer gap-1"
-                      onClick={() => waitlistAction.mutate({ id: entry.id, action: 'seated' })}
-                    >
-                      <Check className="w-3.5 h-3.5" />
-                      Seat
-                    </Button>
-                    <a
-                      href={`/waitlist/${entry.trackingToken}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs text-primary hover:underline inline-flex items-center gap-1"
-                    >
-                      Pass <ExternalLink className="w-3 h-3" />
-                    </a>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </section>
@@ -353,7 +388,7 @@ export default function AdminTablesPage() {
           className="lg:col-span-7 manager-panel p-5 space-y-4"
         >
           <h2 className="font-bold text-base">2. Floor Tables &amp; Dine-In Table QRs</h2>
-          <div className="grid sm:grid-cols-4 gap-2 items-end">
+          <div className="grid sm:grid-cols-5 gap-2 items-end">
             <div>
               <Label className="text-xs">Zone *</Label>
               <select
@@ -379,6 +414,10 @@ export default function AdminTablesPage() {
                 <Input type="number" min={1} max={30} value={maxCovers} onChange={e => setMaxCovers(Number(e.target.value))} className="h-10" />
               </div>
             </div>
+            <label className="flex items-center gap-2 h-10 px-2 rounded-lg border text-xs cursor-pointer">
+              <input type="checkbox" checked={isCombinable} onChange={e => setIsCombinable(e.target.checked)} className="accent-primary" />
+              <span>Combinable</span>
+            </label>
             <Button type="submit" className="h-10 cursor-pointer gap-1" disabled={!zones.length || !tableCode.trim() || addTable.isPending}>
               <Plus className="w-4 h-4" />
               Add Table
@@ -389,8 +428,11 @@ export default function AdminTablesPage() {
             {tables.map(t => (
               <div key={t.id} className="rounded-xl border p-3 text-xs flex items-center justify-between gap-2">
                 <div>
-                  <strong className="font-mono text-sm block">{t.tableCode}</strong>
-                  <span className="text-muted-foreground">
+                  <div className="flex items-center gap-1.5">
+                    <strong className="font-mono text-sm">{t.tableCode}</strong>
+                    {t.isCombinable && <Badge variant="outline" className="text-[10px]">Combinable</Badge>}
+                  </div>
+                  <span className="text-muted-foreground block mt-0.5">
                     {zoneById.get(t.zoneId)?.name || 'Zone'} · {t.minCovers}–{t.maxCovers} seats
                   </span>
                 </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { CreditCard, ExternalLink, Plus, Save, Trash2, Truck } from 'lucide-react';
+import { ArrowDown, ArrowUp, CreditCard, ExternalLink, Plus, Save, Trash2, Truck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -25,6 +25,9 @@ export default function AdminDeliveryAndCommercePage() {
   const [waitlistEnabled, setWaitlistEnabled] = useState(true);
   const [driveThruEnabled, setDriveThruEnabled] = useState(false);
   const [pagerMiniGameEnabled, setPagerMiniGameEnabled] = useState(true);
+  const [slotIntervalMins, setSlotIntervalMins] = useState(30);
+  const [defaultTurnDurationMins, setDefaultTurnDurationMins] = useState(90);
+  const [reservationDepositAmount, setReservationDepositAmount] = useState('0');
 
   const [platform, setPlatform] = useState<'talabat' | 'snoonu' | 'keeta' | 'custom'>('talabat');
   const [displayName, setDisplayName] = useState('Talabat Qatar');
@@ -43,6 +46,9 @@ export default function AdminDeliveryAndCommercePage() {
     setWaitlistEnabled(cafe.waitlistEnabled ?? true);
     setDriveThruEnabled(cafe.driveThruEnabled ?? false);
     setPagerMiniGameEnabled(cafe.pagerMiniGameEnabled ?? true);
+    setSlotIntervalMins(cafe.slotIntervalMins || 30);
+    setDefaultTurnDurationMins(cafe.defaultTurnDurationMins || 90);
+    setReservationDepositAmount(String(cafe.reservationDepositAmount || '0'));
   }, [cafe]);
 
   const aggQuery = useQuery<{ aggregators: any[] }>({
@@ -63,13 +69,16 @@ export default function AdminDeliveryAndCommercePage() {
         waitlistEnabled,
         driveThruEnabled,
         pagerMiniGameEnabled,
+        slotIntervalMins: Number(slotIntervalMins) || 30,
+        defaultTurnDurationMins: Number(defaultTurnDurationMins) || 90,
+        reservationDepositAmount: String(Number(reservationDepositAmount || 0).toFixed(2)),
       });
       return res.json();
     },
     onSuccess: updated => {
       updateManagerMenu(d => ({ ...d, restaurant: updated }));
       void queryClient.invalidateQueries({ queryKey: ['/api/manager-menu'] });
-      toast({ title: 'Commerce & hospitality modes saved' });
+      toast({ title: 'Commerce, booking & hospitality settings saved' });
     },
     onError: (e: Error) => toast({ title: 'Could not save settings', description: e.message, variant: 'destructive' }),
   });
@@ -82,7 +91,7 @@ export default function AdminDeliveryAndCommercePage() {
         url: url.trim(),
         badgeEn: badgeEn.trim() || null,
         badgeAr: badgeAr.trim() || null,
-        order: (aggQuery.data?.aggregators.length || 0),
+        order: aggQuery.data?.aggregators.length || 0,
       });
       return res.json();
     },
@@ -96,6 +105,14 @@ export default function AdminDeliveryAndCommercePage() {
     onError: (e: Error) => toast({ title: 'Could not add aggregator', description: e.message, variant: 'destructive' }),
   });
 
+  const updateAggregator = useMutation({
+    mutationFn: async ({ id, patch }: { id: string; patch: Record<string, unknown> }) => {
+      const res = await apiRequest('PUT', `/api/hospitality/aggregators/${id}`, patch);
+      return res.json();
+    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['/api/hospitality/aggregators'] }),
+  });
+
   const deleteAggregator = useMutation({
     mutationFn: async (id: string) => apiRequest('DELETE', `/api/hospitality/aggregators/${id}`),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['/api/hospitality/aggregators'] }),
@@ -103,13 +120,25 @@ export default function AdminDeliveryAndCommercePage() {
 
   const aggregators = aggQuery.data?.aggregators || [];
 
+  async function moveAggregator(index: number, delta: -1 | 1) {
+    const targetIdx = index + delta;
+    if (targetIdx < 0 || targetIdx >= aggregators.length) return;
+    const a = aggregators[index];
+    const b = aggregators[targetIdx];
+    await Promise.all([
+      apiRequest('PUT', `/api/hospitality/aggregators/${a.id}`, { order: targetIdx }),
+      apiRequest('PUT', `/api/hospitality/aggregators/${b.id}`, { order: index }),
+    ]);
+    void queryClient.invalidateQueries({ queryKey: ['/api/hospitality/aggregators'] });
+  }
+
   return (
     <div className="space-y-6 max-w-[1200px]">
       <div>
         <p className="manager-eyebrow">COMMERCE MODES &amp; DELIVERY HANDOFF</p>
         <h1 className="text-3xl font-bold">Ordering Modes, Payments &amp; Aggregators</h1>
         <p className="text-sm text-muted-foreground">
-          Switch between Browse &amp; Pager Only, Pay at Venue, or SkipCash/Sadad Online Checkout, and configure Talabat, Snoonu &amp; Keeta handoff links.
+          Switch between Browse &amp; Pager Only, Pay at Venue, or SkipCash/Sadad Online Checkout, configure reservation slot intervals &amp; deposits, and manage Talabat, Snoonu &amp; Keeta storefronts.
         </p>
       </div>
 
@@ -124,7 +153,7 @@ export default function AdminDeliveryAndCommercePage() {
         <div className="flex items-center justify-between gap-3">
           <h2 className="font-bold text-lg flex items-center gap-2">
             <CreditCard className="w-5 h-5 text-primary" />
-            Branch Commerce &amp; Feature Toggles
+            Branch Commerce, Booking Rules &amp; Feature Toggles
           </h2>
           <Button type="submit" className="cursor-pointer gap-2" disabled={saveCommerce.isPending}>
             <Save className="w-4 h-4" />
@@ -184,11 +213,47 @@ export default function AdminDeliveryAndCommercePage() {
           </div>
           <div>
             <Label className="text-xs">Custom Brand Hex (optional)</Label>
-            <Input value={brandAccentHex} onChange={e => setBrandAccentHex(e.target.value)} placeholder="#92400E" className="h-10 font-mono" />
+            <Input value={brandAccentHex} onChange={e => setBrandAccentHex(e.target.value)} placeholder="#6236FF" className="h-10 font-mono" />
           </div>
           <div>
             <Label className="text-xs">Google Maps Review Link</Label>
             <Input value={googleMapsReviewUrl} onChange={e => setGoogleMapsReviewUrl(e.target.value)} placeholder="https://g.page/r/..." className="h-10" />
+          </div>
+        </div>
+
+        <div className="grid sm:grid-cols-3 gap-4 pt-2 border-t">
+          <div>
+            <Label className="text-xs">Booking Slot Interval (mins)</Label>
+            <Input
+              type="number"
+              min={10}
+              max={180}
+              value={slotIntervalMins}
+              onChange={e => setSlotIntervalMins(Number(e.target.value) || 30)}
+              className="h-10"
+            />
+          </div>
+          <div>
+            <Label className="text-xs">Default Table Turn Duration (mins)</Label>
+            <Input
+              type="number"
+              min={15}
+              max={360}
+              value={defaultTurnDurationMins}
+              onChange={e => setDefaultTurnDurationMins(Number(e.target.value) || 90)}
+              className="h-10"
+            />
+          </div>
+          <div>
+            <Label className="text-xs">Reservation Deposit ({cafe?.currency || 'QAR'}, Mode C)</Label>
+            <Input
+              type="number"
+              min={0}
+              step="0.01"
+              value={reservationDepositAmount}
+              onChange={e => setReservationDepositAmount(e.target.value)}
+              className="h-10"
+            />
           </div>
         </div>
 
@@ -274,24 +339,61 @@ export default function AdminDeliveryAndCommercePage() {
           {aggregators.length === 0 ? (
             <p className="text-xs text-muted-foreground">No delivery partner links configured yet.</p>
           ) : (
-            aggregators.map(agg => (
-              <div key={agg.id} className="rounded-xl border p-3 flex flex-wrap items-center justify-between gap-3 text-sm">
+            aggregators.map((agg, idx) => (
+              <div
+                key={agg.id}
+                className={`rounded-xl border p-3 flex flex-wrap items-center justify-between gap-3 text-sm ${
+                  agg.isActive === false ? 'opacity-60 border-dashed' : ''
+                }`}
+              >
                 <div className="flex items-center gap-2.5">
                   <Badge className="uppercase">{agg.platform}</Badge>
                   <strong>{agg.displayName}</strong>
                   {agg.badgeEn && <span className="text-xs text-primary">· {agg.badgeEn}</span>}
-                  <a href={agg.url} target="_blank" rel="noreferrer" className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1">
+                  <a
+                    href={agg.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-muted-foreground hover:underline inline-flex items-center gap-1"
+                  >
                     Open <ExternalLink className="w-3 h-3" />
                   </a>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => deleteAggregator.mutate(agg.id)}
-                  className="text-muted-foreground hover:text-destructive cursor-pointer"
-                  aria-label={`Delete ${agg.displayName}`}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <label className="flex items-center gap-1.5 text-xs cursor-pointer mr-1">
+                    <Switch
+                      checked={agg.isActive !== false}
+                      onCheckedChange={isActive => updateAggregator.mutate({ id: agg.id, patch: { isActive } })}
+                    />
+                    <span>{agg.isActive !== false ? 'Active' : 'Paused'}</span>
+                  </label>
+                  <button
+                    type="button"
+                    disabled={idx === 0}
+                    aria-label={`Move ${agg.displayName} up`}
+                    onClick={() => void moveAggregator(idx, -1)}
+                    className="p-1.5 rounded-lg border disabled:opacity-35 cursor-pointer"
+                  >
+                    <ArrowUp className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={idx === aggregators.length - 1}
+                    aria-label={`Move ${agg.displayName} down`}
+                    onClick={() => void moveAggregator(idx, 1)}
+                    className="p-1.5 rounded-lg border disabled:opacity-35 cursor-pointer"
+                  >
+                    <ArrowDown className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteAggregator.mutate(agg.id)}
+                    className="p-1.5 text-muted-foreground hover:text-destructive cursor-pointer"
+                    aria-label={`Delete ${agg.displayName}`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             ))
           )}

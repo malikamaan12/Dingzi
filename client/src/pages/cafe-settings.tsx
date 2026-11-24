@@ -37,7 +37,7 @@ export default function CafeSettings() {
     try {
       const response = await apiRequest('GET','/api/cafe-backup');
       const url = URL.createObjectURL(await response.blob());
-      const link = document.createElement('a'); link.href = url; link.download = 'cafe-menu-backup.json'; link.click();
+      const link = document.createElement('a'); link.href = url; link.download = 'dingzi-branch-backup.json'; link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch(e) { toast({ title: 'Could not export menu', description: (e as Error).message, variant: 'destructive' }); }
     finally { setBusy(false); }
@@ -51,7 +51,7 @@ export default function CafeSettings() {
       <Button disabled={busy}>Change password</Button>
     </form></CardContent></Card>}
     {!platformAccount && user?.role === 'super_admin' && user.cafeContext && <Card><CardHeader><CardTitle>Café manager account</CardTitle></CardHeader><CardContent className="space-y-3"><p>{user.cafeContext.owner?.email}</p><Link href={`/super-admin/restaurant/${user.cafeContext.id}`}><Button variant="outline">Open manager account controls</Button></Link></CardContent></Card>}
-    {!platformAccount && <><Card><CardHeader><CardTitle>Export menu data</CardTitle></CardHeader><CardContent className="space-y-3"><p className="text-muted-foreground">Download your café profile, categories, items, and pricing as JSON. Photos are stored separately on the café server.</p><Button variant="outline" disabled={busy} onClick={exportMenu}>Download menu export</Button></CardContent></Card>
+    {!platformAccount && <><Card><CardHeader><CardTitle>Export branch recovery backup</CardTitle></CardHeader><CardContent className="space-y-3"><p className="text-muted-foreground">Download your complete Dingzi branch configuration (profile, categories, menu items, variants, modifiers, dining zones, tables, curbside bays, and aggregator links) as JSON.</p><Button variant="outline" disabled={busy} onClick={exportMenu}>Download branch backup</Button></CardContent></Card>
     <Card><CardHeader><CardTitle>Start with an empty menu</CardTitle></CardHeader><CardContent className="space-y-3"><p className="text-muted-foreground">This permanently removes your café's categories and menu items. Export your menu first if you need a copy.</p><Label htmlFor="clear-confirmation">Type CLEAR MENU to confirm</Label><Input id="clear-confirmation" value={confirmation} onChange={e => setConfirmation(e.target.value)} /><Button variant="destructive" disabled={busy || confirmation !== 'CLEAR MENU'} onClick={clearMenu}>Clear café menu</Button></CardContent></Card></>}
   </div>;
 }

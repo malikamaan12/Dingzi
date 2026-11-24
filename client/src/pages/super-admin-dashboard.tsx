@@ -21,7 +21,7 @@ import {
   Building2, 
   Ban, 
   CheckCircle, 
-  Settings, QrCode, Eye, EyeOff, Plus, Phone, UtensilsCrossed
+  Settings, QrCode, Eye, EyeOff, Plus, Phone, UtensilsCrossed, BarChart3
 } from "lucide-react";
 import type { Restaurant } from "@shared/schema";
 import PermanentMenuQR from "@/components/permanent-menu-qr";
@@ -33,6 +33,76 @@ interface RestaurantWithOwner extends Restaurant {
     firstName: string;
     lastName: string;
   } | null;
+}
+
+function PortfolioAnalyticsPanel() {
+  const portfolioQuery = useQuery<{
+    branches: {
+      id: string;
+      name: string;
+      slug: string | null;
+      orderingMode: string;
+      currency: string;
+      totalTickets: number;
+      avgPrepMins: number;
+      totalOrders: number;
+      reservationsCount: number;
+      aggregatorClicks: number;
+    }[];
+  }>({
+    queryKey: ['/api/super-admin/portfolio-analytics'],
+  });
+
+  const branches = portfolioQuery.data?.branches || [];
+  if (!branches.length) return null;
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-lg flex items-center gap-2">
+          <BarChart3 className="w-5 h-5 text-primary" />
+          Multi-Branch Portfolio SLA &amp; Demand Comparison
+        </CardTitle>
+        <CardDescription>
+          Side-by-side comparison of virtual pagers, prep-time SLA, in-app orders, table bookings, and outbound aggregator clicks across all Dingzi venues.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead>
+              <tr className="border-b text-xs uppercase text-muted-foreground">
+                <th className="py-2.5 pr-4">Branch</th>
+                <th className="py-2.5 px-3">Commerce Mode</th>
+                <th className="py-2.5 px-3 text-right">Pagers</th>
+                <th className="py-2.5 px-3 text-right">Avg Prep SLA</th>
+                <th className="py-2.5 px-3 text-right">Orders</th>
+                <th className="py-2.5 px-3 text-right">Bookings</th>
+                <th className="py-2.5 pl-3 text-right">Delivery Clicks</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {branches.map(b => (
+                <tr key={b.id}>
+                  <td className="py-2.5 pr-4 font-semibold">{b.name}</td>
+                  <td className="py-2.5 px-3">
+                    <Badge variant="outline" className="text-[11px] font-mono">
+                      {b.orderingMode}
+                    </Badge>
+                  </td>
+                  <td className="py-2.5 px-3 text-right font-mono">{b.totalTickets}</td>
+                  <td className="py-2.5 px-3 text-right font-mono">{b.avgPrepMins}m</td>
+                  <td className="py-2.5 px-3 text-right font-mono">{b.totalOrders}</td>
+                  <td className="py-2.5 px-3 text-right font-mono">{b.reservationsCount}</td>
+                  <td className="py-2.5 pl-3 text-right font-mono">{b.aggregatorClicks}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function SuspendRestaurantDialog({ 
@@ -220,6 +290,8 @@ export default function SuperAdminDashboard() {
           </CardContent>
         </Card>
       )}
+
+      <PortfolioAnalyticsPanel />
 
       <div className="staff-platform-grid">
         {restaurants && restaurants.length === 0 && (

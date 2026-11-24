@@ -1,7 +1,7 @@
 import { type Express, type RequestHandler } from 'express';
 import { storage } from './storage';
 import { db } from './db';
-import { categories, restaurants, menuItems, menuItemPriceVariants, sessions, users, insertMenuItemSchema, insertPriceVariantSchema, cafeProfileSchema, passwordSchema } from '@shared/schema';
+import { categories, restaurants, menuItems, menuItemPriceVariants, diningZones, diningTables, serviceBays, aggregatorLinks, sessions, users, insertMenuItemSchema, insertPriceVariantSchema, cafeProfileSchema, passwordSchema } from '@shared/schema';
 import { eq, and, ne, sql } from 'drizzle-orm';
 import { isAuthenticated } from './localAuth';
 import bcrypt from './passwords';
@@ -182,7 +182,27 @@ export function mountCafeControls(app: Express) {
     try {
       const cafe = await getManagedCafe(req);
       if (!cafe) return res.sendStatus(404);
-      res.attachment('cafe-menu-backup.json').json({ version: 1, exportedAt: new Date().toISOString(), restaurant: cafe, categories: await storage.getCategoriesByRestaurantId(cafe.id), menuItems: await storage.getMenuItemsByRestaurantId(cafe.id), priceVariants: await storage.getPriceVariantsByRestaurantId(cafe.id) });
+      const [cats, items, variants, zones, tables, bays, aggregators] = await Promise.all([
+        storage.getCategoriesByRestaurantId(cafe.id),
+        storage.getMenuItemsByRestaurantId(cafe.id),
+        storage.getPriceVariantsByRestaurantId(cafe.id),
+        db.select().from(diningZones).where(eq(diningZones.restaurantId, cafe.id)),
+        db.select().from(diningTables).where(eq(diningTables.restaurantId, cafe.id)),
+        db.select().from(serviceBays).where(eq(serviceBays.restaurantId, cafe.id)),
+        db.select().from(aggregatorLinks).where(eq(aggregatorLinks.restaurantId, cafe.id)),
+      ]);
+      res.attachment('dingzi-branch-backup.json').json({
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        restaurant: cafe,
+        categories: cats,
+        menuItems: items,
+        priceVariants: variants,
+        diningZones: zones,
+        diningTables: tables,
+        serviceBays: bays,
+        aggregatorLinks: aggregators,
+      });
     } catch(e) { next(e); }
   });
   app.delete('/api/cafe-menu', isAuthenticated, async (req: any, res, next) => {

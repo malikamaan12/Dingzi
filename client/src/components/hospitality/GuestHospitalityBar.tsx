@@ -599,6 +599,11 @@ export default function GuestHospitalityBar({
             </div>
 
             <Input value={resNotes} onChange={e => setResNotes(e.target.value)} placeholder="Special requests (high chair, celebration…)" className="h-11" />
+            {restaurant.orderingMode === 'full_online_checkout' && Number(restaurant.reservationDepositAmount || 0) > 0 && (
+              <p className="rounded-xl bg-[#EFEAFF] text-[#4B1FE0] px-3 py-2 text-xs font-semibold">
+                Table deposit applied at confirmation: {Number(restaurant.reservationDepositAmount).toFixed(2)} {restaurant.currency}
+              </p>
+            )}
             {resError && <p className="text-xs text-destructive font-medium">{resError}</p>}
 
             <Button
