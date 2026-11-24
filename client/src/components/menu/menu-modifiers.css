@@ -7,10 +7,10 @@
 .guest-modifier-help{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;font-size:11px;color:hsl(var(--foreground)/.75)}
 .guest-modifier-help button{min-height:44px;min-width:44px;color:hsl(var(--primary));text-decoration:underline}
 .guest-modifier-options{display:grid;gap:7px}
-.guest-modifier-option{display:flex;align-items:center;gap:10px;min-height:54px;padding:11px 12px;border:1px solid hsl(var(--primary)/.09);border-radius:14px;background:#ffffff8c;cursor:pointer}
-.guest-modifier-option.is-selected{background:hsl(var(--primary)/.09);border-color:hsl(var(--primary)/.45)}
-.guest-modifier-option input{accent-color:hsl(var(--primary));width:18px;height:18px;flex-shrink:0}
-.guest-modifier-option input:focus-visible{outline:2px solid hsl(var(--primary));outline-offset:4px}
+.guest-modifier-option{display:flex;align-items:center;gap:10px;min-height:54px;padding:11px 12px;border:1px solid #E5E2F2;border-radius:14px;background:#F6F5FC;cursor:pointer;transition:background .18s,border-color .18s}
+.guest-modifier-option.is-selected{background:#EFEAFF;border-color:#6236FF;color:#4B1FE0;font-weight:600}
+.guest-modifier-option input{accent-color:#6236FF;width:18px;height:18px;flex-shrink:0}
+.guest-modifier-option input:focus-visible{outline:2px solid #4B1FE0;outline-offset:4px}
 .guest-modifier-name{flex:1;min-width:0;font-size:12px;line-height:1.5;overflow-wrap:anywhere}
 .guest-modifier-name small{display:block;font-size:10px;color:hsl(var(--foreground)/.65)}
 .guest-modifier-option[data-unavailable=true]{opacity:.6;cursor:default}

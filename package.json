@@ -20,9 +20,13 @@
     "backup:qstrawberry": "node scripts/export-qstrawberry-backup.mjs",
     "ci:build": "node scripts/ci-build.mjs",
     "deploy:menu": "wrangler deploy --config wrangler.jsonc",
-    "deploy:staff": "wrangler deploy --config wrangler.staff.jsonc"
+    "deploy:staff": "wrangler deploy --config wrangler.staff.jsonc",
+    "mobile:sync": "npm run build && cap sync",
+    "mobile:android": "cap open android",
+    "mobile:ios": "cap open ios"
   },
   "dependencies": {
+    "@capacitor/core": "^8.6.2",
     "@electric-sql/pglite": "^0.5.8",
     "@radix-ui/react-alert-dialog": "^1.1.7",
     "@radix-ui/react-avatar": "^1.1.4",
@@ -59,9 +63,11 @@
     "zod-validation-error": "^3.4.0"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.6.2",
     "@cloudflare/workers-types": "^5.20261009.1",
     "@electric-sql/pglite-socket": "^0.2.11",
     "@tailwindcss/typography": "^0.5.15",
+    "@types/bcrypt": "^6.0.0",
     "@types/express": "4.17.21",
     "@types/express-session": "^1.18.0",
     "@types/node": "20.16.11",
@@ -81,8 +87,7 @@
     "tsx": "^4.20.5",
     "typescript": "5.6.3",
     "vite": "^6.4.3",
-    "wrangler": "^4.149.0",
-    "@types/bcrypt": "^6.0.0"
+    "wrangler": "^4.149.0"
   },
   "overrides": {
     "postcss-selector-parser": "^7.1.6",

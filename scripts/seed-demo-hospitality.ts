@@ -44,7 +44,7 @@ const [urban] = await db
     name: 'Urban Café',
     slug: 'urban-cafe',
     theme: 'e3',
-    brandAccentHex: '#92400E',
+    brandAccentHex: '#6236FF',
     currency: 'QAR',
     timezone: 'Asia/Qatar',
     cuisineType: 'Artisan Pizza · Specialty Coffee · Desserts',

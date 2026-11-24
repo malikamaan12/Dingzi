@@ -3,6 +3,7 @@ import { useRoute, Link } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   Bell,
+  BellOff,
   BellRing,
   Car,
   CheckCircle2,
@@ -11,6 +12,7 @@ import {
   ExternalLink,
   Gamepad2,
   MapPin,
+  ShieldCheck,
   Sparkles,
   Star,
   Volume2,
@@ -21,7 +23,14 @@ import { Label } from '@/components/ui/label';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { cafeThemeStyle } from '@/lib/cafeTheme';
 import { MenuLanguageProvider, MenuLanguageSwitch, useMenuLanguage } from '@/lib/menuLanguage';
-import { playPagerReadyAlert, unlockGuestAlerts } from '@/lib/pagerAudio';
+import {
+  armLockScreenAudioKeepAlive,
+  startContinuousRinger,
+  stopContinuousRinger,
+  subscribeRingingState,
+} from '@/lib/lockScreenRinger';
+import { subscribeGuestLockScreenPush } from '@/lib/mobileBridge';
+import { PwaInstallBanner } from '@/components/mobile/PwaInstallBanner';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
 
 function BeanCatcherMiniGame() {
@@ -39,7 +48,7 @@ function BeanCatcherMiniGame() {
     <div className="rounded-2xl border bg-card p-4 shadow-sm">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2 text-sm font-semibold">
-          <Gamepad2 className="w-4 h-4 text-primary" />
+          <Gamepad2 className="w-4 h-4 text-primary" aria-hidden="true" />
           <span>Barista Reflex Mini-Game</span>
         </div>
         <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-primary/10 text-primary" role="status" aria-atomic="true">
@@ -60,19 +69,19 @@ function BeanCatcherMiniGame() {
                   setTargetIdx(Math.floor(Math.random() * 9));
                 }
               }}
-              className={`h-14 rounded-xl border flex items-center justify-center transition-all duration-150 cursor-pointer ${
+              className={`h-14 rounded-xl border flex items-center justify-center transition-colors duration-150 cursor-pointer ${
                 active
-                  ? 'bg-primary text-primary-foreground scale-105 shadow-md'
+                  ? 'bg-primary text-primary-foreground shadow-md'
                   : 'bg-muted/40 text-muted-foreground hover:bg-muted'
               }`}
             >
-              {active && <Coffee className="w-6 h-6" />}
+              {active && <Coffee className="w-6 h-6" aria-hidden="true" />}
             </button>
           );
         })}
       </div>
       <p className="text-xs text-center text-muted-foreground mt-2">
-        Tap the espresso cup while your order brews — your pager still rings automatically!
+        Tap the espresso cup while your order brews — lock-screen ringing stays armed!
       </p>
     </div>
   );
@@ -90,7 +99,11 @@ function VirtualPagerContent() {
   const [, params] = useRoute('/pager/:token');
   const token = params?.token || '';
   const { language, dir, t, label } = useMenuLanguage();
-  const [alertsEnabled, setAlertsEnabled] = useState(false);
+
+  const [alertsArmed, setAlertsArmed] = useState(false);
+  const [pushMode, setPushMode] = useState<'none' | 'native_push' | 'web_push' | 'audio_keepalive_only'>('none');
+  const [pushNote, setPushNote] = useState('');
+  const [isRinging, setIsRinging] = useState(false);
   const [showGame, setShowGame] = useState(false);
   const [rating, setRating] = useState<number>(0);
   const [comment, setComment] = useState('');
@@ -99,7 +112,8 @@ function VirtualPagerContent() {
   const [vehicleColor, setVehicleColor] = useState('White');
   const [vehicleType, setVehicleType] = useState<'Sedan' | 'SUV' | 'Pickup' | 'Coupe' | 'Other'>('SUV');
   const [licensePlate, setLicensePlate] = useState('');
-  const [flashReady, setFlashReady] = useState(false);
+
+  useEffect(() => subscribeRingingState(setIsRinging), []);
 
   const pagerQuery = useQuery<any>({
     enabled: Boolean(token),
@@ -109,7 +123,7 @@ function VirtualPagerContent() {
       if (!res.ok) throw new Error('Pager ticket not found');
       return res.json();
     },
-    refetchInterval: 4000,
+    refetchInterval: 3500,
   });
 
   const data = pagerQuery.data;
@@ -119,27 +133,53 @@ function VirtualPagerContent() {
   useRealtimeStream(token ? `/api/public/stream/pager/${token}` : null, event => {
     void queryClient.invalidateQueries({ queryKey: ['/api/public/pager', token] });
     if (event.type === 'pager.buzzed' || event.data?.ticket?.status === 'ready') {
-      setFlashReady(true);
-      playPagerReadyAlert(
-        `${restaurant?.name || 'Café'} · ${ticket?.ticketCode || ''}`,
-        'Your order is hot and ready for pickup!',
-      );
-      window.setTimeout(() => setFlashReady(false), 4500);
+      startContinuousRinger({
+        cafeName: restaurant?.name || 'Café',
+        ticketCode: ticket?.ticketCode || event.data?.ticket?.ticketCode || 'READY',
+        subtitle: 'Your order is hot and ready at the pickup counter!',
+      });
     }
   });
 
-  // Also alert if polling transitions ticket to ready
   const prevStatusKey = `${ticket?.status || ''}:${ticket?.buzzCount || 0}`;
   const [seenKey, setSeenKey] = useState('');
   useEffect(() => {
     if (!ticket) return;
-    if (seenKey && seenKey !== prevStatusKey && ticket.status === 'ready') {
-      setFlashReady(true);
-      playPagerReadyAlert(`${restaurant?.name || 'Café'} · ${ticket.ticketCode}`, 'Your order is ready for pickup!');
-      window.setTimeout(() => setFlashReady(false), 4500);
+    if (seenKey && seenKey !== prevStatusKey) {
+      if (ticket.status === 'ready') {
+        startContinuousRinger({
+          cafeName: restaurant?.name || 'Café',
+          ticketCode: ticket.ticketCode,
+          subtitle: 'Your order is ready for pickup!',
+        });
+      } else if (ticket.status === 'collected') {
+        stopContinuousRinger();
+      }
     }
     setSeenKey(prevStatusKey);
   }, [prevStatusKey, seenKey, ticket, restaurant?.name]);
+
+  async function handleArmLockScreen() {
+    if (!ticket || !restaurant) return;
+    await armLockScreenAudioKeepAlive({ cafeName: restaurant.name, ticketCode: ticket.ticketCode });
+    const subRes = await subscribeGuestLockScreenPush(`pager:${token}`);
+    setAlertsArmed(true);
+    setPushMode(subRes.mode);
+    setPushNote(subRes.reason || '');
+  }
+
+  const testPushMutation = useMutation({
+    mutationFn: async () => {
+      if (!alertsArmed) await handleArmLockScreen();
+      startContinuousRinger({
+        cafeName: restaurant?.name || 'Pager',
+        ticketCode: ticket?.ticketCode || 'TEST',
+        subtitle: 'Lock-screen speaker & vibration test active — tap Stop Ringing.',
+      });
+      const res = await apiRequest('POST', '/api/public/push/test', { scope: `pager:${token}` });
+      return res.json();
+    },
+  });
 
   const checkinMutation = useMutation({
     mutationFn: async (etaStatus: '5_mins_away' | 'arrived') => {
@@ -153,9 +193,7 @@ function VirtualPagerContent() {
       });
       return res.json();
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['/api/public/pager', token] });
-    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['/api/public/pager', token] }),
   });
 
   const feedbackMutation = useMutation({
@@ -173,7 +211,7 @@ function VirtualPagerContent() {
     return (
       <div className="min-h-screen grid place-items-center bg-background text-foreground p-6">
         <div className="text-center space-y-3">
-          <Coffee className="w-10 h-10 mx-auto text-primary animate-pulse" />
+          <Coffee className="w-10 h-10 mx-auto text-primary animate-pulse" aria-hidden="true" />
           <p className="font-medium">Connecting to live virtual pager…</p>
         </div>
       </div>
@@ -187,7 +225,7 @@ function VirtualPagerContent() {
           <h1 className="text-2xl font-bold">Pager not found</h1>
           <p className="text-muted-foreground text-sm">Scan the QR code from the counter or receipt again.</p>
           <Link href="/">
-            <Button className="cursor-pointer">Browse cafés</Button>
+            <Button className="cursor-pointer min-h-11">Browse cafés</Button>
           </Link>
         </div>
       </div>
@@ -208,24 +246,28 @@ function VirtualPagerContent() {
     <div
       dir={dir}
       lang={language}
-      style={cafeThemeStyle(restaurant.theme, restaurant.brandAccentHex)}
+      style={{
+        ...cafeThemeStyle(restaurant.theme, restaurant.brandAccentHex),
+        paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))',
+        paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))',
+      }}
       className={`min-h-screen bg-background text-foreground transition-colors duration-300 ${
-        isReady && flashReady ? 'ring-8 ring-inset ring-emerald-500' : ''
+        isRinging ? 'ring-8 ring-inset ring-[#C8FF42]' : ''
       }`}
     >
-      <div className="max-w-lg mx-auto px-4 py-6 space-y-5">
+      <div className="max-w-lg mx-auto px-4 space-y-4">
         <header className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
             {restaurant.logoUrl ? (
               <img src={restaurant.logoUrl} alt="" className="w-11 h-11 rounded-xl object-cover border" />
             ) : (
               <div className="w-11 h-11 rounded-xl bg-primary text-primary-foreground grid place-items-center shrink-0">
-                <Coffee className="w-5 h-5" />
+                <Coffee className="w-5 h-5" aria-hidden="true" />
               </div>
             )}
             <div className="min-w-0">
               <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                {t('Virtual Pager')}
+                Dingzi · {t('Virtual Pager')}
               </p>
               <h1 className="font-bold text-lg truncate">{label(restaurant.name)}</h1>
             </div>
@@ -233,19 +275,62 @@ function VirtualPagerContent() {
           <MenuLanguageSwitch />
         </header>
 
+        <PwaInstallBanner compact />
+
+        {/* Continuous Acknowledgeable Lock-Screen Alarm Banner — Volt Lime (#C8FF42) + Midnight Indigo (#17132E) 15.3:1 AAA */}
+        {isRinging && (
+          <div
+            role="alert"
+            className="rounded-3xl bg-[#C8FF42] text-[#17132E] p-5 shadow-2xl space-y-3 border-2 border-[#17132E]"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <BellRing className="w-7 h-7 animate-bounce shrink-0 text-[#17132E]" aria-hidden="true" />
+                <div>
+                  <strong className="block text-lg font-extrabold leading-tight">
+                    Pager {ticket.ticketCode} Ringing!
+                  </strong>
+                  <span className="text-xs font-medium text-[#17132E]/85">
+                    Head to the pickup counter — tap below to silence alarm.
+                  </span>
+                </div>
+              </div>
+            </div>
+            <Button
+              type="button"
+              data-testid="button-stop-ringing"
+              onClick={() =>
+                stopContinuousRinger(
+                  !isCollected ? { cafeName: restaurant.name, ticketCode: ticket.ticketCode } : undefined,
+                )
+              }
+              className="w-full min-h-14 rounded-2xl font-bold text-base bg-[#17132E] text-white hover:bg-[#241E42] cursor-pointer gap-2"
+            >
+              <BellOff className="w-5 h-5" aria-hidden="true" />
+              <span>Stop Ringing · On My Way</span>
+            </Button>
+          </div>
+        )}
+
         {/* Primary Ticket Card */}
         <section
-          className={`rounded-3xl border-2 p-6 text-center shadow-lg transition-all duration-300 ${
+          className={`rounded-3xl border-2 p-6 text-center shadow-lg transition-colors duration-300 ${
             isReady
-              ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/40'
+              ? 'border-[#C8FF42] bg-[#17132E] text-white'
               : 'border-border bg-card'
           }`}
           role="status"
           aria-live="polite"
           aria-atomic="true"
         >
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold bg-primary/10 text-primary mb-3">
-            {isReady ? <BellRing className="w-4 h-4 animate-bounce" /> : <Clock className="w-4 h-4" />}
+          <div
+            className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold mb-3 ${
+              isReady
+                ? 'bg-[#C8FF42] text-[#17132E]'
+                : 'bg-[#EFEAFF] text-[#4B1FE0]'
+            }`}
+          >
+            {isReady ? <BellRing className="w-4 h-4 animate-bounce" aria-hidden="true" /> : <Clock className="w-4 h-4" aria-hidden="true" />}
             <span>
               {isReady
                 ? t('Ready for Pickup!')
@@ -257,42 +342,56 @@ function VirtualPagerContent() {
             </span>
           </div>
 
-          <div className="text-5xl font-black tracking-tight my-2 font-mono text-foreground" data-testid="text-pager-code">
+          <div
+            className={`text-5xl font-black tracking-tight my-2 font-mono ${
+              isReady ? 'text-[#C8FF42]' : 'text-foreground'
+            }`}
+            data-testid="text-pager-code"
+          >
             {ticket.ticketCode}
           </div>
           {ticket.customerName && (
-            <p className="text-sm font-medium text-muted-foreground">{ticket.customerName}</p>
+            <p className={`text-sm font-medium ${isReady ? 'text-white/80' : 'text-muted-foreground'}`}>{ticket.customerName}</p>
           )}
 
           {!isReady && !isCollected && (
             <div className="mt-4 flex items-center justify-center gap-4 text-xs text-muted-foreground">
               <span className="px-3 py-1.5 rounded-xl bg-muted font-medium">
-                Queue ahead: <strong>{data.queueAhead}</strong>
+                Queue ahead: <strong className="text-foreground">{data.queueAhead}</strong>
               </span>
               <span className="px-3 py-1.5 rounded-xl bg-muted font-medium">
-                Est. prep: <strong>~{ticket.estimatedPrepMins} min</strong>
+                Est. prep: <strong className="text-foreground">~{ticket.estimatedPrepMins} min</strong>
               </span>
             </div>
           )}
 
           {isReady && (
-            <div className="mt-4 p-3 rounded-2xl bg-emerald-600 text-white font-semibold text-sm shadow">
+            <div className="mt-4 p-3 rounded-2xl bg-[#C8FF42] text-[#17132E] font-extrabold text-sm shadow">
               Your order is ready at the pickup counter! Show code {ticket.ticketCode}.
             </div>
           )}
 
-          {/* Stepper */}
           <ol className="grid grid-cols-4 gap-2 mt-6 text-xs">
             {steps.map((step, idx) => {
               const done = currentIdx >= idx;
               return (
                 <li key={step.id} className="space-y-1.5">
                   <div
-                    className={`h-2 rounded-full transition-all ${
-                      done ? (isReady ? 'bg-emerald-600' : 'bg-primary') : 'bg-muted'
+                    className={`h-2 rounded-full transition-colors ${
+                      done ? (isReady ? 'bg-[#C8FF42]' : 'bg-[#6236FF]') : isReady ? 'bg-[#241E42]' : 'bg-muted'
                     }`}
                   />
-                  <span className={`block leading-tight ${done ? 'font-semibold text-foreground' : 'text-muted-foreground'}`}>
+                  <span
+                    className={`block leading-tight ${
+                      done
+                        ? isReady
+                          ? 'font-semibold text-white'
+                          : 'font-semibold text-foreground'
+                        : isReady
+                          ? 'text-white/60'
+                          : 'text-muted-foreground'
+                    }`}
+                  >
                     {step.label}
                   </span>
                 </li>
@@ -301,29 +400,51 @@ function VirtualPagerContent() {
           </ol>
         </section>
 
-        {/* One-Tap Sound / Vibration / Wake Lock Unlock */}
+        {/* Lock-Screen Push + Audio Keep-Alive Arming Panel */}
         {!isCollected && (
-          <Button
-            type="button"
-            variant={alertsEnabled ? 'secondary' : 'default'}
-            className="w-full min-h-12 rounded-2xl font-semibold cursor-pointer gap-2"
-            onClick={async () => {
-              await unlockGuestAlerts();
-              setAlertsEnabled(true);
-              playPagerReadyAlert(restaurant.name, 'Sound and vibration alerts are armed!');
-            }}
-            data-testid="button-enable-pager-alerts"
-          >
-            {alertsEnabled ? <Volume2 className="w-5 h-5 text-emerald-600" /> : <Bell className="w-5 h-5" />}
-            <span>
-              {alertsEnabled
-                ? t('Alerts Active — Phone will ring when ready')
-                : t('Enable Sound & Vibration Alerts')}
-            </span>
-          </Button>
+          <section className="rounded-2xl border bg-card p-4 space-y-2.5">
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant={alertsArmed ? 'secondary' : 'default'}
+                className="flex-1 min-h-12 rounded-2xl font-semibold cursor-pointer gap-2"
+                onClick={handleArmLockScreen}
+                data-testid="button-enable-pager-alerts"
+              >
+                {alertsArmed ? (
+                  <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" aria-hidden="true" />
+                ) : (
+                  <Bell className="w-5 h-5 shrink-0" aria-hidden="true" />
+                )}
+                <span className="truncate">
+                  {alertsArmed
+                    ? 'Lock-Screen Push & Ringer Armed'
+                    : 'Arm Lock-Screen Ringing & Push'}
+                </span>
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => testPushMutation.mutate()}
+                disabled={testPushMutation.isPending}
+                data-testid="button-test-pager-ring"
+                className="min-h-12 px-3.5 rounded-2xl font-semibold cursor-pointer gap-1.5 shrink-0"
+              >
+                <Volume2 className="w-4 h-4" aria-hidden="true" />
+                <span>Test Ring</span>
+              </Button>
+            </div>
+            {alertsArmed && (
+              <p className="text-xs text-muted-foreground px-1">
+                {pushMode === 'web_push' || pushMode === 'native_push'
+                  ? 'Encrypted background Push + Lock-Screen Audio Keep-Alive active — safe to lock your phone.'
+                  : pushNote || 'Lock-Screen Audio Keep-Alive + Wake Lock active.'}
+              </p>
+            )}
+          </section>
         )}
 
-        {/* Order Summary if linked to an In-App Order */}
+        {/* Order Summary */}
         {data.order && (
           <section className="rounded-2xl border bg-card p-4 space-y-2 text-sm">
             <div className="flex items-center justify-between font-semibold">
@@ -351,10 +472,10 @@ function VirtualPagerContent() {
         {restaurant.driveThruEnabled && !isCollected && data.bays?.length > 0 && (
           <section className="rounded-2xl border bg-card p-4 space-y-3">
             <div className="flex items-center gap-2 font-semibold text-sm">
-              <Car className="w-4 h-4 text-primary" />
+              <Car className="w-4 h-4 text-primary" aria-hidden="true" />
               <span>{t('Curbside & Drive-Thru')}</span>
               {data.bay && (
-                <span className="ml-auto text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-semibold">
+                <span className="ml-auto text-xs px-2.5 py-0.5 rounded-full bg-[#C8FF42] text-[#17132E] font-bold">
                   Checked into {data.bay.code}
                 </span>
               )}
@@ -423,21 +544,21 @@ function VirtualPagerContent() {
                 disabled={!(bayId || ticket.bayId) || !licensePlate.trim() || checkinMutation.isPending}
                 onClick={() => checkinMutation.mutate('arrived')}
               >
-                <MapPin className="w-4 h-4 mr-1.5" />
+                <MapPin className="w-4 h-4 mr-1.5" aria-hidden="true" />
                 {t("I'm Here — Check In")}
               </Button>
             </div>
           </section>
         )}
 
-        {/* Post-Pickup Reputation Loop (Google Maps 1-Tap Review) */}
+        {/* Post-Pickup Reputation Loop */}
         {(isCollected || isReady) && (
           <section className="rounded-2xl border bg-card p-5 space-y-3 text-center">
             <h2 className="font-semibold text-base">{t('Rate your experience')}</h2>
             {ticket.rating || feedbackSaved ? (
               <div className="space-y-3">
                 <div className="inline-flex items-center gap-1.5 text-emerald-700 font-semibold text-sm">
-                  <CheckCircle2 className="w-4 h-4" />
+                  <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
                   <span>Thank you for your {ticket.rating || rating}-star feedback!</span>
                 </div>
                 {(feedbackSaved?.googleMapsReviewUrl || ((ticket.rating || rating) >= 4 && restaurant.googleMapsReviewUrl)) && (
@@ -448,9 +569,9 @@ function VirtualPagerContent() {
                       rel="noopener noreferrer"
                     >
                       <Button className="w-full min-h-11 cursor-pointer gap-2">
-                        <Star className="w-4 h-4 fill-current" />
+                        <Star className="w-4 h-4 fill-current" aria-hidden="true" />
                         <span>{t('Leave a Google Maps Review')}</span>
-                        <ExternalLink className="w-4 h-4" />
+                        <ExternalLink className="w-4 h-4" aria-hidden="true" />
                       </Button>
                     </a>
                   </div>
@@ -465,7 +586,7 @@ function VirtualPagerContent() {
                       type="button"
                       aria-label={`Rate ${star} stars`}
                       onClick={() => setRating(star)}
-                      className="w-11 h-11 rounded-xl border grid place-items-center cursor-pointer transition-transform hover:scale-105"
+                      className="w-11 h-11 rounded-xl border grid place-items-center cursor-pointer transition-colors hover:bg-muted"
                     >
                       <Star
                         className={`w-6 h-6 ${
@@ -497,13 +618,13 @@ function VirtualPagerContent() {
           </section>
         )}
 
-        {/* Today's Specials & Optional Wait-Screen Mini-Game */}
+        {/* Specials & Mini-Game */}
         {!isCollected && (
           <div className="space-y-3">
             {data.specials?.length > 0 && (
               <section className="rounded-2xl border bg-card p-4 space-y-2">
                 <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
-                  <Sparkles className="w-3.5 h-3.5" />
+                  <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
                   <span>{t("Today's specials")}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
@@ -530,7 +651,7 @@ function VirtualPagerContent() {
                     className="w-full min-h-11 rounded-2xl cursor-pointer gap-2"
                     onClick={() => setShowGame(true)}
                   >
-                    <Gamepad2 className="w-4 h-4" />
+                    <Gamepad2 className="w-4 h-4" aria-hidden="true" />
                     <span>Play Barista Reflex Game while waiting</span>
                   </Button>
                 )}
@@ -541,7 +662,7 @@ function VirtualPagerContent() {
 
         <footer className="text-center pt-2">
           <Link href={`/menu/${restaurant.id}`}>
-            <Button variant="ghost" className="cursor-pointer text-sm">
+            <Button variant="ghost" className="cursor-pointer min-h-11 text-sm">
               Back to {label(restaurant.name)} Menu
             </Button>
           </Link>

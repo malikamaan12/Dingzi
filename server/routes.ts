@@ -12,6 +12,7 @@ import { mountMenuLibrary } from "./menuLibrary";
 import { mountAccessControl, getManagedCafe, mediaOwner, authUser } from './accessControl';
 import { mountPlatformControls } from './platformControls';
 import { mountHospitalityRoutes } from './hospitalityRoutes';
+import { mountPushRoutes } from './pushRoutes';
 import { insertCategorySchema, registrationSchema, users, restaurants } from "@shared/schema";
 import { db } from './db';
 import { rateLimit } from './httpSecurity';
@@ -30,6 +31,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   mountMenuLibrary(app);
   mountPlatformControls(app);
   mountHospitalityRoutes(app);
+  mountPushRoutes(app);
 
   // Only the platform owner can provision a restaurant and its manager.
   app.post('/api/super-admin/restaurants', isSuperAdmin, rateLimit(10, 60 * 60 * 1000, req => req.ip || 'unknown'), async (req, res) => {

@@ -3,6 +3,7 @@ import { useRoute } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight, Check, Coffee, Clock3, Heart, MapPin, Phone, Search, Sparkles, SlidersHorizontal, X, Leaf, Pause, Play, ShoppingBag } from 'lucide-react';
 import GuestHospitalityBar, { type GuestCartItem } from '@/components/hospitality/GuestHospitalityBar';
+import { PwaInstallBanner } from '@/components/mobile/PwaInstallBanner';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { cafeDate, cafeThemeStyle } from '@/lib/cafeTheme';
 import { categoryEmoji, liveCafeStyle, menuTone } from '@/lib/menuPalette';
@@ -117,8 +118,31 @@ function CustomerMenuContent() {
     }));
   }, [available, menuQuery.data?.categories, byItem]);
   const searchWords = useMemo(() => menuSearchQuery(search), [search]);
-  const groupedItems = available.filter(item => group === 'all' || categoryGroups.get(item.categoryId) === group);
-  const groupCategories = (menuQuery.data?.categories || []).filter(c => (group === 'all' || categoryGroups.get(c.id) === group) && categoryCounts.has(c.id));
+  const branchTimeHm = useMemo(() => {
+    try {
+      return new Intl.DateTimeFormat('en-GB', {
+        timeZone: restaurant?.timezone || 'Asia/Qatar',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(new Date(now));
+    } catch {
+      return '12:00';
+    }
+  }, [restaurant?.timezone, now]);
+  const activeTimeCategories = useMemo(() => {
+    return (menuQuery.data?.categories || []).filter(c => {
+      if (c.isVisible === false) return false;
+      if (!c.availableFrom || !c.availableUntil) return true;
+      if (c.availableFrom <= c.availableUntil) {
+        return branchTimeHm >= c.availableFrom && branchTimeHm <= c.availableUntil;
+      }
+      return branchTimeHm >= c.availableFrom || branchTimeHm <= c.availableUntil;
+    });
+  }, [menuQuery.data?.categories, branchTimeHm]);
+  const activeCatIds = useMemo(() => new Set(activeTimeCategories.map(c => c.id)), [activeTimeCategories]);
+  const groupedItems = available.filter(item => activeCatIds.has(item.categoryId) && (group === 'all' || categoryGroups.get(item.categoryId) === group));
+  const groupCategories = activeTimeCategories.filter(c => (group === 'all' || categoryGroups.get(c.id) === group) && categoryCounts.has(c.id));
   const filtered = groupedItems.filter(item => (!category || item.categoryId === category)
     && (filter !== 'specials' || item.specialDate === today)
     && (filter !== 'saved' || saved.includes(item.id))
@@ -181,6 +205,7 @@ function CustomerMenuContent() {
       <h1 className="sr-only">{t('{name} menu', { name: label(restaurant.name) })}</h1>
       {hasMenuError && <div className="guest-reconnecting" role="status"><p>{t('Reconnecting. Prices and availability may have changed.')}</p><button disabled={menuQuery.isFetching} onClick={()=>menuQuery.refetch()}>{t('Try again')}</button></div>}
       <MenuCover cafe={restaurant} motion={motion.enabled && motion.pageVisible}/>
+      <div className="my-2"><PwaInstallBanner compact /></div>
       <GuestHospitalityBar restaurant={restaurant} cart={cart} setCart={setCart} initialTableCode={initialTableCode} initialBayId={initialBayId} />
       <div className="guest-search"><Search size={18}/><input aria-label={t('Search menu')} placeholder={t('Search items or categories')} value={search} onChange={e=>setSearch(e.target.value)}/>{search && <button onClick={()=>setSearch('')} aria-label={t('Clear search')}><X size={17}/></button>}</div>
       <div className="guest-simple-tools"><div><span>{selectionLabel}</span>{appliedFilters>0 && <button aria-label={t('Clear filters')} onClick={clearFilters}><X size={14}/></button>}</div><button className="guest-wheel-link" onClick={()=>setWheelOpen(true)} disabled={!filtered.length || hasMenuError}><Sparkles size={16}/>{t("Can't decide?")}</button></div>
@@ -198,7 +223,7 @@ function CustomerMenuContent() {
         <div className="guest-note"><Leaf size={17}/><p>{t('Questions about ingredients or allergens?')}<br/><strong>{t('Our café team is happy to help.')}</strong></p></div>
       </main>
       {(restaurant.openingHours || restaurant.address || restaurant.phone) && <div className="guest-info">{restaurant.openingHours && <span><Clock3 size={14}/><bdi>{restaurant.openingHours}</bdi></span>}{restaurant.address && <a href={'https://maps.google.com/?q='+encodeURIComponent(restaurant.address)} target="_blank" rel="noopener noreferrer"><MapPin size={14}/><bdi>{restaurant.address}</bdi></a>}{restaurant.phone && <a href={'tel:'+restaurant.phone}><Phone size={14}/>{t('Call café')}</a>}</div>}
-      <footer className="guest-footer"><span><bdi>{label(restaurant.name)}</bdi><small>{t('A little pause, a good moment.')}</small></span></footer>
+      <footer className="guest-footer pb-24"><span><bdi>{label(restaurant.name)}</bdi><small>{t('A little pause, a good moment.')}</small></span></footer>
     </div>
     <Dialog open={filtersOpen} onOpenChange={setFiltersOpen}><DialogContent className="guest-filter-panel guest-compact-filters" onOpenAutoFocus={event=>{event.preventDefault();filterTitleRef.current?.focus({preventScroll:true});}} lang={language} dir={dir} closeLabel={t('Close')} overlayClassName={'guest-glass-overlay '+(!motion.enabled ? 'is-still' : '')} style={liveCafeStyle(restaurant.theme)} data-motion={motion.enabled ? 'on' : 'off'}>
       <div className="guest-filter-heading"><DialogTitle ref={filterTitleRef} tabIndex={-1}>{t('Filters')}</DialogTitle><DialogDescription className="sr-only">{t('Choose a menu type, category or saved items.')}</DialogDescription></div>

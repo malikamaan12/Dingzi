@@ -11,8 +11,15 @@ const legacyPublicApi = new RegExp(
 );
 const hospitalityPublicGet = /^\/api\/public\/[a-z0-9/_-]+$/i;
 const hospitalityPublicPost =
-  /^\/api\/(?:public\/(?:orders|pager\/lookup|pager\/[a-f0-9-]{36}\/feedback|payments\/[a-f0-9-]{36}\/confirm-sandbox|reservations\/[a-f0-9-]{36}|booking\/[a-f0-9-]{36}\/cancel|waitlist\/[a-f0-9-]{36}|waitlist-ticket\/[a-f0-9-]{36}\/respond|curbside\/checkin|aggregator-click)|webhooks\/payments\/(?:skipcash|sadad))\/?$/i;
+  /^\/api\/(?:public\/(?:orders|pager\/lookup|pager\/[a-f0-9-]{36}\/feedback|payments\/[a-f0-9-]{36}\/confirm-sandbox|reservations\/[a-f0-9-]{36}|booking\/[a-f0-9-]{36}\/cancel|waitlist\/[a-f0-9-]{36}|waitlist-ticket\/[a-f0-9-]{36}\/respond|curbside\/checkin|aggregator-click|push\/subscribe|push\/unsubscribe|push\/test)|webhooks\/payments\/(?:skipcash|sadad))\/?$/i;
 const photo = new RegExp(`^/objects/${uuid}$`, 'i');
+const pwaStatic = new Set([
+  '/manifest.webmanifest',
+  '/sw.js',
+  '/icon-192.svg',
+  '/icon-512.svg',
+  '/apple-touch-icon.svg',
+]);
 
 export function publicMenuRequestAllowed(request: Request): boolean {
   const path = new URL(request.url).pathname;
@@ -21,6 +28,7 @@ export function publicMenuRequestAllowed(request: Request): boolean {
       path === '/' ||
       path === '/index.html' ||
       path === '/favicon.svg' ||
+      pwaStatic.has(path) ||
       path.startsWith('/assets/') ||
       guestPage.test(path) ||
       photo.test(path) ||
@@ -51,7 +59,7 @@ export function blockedPublicMenuRequest(request: Request): Response {
     return Response.json({ message: 'This address serves customer menus only.' }, { status: 404, headers });
   }
   const html =
-    '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Customer menus</title><style>body{margin:0;min-height:100svh;display:grid;place-items:center;background:#faf6f2;color:#302431;font-family:system-ui,sans-serif}main{padding:32px;max-width:380px}h1{font-size:32px;letter-spacing:-1px}p{line-height:1.6;color:#685969}a{display:inline-block;margin-top:12px;padding:14px 22px;border-radius:24px;background:#92400e;color:white;text-decoration:none}</style><main><h1>Customer menus only.</h1><p>This page isn’t available here. Explore a café or scan its menu QR.</p><a href="/">Browse cafés</a></main></html>';
+    '<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Dingzi · Customer Menus</title><style>body{margin:0;min-height:100svh;display:grid;place-items:center;background:#F6F5FC;color:#17132E;font-family:system-ui,sans-serif}main{padding:32px;max-width:380px}h1{font-size:32px;letter-spacing:-1px}p{line-height:1.6;color:#57507A}a{display:inline-block;margin-top:12px;padding:14px 22px;border-radius:24px;background:#6236FF;color:white;text-decoration:none;font-weight:600}</style><main><h1>Customer menus only.</h1><p>This page isn’t available here. Explore a venue on Dingzi or scan its menu QR.</p><a href="/">Browse venues</a></main></html>';
   return new Response(request.method === 'HEAD' ? null : html, {
     status: 404,
     headers: { ...headers, 'Content-Type': 'text/html; charset=utf-8' },

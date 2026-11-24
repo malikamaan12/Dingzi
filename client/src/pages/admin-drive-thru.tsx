@@ -119,14 +119,14 @@ export default function AdminDriveThruPage() {
                 <article
                   key={v.id}
                   data-testid={`card-curbside-vehicle-${v.licensePlate || v.ticketCode}`}
-                  className="rounded-2xl border-2 border-sky-500/50 bg-card p-4 shadow-sm space-y-3"
+                  className="rounded-2xl border-2 border-[#6236FF]/45 bg-card p-4 shadow-sm space-y-3"
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="px-3 py-1 rounded-xl bg-sky-600 text-white font-mono font-black text-sm">
-                      {bay ? bay.code : 'EN ROUTE'}
+                  <div className="flex items-center justify-between rounded-xl bg-[#17132E] text-white px-3 py-2">
+                    <span className="px-2.5 py-1 rounded-lg bg-[#C8FF42] text-[#17132E] font-mono font-black text-xs">
+                      {bay ? `BAY ARRIVED · ${bay.code}` : 'EN ROUTE'}
                     </span>
-                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-muted-foreground">
-                      <Clock className="w-3.5 h-3.5" />
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-white/80">
+                      <Clock className="w-3.5 h-3.5 text-[#C8FF42]" />
                       {v.etaStatus === '5_mins_away' ? 'ETA 5 mins' : `Waiting ${waitMins}m`}
                     </span>
                   </div>
@@ -148,7 +148,7 @@ export default function AdminDriveThruPage() {
                   <div className="grid grid-cols-2 gap-2">
                     <Button
                       type="button"
-                      className="min-h-10 cursor-pointer gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                      className="min-h-10 cursor-pointer gap-1 bg-[#C8FF42] hover:bg-[#b8f52c] text-[#17132E] font-extrabold border-0"
                       onClick={() => pagerTransition.mutate({ id: v.id, action: 'ready' })}
                     >
                       <BellRing className="w-4 h-4" />

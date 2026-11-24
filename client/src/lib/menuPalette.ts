@@ -2,7 +2,8 @@ import type { CSSProperties } from 'react';
 import { cafeThemeStyle } from './cafeTheme';
 
 const accents: Record<string, [string, string, string]> = {
-  e3: ['255 191 113', '255 135 119', '247 220 159'],
+  e3: ['196 181 255', '239 234 255', '200 255 66'],
+  dingzi: ['196 181 255', '239 234 255', '200 255 66'],
   forest: ['145 223 184', '249 190 156', '228 225 130'],
   terracotta: ['255 157 132', '250 207 125', '182 217 169'],
   ocean: ['133 208 243', '194 169 247', '255 198 151'],

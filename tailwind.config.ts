@@ -81,6 +81,18 @@ export default {
           busy: "rgb(239 68 68)",
           offline: "rgb(156 163 175)",
         },
+        dingzi: {
+          violet: "#6236FF",
+          indigo: "#4B1FE0",
+          lime: "#C8FF42",
+          midnight: "#17132E",
+          cosmic: "#241E42",
+          white: "#FFFFFF",
+          mist: "#F6F5FC",
+          iris: "#EFEAFF",
+          slate: "#57507A",
+          hairline: "#E5E2F2",
+        },
       },
       fontFamily: {
         sans: ["Inter", "var(--font-sans)"],

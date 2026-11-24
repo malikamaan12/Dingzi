@@ -25,6 +25,7 @@ import { useManagerMenu } from '@/lib/managerMenu';
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
 import { LocalQrBox } from '@/components/hospitality/LocalQrBox';
+import { subscribeStaffLockScreenPush } from '@/lib/mobileBridge';
 
 export default function AdminKdsPage() {
   const { toast } = useToast();
@@ -33,6 +34,7 @@ export default function AdminKdsPage() {
   const [customerName, setCustomerName] = useState('');
   const [prepMins, setPrepMins] = useState(8);
   const [issuedQrTicket, setIssuedQrTicket] = useState<any | null>(null);
+  const [kioskMode, setKioskMode] = useState(false);
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
@@ -142,12 +144,63 @@ export default function AdminKdsPage() {
             Issue 1-tap hardware-free pagers, manage incoming orders, and buzz guest phones in under 250 ms.
           </p>
         </div>
-        <div className="flex items-center gap-3 text-sm" role="status" aria-atomic="true">
+        <div className="flex flex-wrap items-center gap-2 text-sm" role="status" aria-atomic="true">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-h-10 cursor-pointer"
+            onClick={async () => {
+              const res = await subscribeStaffLockScreenPush();
+              toast({
+                title: res.ok ? 'Staff Lock-Screen Push Armed' : 'Push Unavailable',
+                description: res.ok ? 'This device will chime on new orders & bay arrivals.' : res.reason,
+                variant: res.ok ? 'default' : 'destructive',
+              });
+            }}
+          >
+            Arm Device Push
+          </Button>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            className="min-h-10 cursor-pointer"
+            onClick={() => setKioskMode(v => !v)}
+          >
+            {kioskMode ? 'Exit Counter Kiosk' : 'Counter QR Kiosk Display'}
+          </Button>
           <Badge variant="secondary" className="px-3 py-1.5 text-sm">
             Active Queue: {activeTickets.length}
           </Badge>
         </div>
       </div>
+
+      {kioskMode && (
+        <section className="rounded-3xl bg-[#17132E] text-white p-8 text-center space-y-5 shadow-2xl border-2 border-[#241E42]">
+          <p className="text-xs uppercase tracking-[0.25em] text-[#C8FF42] font-extrabold">
+            Dingzi · Counter Virtual Pager Kiosk
+          </p>
+          {issuedQrTicket || activeTickets[activeTickets.length - 1] ? (
+            (() => {
+              const latest = issuedQrTicket || activeTickets[activeTickets.length - 1];
+              return (
+                <div className="space-y-4">
+                  <div className="text-6xl font-black font-mono text-[#C8FF42]">{latest.ticketCode}</div>
+                  <p className="text-white/85 text-base max-w-md mx-auto">
+                    Scan with your phone camera — your phone will ring &amp; vibrate even when locked as soon as your order is ready!
+                  </p>
+                  <div className="grid place-items-center py-2">
+                    <LocalQrBox url={`${window.location.origin}/pager/${latest.trackingToken}`} size={240} />
+                  </div>
+                </div>
+              );
+            })()
+          ) : (
+            <p className="text-white/70 py-8">Tap &ldquo;New Auto Pager&rdquo; below to display a live QR code for the next guest.</p>
+          )}
+        </section>
+      )}
 
       {/* Dual Pager Issuer (1-Tap Auto Number & Manual POS Receipt Link) */}
       <section className="grid lg:grid-cols-12 gap-4">
@@ -259,7 +312,7 @@ export default function AdminKdsPage() {
                   key={ticket.id}
                   data-testid={`card-kds-ticket-${ticket.ticketCode}`}
                   className={`rounded-2xl border-2 p-4 bg-card shadow-sm flex flex-col justify-between gap-3 ${
-                    ticket.status === 'ready' ? 'border-emerald-500' : 'border-border'
+                    ticket.status === 'ready' ? 'border-[#C8FF42]' : 'border-border'
                   }`}
                 >
                   <div className="space-y-2">
@@ -275,7 +328,11 @@ export default function AdminKdsPage() {
                       <Badge variant="outline" className="uppercase">{ticket.status}</Badge>
                       <Badge variant="secondary">{ticket.source.replace('_', ' ')}</Badge>
                       {ticket.customerName && <span className="font-medium">{ticket.customerName}</span>}
-                      {bay && <Badge className="bg-sky-600 text-white">{bay.code}</Badge>}
+                      {bay && (
+                        <Badge className="bg-[#C8FF42] text-[#17132E] hover:bg-[#C8FF42] font-extrabold border-0">
+                          BAY ARRIVED · {bay.code}
+                        </Badge>
+                      )}
                       {ticket.licensePlate && (
                         <Badge variant="outline" className="font-mono">
                           {ticket.vehicleColor} {ticket.vehicleType} · {ticket.licensePlate}
@@ -334,7 +391,7 @@ export default function AdminKdsPage() {
                       {ticket.status !== 'ready' ? (
                         <Button
                           type="button"
-                          className="min-h-11 cursor-pointer gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white"
+                          className="min-h-11 cursor-pointer gap-1.5 bg-[#C8FF42] hover:bg-[#b8f52c] text-[#17132E] font-extrabold border-0"
                           onClick={() => transitionMutation.mutate({ id: ticket.id, action: 'ready' })}
                           data-testid={`button-ready-${ticket.ticketCode}`}
                         >

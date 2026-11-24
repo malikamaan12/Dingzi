@@ -1,7 +1,13 @@
 import type { CSSProperties } from 'react';
 
 export const cafeThemes = {
-  e3: { label: 'E3 · Espresso & gold', primary: '28 82% 31%', background: '40 30% 96%', foreground: '24 25% 13%', card: '40 40% 99%' },
+  e3: {
+    label: 'Dingzi · Electric Violet & Mist',
+    primary: '253 100% 61%',
+    background: '249 54% 97%',
+    foreground: '249 42% 13%',
+    card: '0 0% 100%',
+  },
   forest: { label: 'Forest · Green & cream', primary: '155 45% 26%', background: '100 20% 96%', foreground: '150 25% 13%', card: '100 30% 99%' },
   terracotta: { label: 'Terracotta · Warm & earthy', primary: '16 58% 40%', background: '28 40% 96%', foreground: '15 30% 16%', card: '28 40% 99%' },
   ocean: { label: 'Ocean · Blue & white', primary: '205 70% 35%', background: '205 40% 97%', foreground: '210 35% 14%', card: '205 40% 99%' },
@@ -37,16 +43,24 @@ export function hexToHslTriplet(hex?: string | null): string | null {
 }
 
 export function cafeThemeStyle(theme = 'e3', brandAccentHex?: string | null): CSSProperties {
+  const isDefaultDingzi = !theme || theme === 'e3' || theme === 'dingzi';
   const t = cafeThemes[theme as keyof typeof cafeThemes] || cafeThemes.e3;
   const primary = hexToHslTriplet(brandAccentHex) || t.primary;
+  const focusRing = isDefaultDingzi && !brandAccentHex ? '254 76% 50%' : primary;
   return {
     '--primary': primary,
-    '--ring': primary,
+    '--ring': focusRing,
     '--background': t.background,
     '--foreground': t.foreground,
     '--card': t.card,
     '--card-foreground': t.foreground,
     '--primary-foreground': '0 0% 100%',
+    '--muted': isDefaultDingzi ? '249 54% 97%' : t.background,
+    '--muted-foreground': isDefaultDingzi ? '250 21% 40%' : undefined,
+    '--accent': isDefaultDingzi ? '254 100% 96%' : undefined,
+    '--accent-foreground': isDefaultDingzi ? '254 76% 50%' : undefined,
+    '--border': isDefaultDingzi ? '251 38% 92%' : undefined,
+    '--input': isDefaultDingzi ? '251 38% 92%' : undefined,
     '--sidebar-primary': primary,
     '--sidebar-background': t.background,
   } as CSSProperties;

@@ -1,4 +1,4 @@
-import { LayoutDashboard, UtensilsCrossed, FolderOpen, Store, QrCode, LogOut, Building2, LibraryBig, Users, History, BellRing, CalendarDays, Car, Truck, BarChart3 } from "lucide-react";
+import { LayoutDashboard, UtensilsCrossed, FolderOpen, Store, QrCode, LogOut, Building2, LibraryBig, Users, History, BellRing, CalendarDays, Car, Truck, BarChart3, Smartphone } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -49,6 +49,11 @@ const adminMenuItems = [
     title: "SLA Analytics",
     url: "/admin/analytics",
     icon: BarChart3,
+  },
+  {
+    title: "Mobile App & Push",
+    url: "/admin/mobile-app",
+    icon: Smartphone,
   },
   {
     title: "Café Profile & Theme",

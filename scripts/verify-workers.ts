@@ -114,8 +114,12 @@ try {
   await request(publicInstance,'POST','/api/login',{ email:'manager@test.cafe', password },'',404);
   await request(publicInstance,'POST','/api/login',{ email:'manager@test.cafe', password },cookie,404);
   for (const method of ['POST','PUT','PATCH','DELETE','OPTIONS']) await request(publicInstance,method,'/api/restaurant/public/'+cafe,{},cookie,404);
-  for (const path of ['/','/menu/'+cafe,'/favicon.svg','/assets/menu.js']) await request(publicInstance,'GET',path);
+  for (const path of ['/','/menu/'+cafe,'/favicon.svg','/manifest.webmanifest','/sw.js','/icon-192.svg','/icon-512.svg','/apple-touch-icon.svg','/assets/menu.js']) await request(publicInstance,'GET',path);
   await request(publicInstance,'HEAD','/menu/'+cafe);
+  const pubVapid = await request(publicInstance,'GET','/api/public/push/vapid-key',undefined,cookie);
+  assert.equal(pubVapid.cookie,'');
+  assert.ok(typeof pubVapid.data.publicKey === 'string' && pubVapid.data.publicKey.length >= 80);
+  await request(publicInstance,'GET','/api/hospitality/push/status',undefined,cookie,404);
   for (const path of ['/api/cafes','/api/menu/public/'+cafe,'/api/restaurant/public/'+cafe,'/api/categories/public/'+cafe,'/api/menu-items/public/'+cafe,'/api/price-variants/public/restaurant/'+cafe]) {
     const guest = await request(publicInstance,'GET',path,undefined,cookie);
     assert.equal(guest.cookie,'');

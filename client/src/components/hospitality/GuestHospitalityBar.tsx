@@ -322,7 +322,7 @@ export default function GuestHospitalityBar({
     <>
       {/* Context Pill for Pre-filled Table or Parking Bay QR */}
       {(initialTableCode || initialBayId) && (
-        <div className="my-2 px-3.5 py-2 rounded-2xl bg-primary/10 text-primary text-xs font-semibold flex items-center justify-between">
+        <div className="my-2 px-3.5 py-2 rounded-2xl bg-[#EFEAFF] text-[#4B1FE0] border border-[#E5E2F2] text-xs font-semibold flex items-center justify-between">
           <span>
             {initialTableCode
               ? `Dine-In Table ${initialTableCode} connected`
@@ -332,7 +332,7 @@ export default function GuestHospitalityBar({
             <button
               type="button"
               onClick={() => setCurbsideOpen(true)}
-              className="underline font-bold cursor-pointer"
+              className="underline font-bold cursor-pointer text-[#4B1FE0]"
             >
               Check In Car →
             </button>
@@ -518,8 +518,8 @@ export default function GuestHospitalityBar({
                       onClick={() => setResSlot(slot.startIso)}
                       className={`py-2 px-2 rounded-xl border text-xs font-semibold cursor-pointer transition-colors ${
                         resSlot === slot.startIso
-                          ? 'bg-primary text-primary-foreground border-primary'
-                          : 'bg-card hover:bg-muted'
+                          ? 'bg-[#EFEAFF] text-[#4B1FE0] border-[#6236FF] ring-1 ring-[#6236FF]'
+                          : 'bg-[#F6F5FC] border-[#E5E2F2] text-[#17132E] hover:bg-[#EFEAFF] hover:text-[#4B1FE0]'
                       }`}
                     >
                       {slot.time}

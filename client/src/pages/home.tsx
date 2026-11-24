@@ -3,6 +3,7 @@ import { Link } from 'wouter';
 import { Coffee, ArrowUpRight, Bell, CalendarDays, Car, Truck } from 'lucide-react';
 import { cafeThemeStyle } from '@/lib/cafeTheme';
 import { PUBLIC_MENU_ORIGIN } from '@shared/menuIdentity';
+import { DingziWordmark } from '@/components/staff-brand';
 
 type Cafe = {
   id: string;
@@ -24,15 +25,12 @@ export default function Home() {
 
   return (
     <div style={cafeThemeStyle()} className="min-h-screen bg-background text-foreground">
-      <header className="mx-auto max-w-6xl flex items-center justify-between px-6 py-6 border-b">
-        <Link href="/" className="font-bold text-xl flex items-center gap-3 cursor-pointer">
-          <span className="w-10 h-10 rounded-xl bg-primary text-primary-foreground grid place-items-center">
-            <Coffee className="w-5 h-5" />
-          </span>
-          <span>Pager Hospitality</span>
+      <header className="mx-auto max-w-6xl flex items-center justify-between px-6 py-6 border-b border-[#E5E2F2] bg-white/80 backdrop-blur">
+        <Link href="/" className="flex items-center gap-3 cursor-pointer" aria-label="Dingzi Home">
+          <DingziWordmark tone="light" />
         </Link>
         {!publicOnly && (
-          <Link href="/login" className="text-sm font-semibold px-4 py-2.5 rounded-xl border hover:bg-muted transition-colors cursor-pointer">
+          <Link href="/login" className="text-sm font-semibold px-4 py-2.5 rounded-xl border border-[#E5E2F2] bg-white text-[#4B1FE0] hover:bg-[#EFEAFF] transition-colors cursor-pointer">
             Staff &amp; KDS Console ↗
           </Link>
         )}
@@ -40,14 +38,14 @@ export default function Home() {
 
       <main className="mx-auto max-w-6xl px-6 py-14 md:py-20">
         <div className="max-w-3xl space-y-5">
-          <p className="text-primary uppercase tracking-[.22em] text-xs font-bold">
-            Bilingual Menus · Hardware-Free Virtual Pager · Tables · Curbside
+          <p className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#EFEAFF] text-[#4B1FE0] uppercase tracking-[.2em] text-xs font-bold">
+            Dingzi · Menus · Lock-Screen Pager · Tables · Curbside
           </p>
-          <h1 className="text-4xl sm:text-6xl font-display leading-tight tracking-tight">
+          <h1 className="text-4xl sm:text-6xl font-display font-extrabold leading-tight tracking-tight text-[#17132E]">
             Scan the table.<br />Skip the crowd.
           </h1>
-          <p className="text-muted-foreground text-base sm:text-lg max-w-xl">
-            Browse live English &amp; Arabic menus, order ahead or pay at the venue, track your virtual pager with live phone alerts, book a table, or check into a curbside bay.
+          <p className="text-[#57507A] text-base sm:text-lg max-w-xl">
+            Browse live English &amp; Arabic menus, order ahead or pay at the venue, track your virtual pager with lock-screen phone ringing, book a table, or check into a curbside bay.
           </p>
         </div>
 
@@ -114,9 +112,9 @@ export default function Home() {
         </div>
       </main>
 
-      <footer className="mx-auto max-w-6xl border-t px-6 py-6 text-sm text-muted-foreground flex flex-wrap justify-between gap-4">
-        <span>Multi-Tenant Hospitality Operating Platform</span>
-        {!publicOnly && <Link href="/login" className="hover:underline cursor-pointer">Staff &amp; Super-Admin Sign In</Link>}
+      <footer className="mx-auto max-w-6xl border-t border-[#E5E2F2] px-6 py-6 text-sm text-[#57507A] flex flex-wrap justify-between gap-4">
+        <span>Dingzi · Multi-Tenant Hospitality Operating Platform</span>
+        {!publicOnly && <Link href="/login" className="text-[#4B1FE0] font-semibold hover:underline cursor-pointer">Staff &amp; Super-Admin Sign In</Link>}
       </footer>
     </div>
   );

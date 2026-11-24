@@ -45,6 +45,8 @@ const AdminTables = lazy(() => import('@/pages/admin-tables'));
 const AdminDriveThru = lazy(() => import('@/pages/admin-drive-thru'));
 const AdminDelivery = lazy(() => import('@/pages/admin-delivery'));
 const AdminAnalytics = lazy(() => import('@/pages/admin-analytics'));
+const AdminMobileApp = lazy(() => import('@/pages/admin-mobile-app'));
+import { MobileStaffBottomNav } from '@/components/mobile/MobileStaffBottomNav';
 const VirtualPagerPage = lazy(() => import('@/pages/virtual-pager'));
 const GuestWaitlistPage = lazy(() => import('@/pages/guest-waitlist'));
 const GuestBookingPage = lazy(() => import('@/pages/guest-booking'));
@@ -135,9 +137,10 @@ function AdminLayout({ children }: { children: React.ReactNode }) {
         </header>
         {user?.role === 'super_admin' && user.cafeContext && <div className="cafe-access-banner" role="region" aria-label="Super admin café access"><ShieldCheck size={20}/><div><strong>Super admin · Managing {user.cafeContext.name}</strong><small>Café account: {user.cafeContext.owner?.email} · Signed in as {user.email}</small></div><Button variant="outline" size="sm" disabled={exiting} onClick={async () => { setExiting(true); try { await returnToPlatform(); } catch(e) { setExiting(false); toast({ title: 'Could not return to platform', description: (e as Error).message, variant: 'destructive' }); } }}>{exiting ? 'Returning…' : 'Return to platform'}</Button></div>}
         {['localhost', '127.0.0.1'].includes(window.location.hostname) && <div className="px-4 py-2 border-b bg-muted text-muted-foreground text-xs flex flex-wrap items-center gap-x-3 gap-y-1" role="note"><span>Isolated local workspace · Separate server &amp; database (Port {window.location.port || '5200'}).</span>{Boolean(import.meta.env.VITE_MANAGEMENT_ORIGIN) && <a className="text-primary underline font-medium" href={MANAGEMENT_ORIGIN + '/login'} target="_blank" rel="noreferrer">Open live staff dashboard ↗</a>}</div>}
-        <main className="flex-1 overflow-y-auto p-4 md:p-8">
+        <main className="flex-1 overflow-y-auto p-4 pb-24 md:p-8 md:pb-8">
           {children}
         </main>
+        {user?.role !== 'super_admin' || user?.cafeContext ? <MobileStaffBottomNav /> : null}
       </div>
     </div>
   );
@@ -245,6 +248,7 @@ function StaffRouter() {
         <Route path="/admin/drive-thru"><AdminLayout><AdminDriveThru /></AdminLayout></Route>
         <Route path="/admin/delivery"><AdminLayout><AdminDelivery /></AdminLayout></Route>
         <Route path="/admin/analytics"><AdminLayout><AdminAnalytics /></AdminLayout></Route>
+        <Route path="/admin/mobile-app"><AdminLayout><AdminMobileApp /></AdminLayout></Route>
         <Route path="/admin/qr-code">
           <AdminLayout>
             <AdminQRCode />

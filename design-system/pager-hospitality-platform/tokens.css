@@ -1,41 +1,28 @@
-/* Design Tokens - Auto-generated */
-/* Do not edit directly - modify tokens.json instead */
-
-/* === PRIMITIVES === */
+/* Dingzi Official Brand Design Tokens */
 :root {
+  /* Hex Brand Tokens */
+  --dingzi-electric-violet: #6236FF;
+  --dingzi-hyper-indigo: #4B1FE0;
+  --dingzi-volt-lime: #C8FF42;
+  --dingzi-midnight-indigo: #17132E;
+  --dingzi-cosmic-slate: #241E42;
+  --dingzi-pure-white: #FFFFFF;
+  --dingzi-lilac-mist: #F6F5FC;
+  --dingzi-iris-wash: #EFEAFF;
+  --dingzi-violet-slate: #57507A;
+  --dingzi-mist-border: #E5E2F2;
 
-}
-
-/* === SEMANTIC === */
-:root {
-  --color-primary: #92400E;
+  /* Semantic Aliases */
+  --color-primary: #6236FF;
   --color-on-primary: #FFFFFF;
-  --color-secondary: #B45309;
-  --color-on-secondary: #FFFFFF;
-  --color-accent: #92400E;
-  --color-on-accent: #FFFFFF;
-  --color-background: #FEF3C7;
-  --color-foreground: #78350F;
-  --color-card: #FFFFFF;
-  --color-card-foreground: #78350F;
-  --color-muted: #EDEEF0;
-  --color-muted-foreground: #475569;
-  --color-border: #FDE68A;
-  --color-destructive: #DC2626;
-  --color-on-destructive: #FFFFFF;
-  --color-ring: #92400E;
-  --font-heading: "Playfair Display SC", serif;
-  --font-body: Karla, sans-serif;
-  --space-xs: 4px;
-  --space-sm: 8px;
-  --space-md: 16px;
-  --space-lg: 24px;
-  --space-xl: 32px;
-  --space-2xl: 48px;
-  --space-3xl: 64px;
-}
-
-/* === COMPONENTS === */
-:root {
-
+  --color-link: #4B1FE0;
+  --color-ready: #C8FF42;
+  --color-on-ready: #17132E;
+  --color-dark-anchor: #17132E;
+  --color-dark-elevated: #241E42;
+  --color-canvas: #FFFFFF;
+  --color-soft-surface: #F6F5FC;
+  --color-violet-tint: #EFEAFF;
+  --color-muted-copy: #57507A;
+  --color-hairline: #E5E2F2;
 }

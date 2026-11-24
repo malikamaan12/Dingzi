@@ -1,12 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRoute, Link } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Bell, BellRing, Check, Coffee, Users, XCircle } from 'lucide-react';
+import { Bell, BellOff, BellRing, Check, Coffee, ShieldCheck, Users, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { cafeThemeStyle } from '@/lib/cafeTheme';
 import { MenuLanguageProvider, MenuLanguageSwitch, useMenuLanguage } from '@/lib/menuLanguage';
-import { playPagerReadyAlert, unlockGuestAlerts } from '@/lib/pagerAudio';
+import {
+  armLockScreenAudioKeepAlive,
+  startContinuousRinger,
+  stopContinuousRinger,
+  subscribeRingingState,
+} from '@/lib/lockScreenRinger';
+import { subscribeGuestLockScreenPush } from '@/lib/mobileBridge';
+import { PwaInstallBanner } from '@/components/mobile/PwaInstallBanner';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
 
 export default function GuestWaitlistPage() {
@@ -21,7 +28,10 @@ function GuestWaitlistContent() {
   const [, params] = useRoute('/waitlist/:token');
   const token = params?.token || '';
   const { language, dir, t, label } = useMenuLanguage();
-  const [alertsEnabled, setAlertsEnabled] = useState(false);
+  const [alertsArmed, setAlertsArmed] = useState(false);
+  const [isRinging, setIsRinging] = useState(false);
+
+  useEffect(() => subscribeRingingState(setIsRinging), []);
 
   const query = useQuery<any>({
     enabled: Boolean(token),
@@ -31,7 +41,7 @@ function GuestWaitlistContent() {
       if (!res.ok) throw new Error('Waitlist entry not found');
       return res.json();
     },
-    refetchInterval: 5000,
+    refetchInterval: 4000,
   });
 
   const data = query.data;
@@ -41,26 +51,25 @@ function GuestWaitlistContent() {
   useRealtimeStream(token ? `/api/public/stream/waitlist/${token}` : null, ev => {
     void queryClient.invalidateQueries({ queryKey: ['/api/public/waitlist-ticket', token] });
     if (ev.type === 'waitlist.buzzed' || ev.data?.entry?.status === 'ready') {
-      playPagerReadyAlert(restaurant?.name || 'Host Stand', 'Your table is ready — held for 10 minutes!');
+      startContinuousRinger({
+        cafeName: restaurant?.name || 'Host Stand',
+        ticketCode: entry?.ticketCode || 'TABLE',
+        subtitle: 'Your table is ready — held for 10 minutes!',
+      });
     }
   });
 
   const respondMutation = useMutation({
     mutationFn: async (action: 'on_my_way' | 'release_spot') => {
+      stopContinuousRinger();
       const res = await apiRequest('POST', `/api/public/waitlist-ticket/${token}/respond`, { action });
       return res.json();
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['/api/public/waitlist-ticket', token] });
-    },
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['/api/public/waitlist-ticket', token] }),
   });
 
-  if (query.isLoading) {
-    return <div className="min-h-screen grid place-items-center p-6">Loading waitlist pass…</div>;
-  }
-  if (!entry || !restaurant) {
-    return <div className="min-h-screen grid place-items-center p-6">Waitlist pass not found.</div>;
-  }
+  if (query.isLoading) return <div className="min-h-screen grid place-items-center p-6">Loading waitlist pass…</div>;
+  if (!entry || !restaurant) return <div className="min-h-screen grid place-items-center p-6">Waitlist pass not found.</div>;
 
   const isReady = entry.status === 'ready';
 
@@ -68,13 +77,17 @@ function GuestWaitlistContent() {
     <div
       dir={dir}
       lang={language}
-      style={cafeThemeStyle(restaurant.theme, restaurant.brandAccentHex)}
-      className="min-h-screen bg-background text-foreground p-4"
+      style={{
+        ...cafeThemeStyle(restaurant.theme, restaurant.brandAccentHex),
+        paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))',
+        paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))',
+      }}
+      className="min-h-screen bg-background text-foreground px-4"
     >
-      <div className="max-w-md mx-auto py-6 space-y-5">
+      <div className="max-w-md mx-auto py-4 space-y-4">
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <Coffee className="w-6 h-6 text-primary" />
+            <Coffee className="w-6 h-6 text-primary" aria-hidden="true" />
             <div>
               <p className="text-xs text-muted-foreground uppercase font-semibold">{t('Walk-In Waitlist')}</p>
               <h1 className="font-bold">{label(restaurant.name)}</h1>
@@ -83,19 +96,42 @@ function GuestWaitlistContent() {
           <MenuLanguageSwitch />
         </header>
 
+        <PwaInstallBanner compact />
+
+        {isRinging && (
+          <div role="alert" className="rounded-3xl bg-[#C8FF42] text-[#17132E] border-2 border-[#17132E] p-5 shadow-xl space-y-3">
+            <div className="flex items-center gap-2.5">
+              <BellRing className="w-6 h-6 animate-bounce text-[#17132E]" aria-hidden="true" />
+              <strong className="text-base font-extrabold">Table Ready! ({entry.ticketCode})</strong>
+            </div>
+            <Button
+              type="button"
+              onClick={() => stopContinuousRinger()}
+              className="w-full min-h-12 rounded-2xl font-bold bg-[#17132E] text-white hover:bg-[#241E42] cursor-pointer gap-2"
+            >
+              <BellOff className="w-4 h-4" aria-hidden="true" />
+              Stop Ringing
+            </Button>
+          </div>
+        )}
+
         <section
           className={`rounded-3xl border-2 p-6 text-center space-y-3 shadow-lg ${
-            isReady ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-950/30' : 'bg-card'
+            isReady ? 'border-[#C8FF42] bg-[#17132E] text-white' : 'bg-card'
           }`}
           role="status"
           aria-live="polite"
           aria-atomic="true"
         >
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-primary/10 text-primary">
-            {isReady ? <BellRing className="w-4 h-4 animate-bounce" /> : <Users className="w-4 h-4" />}
+          <span
+            className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
+              isReady ? 'bg-[#C8FF42] text-[#17132E]' : 'bg-[#EFEAFF] text-[#4B1FE0]'
+            }`}
+          >
+            {isReady ? <BellRing className="w-4 h-4 animate-bounce" aria-hidden="true" /> : <Users className="w-4 h-4" aria-hidden="true" />}
             {entry.status.toUpperCase()}
           </span>
-          <div className="text-5xl font-black font-mono">{entry.ticketCode}</div>
+          <div className={`text-5xl font-black font-mono ${isReady ? 'text-[#C8FF42]' : ''}`}>{entry.ticketCode}</div>
           <p className="text-sm font-medium">
             {entry.guestName} · Party of {entry.partySize}
             {data.zone ? ` · ${data.zone.name}` : ''}
@@ -108,13 +144,13 @@ function GuestWaitlistContent() {
           )}
 
           {isReady && (
-            <div className="p-3 rounded-2xl bg-emerald-600 text-white text-sm font-semibold">
+            <div className="p-3 rounded-2xl bg-[#C8FF42] text-[#17132E] text-sm font-extrabold">
               Your table is ready! Held for 10 minutes at the host stand.
             </div>
           )}
 
           {entry.guestResponse === 'on_my_way' && (
-            <p className="text-xs font-semibold text-emerald-700">Host notified that you are on your way!</p>
+            <p className={`text-xs font-semibold ${isReady ? 'text-[#C8FF42]' : 'text-[#4B1FE0]'}`}>Host notified that you are on your way!</p>
           )}
         </section>
 
@@ -122,36 +158,36 @@ function GuestWaitlistContent() {
           <>
             <Button
               type="button"
-              variant={alertsEnabled ? 'secondary' : 'default'}
-              className="w-full min-h-12 rounded-2xl cursor-pointer gap-2"
+              variant={alertsArmed ? 'secondary' : 'default'}
+              className="w-full min-h-12 rounded-2xl cursor-pointer gap-2 font-semibold"
               onClick={async () => {
-                await unlockGuestAlerts();
-                setAlertsEnabled(true);
-                playPagerReadyAlert(restaurant.name, 'Waitlist alerts active!');
+                await armLockScreenAudioKeepAlive({ cafeName: restaurant.name, ticketCode: entry.ticketCode });
+                await subscribeGuestLockScreenPush(`waitlist:${token}`);
+                setAlertsArmed(true);
               }}
             >
-              <Bell className="w-4 h-4" />
-              <span>{alertsEnabled ? t('Alerts Active — Phone will ring when ready') : t('Enable Sound & Vibration Alerts')}</span>
+              {alertsArmed ? <ShieldCheck className="w-5 h-5 text-emerald-600" aria-hidden="true" /> : <Bell className="w-5 h-5" aria-hidden="true" />}
+              <span>{alertsArmed ? 'Lock-Screen Push & Ringer Armed' : 'Arm Lock-Screen Ringing & Push'}</span>
             </Button>
 
             <div className="grid grid-cols-2 gap-3">
               <Button
                 type="button"
-                className="min-h-11 cursor-pointer gap-1.5"
+                className="min-h-12 cursor-pointer gap-1.5"
                 disabled={respondMutation.isPending || entry.guestResponse === 'on_my_way'}
                 onClick={() => respondMutation.mutate('on_my_way')}
               >
-                <Check className="w-4 h-4" />
+                <Check className="w-4 h-4" aria-hidden="true" />
                 {t('On My Way')}
               </Button>
               <Button
                 type="button"
                 variant="outline"
-                className="min-h-11 cursor-pointer gap-1.5 text-destructive"
+                className="min-h-12 cursor-pointer gap-1.5 text-destructive"
                 disabled={respondMutation.isPending}
                 onClick={() => respondMutation.mutate('release_spot')}
               >
-                <XCircle className="w-4 h-4" />
+                <XCircle className="w-4 h-4" aria-hidden="true" />
                 {t('Release Spot')}
               </Button>
             </div>
@@ -160,7 +196,7 @@ function GuestWaitlistContent() {
 
         <div className="text-center">
           <Link href={`/menu/${restaurant.id}`}>
-            <Button variant="ghost" className="cursor-pointer">Browse Menu While You Wait</Button>
+            <Button variant="ghost" className="cursor-pointer min-h-11">Browse Menu While You Wait</Button>
           </Link>
         </div>
       </div>

@@ -1,38 +1,38 @@
-/* E3 staff workspace. Scoped away from every restaurant's customer theme. */
+/* Dingzi Staff & Barista KDS Workspace — Midnight Indigo (#17132E) + Cosmic Slate (#241E42) + Electric Violet (#6236FF) + Volt Lime (#C8FF42) */
 .staff-surface {
-  --primary:263 83% 75%;--primary-foreground:252 35% 12%;--ring:263 83% 75%;
-  --background:237 28% 7%;--foreground:240 24% 94%;
-  --card:237 23% 11%;--card-foreground:240 24% 94%;--card-border:239 18% 20%;
-  --popover:237 23% 12%;--popover-foreground:240 24% 94%;--popover-border:239 18% 24%;
-  --secondary:242 22% 17%;--secondary-foreground:240 24% 94%;
-  --muted:240 20% 15%;--muted-foreground:240 13% 68%;
-  --accent:254 28% 20%;--accent-foreground:260 65% 88%;
-  --border:239 18% 20%;--input:239 18% 27%;
-  --sidebar:238 24% 9%;--sidebar-background:238 24% 9%;--sidebar-foreground:240 13% 76%;
-  --sidebar-border:239 18% 18%;--sidebar-primary:263 83% 75%;--sidebar-primary-foreground:252 35% 12%;
-  --sidebar-accent:258 33% 18%;--sidebar-accent-foreground:260 83% 87%;--sidebar-ring:263 83% 75%;
-  --button-outline:rgba(183,177,222,.18);--badge-outline:rgba(183,177,222,.12);
-  --primary-border:hsl(263 60% 65%);--secondary-border:hsl(242 22% 25%);--muted-border:hsl(240 20% 24%);--accent-border:hsl(254 28% 30%);
-  --elevate-1:rgba(255,255,255,.035);--elevate-2:rgba(255,255,255,.065);
+  --primary:253 100% 61%;--primary-foreground:0 0% 100%;--ring:254 76% 50%;
+  --background:249 42% 13%;--foreground:0 0% 100%;
+  --card:250 38% 19%;--card-foreground:0 0% 100%;--card-border:250 30% 27%;
+  --popover:250 38% 19%;--popover-foreground:0 0% 100%;--popover-border:250 30% 29%;
+  --secondary:250 36% 24%;--secondary-foreground:0 0% 100%;
+  --muted:250 34% 22%;--muted-foreground:250 28% 76%;
+  --accent:252 44% 25%;--accent-foreground:77 100% 63%;
+  --border:250 30% 27%;--input:250 30% 30%;
+  --sidebar:249 44% 11%;--sidebar-background:249 44% 11%;--sidebar-foreground:250 30% 84%;
+  --sidebar-border:250 30% 22%;--sidebar-primary:253 100% 61%;--sidebar-primary-foreground:0 0% 100%;
+  --sidebar-accent:250 38% 19%;--sidebar-accent-foreground:0 0% 100%;--sidebar-ring:253 100% 61%;
+  --button-outline:rgba(229,226,242,.18);--badge-outline:rgba(229,226,242,.12);
+  --primary-border:hsl(254 76% 50%);--secondary-border:hsl(250 36% 30%);--muted-border:hsl(250 34% 28%);--accent-border:hsl(252 44% 34%);
+  --elevate-1:rgba(255,255,255,.04);--elevate-2:rgba(255,255,255,.075);
   --destructive:0 69% 58%;--destructive-foreground:0 0% 100%;
   background:hsl(var(--background));color:hsl(var(--foreground));color-scheme:dark;
 }
 .staff-surface[data-staff-theme=light] {
-  --primary:265 62% 45%;--primary-foreground:0 0% 100%;--ring:265 62% 45%;
-  --background:240 30% 97%;--foreground:245 28% 15%;--card:0 0% 100%;--card-foreground:245 28% 15%;--card-border:240 20% 89%;
-  --popover:0 0% 100%;--popover-foreground:245 28% 15%;--popover-border:240 20% 87%;
-  --secondary:245 22% 93%;--secondary-foreground:245 28% 20%;--muted:240 22% 93%;--muted-foreground:245 10% 44%;
-  --accent:260 50% 93%;--accent-foreground:265 62% 35%;--border:240 20% 88%;--input:240 20% 80%;
-  --sidebar:0 0% 100%;--sidebar-background:0 0% 100%;--sidebar-foreground:245 15% 35%;--sidebar-border:240 20% 88%;
-  --sidebar-primary:265 62% 45%;--sidebar-primary-foreground:0 0% 100%;--sidebar-accent:260 50% 93%;--sidebar-accent-foreground:265 62% 35%;--sidebar-ring:265 62% 45%;
-  --button-outline:rgba(58,36,92,.16);--badge-outline:rgba(58,36,92,.1);--primary-border:hsl(265 62% 40%);--secondary-border:hsl(245 22% 85%);--muted-border:hsl(240 22% 85%);--accent-border:hsl(260 50% 85%);
-  --elevate-1:rgba(70,40,110,.035);--elevate-2:rgba(70,40,110,.075);color-scheme:light;
+  --primary:253 100% 61%;--primary-foreground:0 0% 100%;--ring:254 76% 50%;
+  --background:249 54% 97%;--foreground:249 42% 13%;--card:0 0% 100%;--card-foreground:249 42% 13%;--card-border:251 38% 92%;
+  --popover:0 0% 100%;--popover-foreground:249 42% 13%;--popover-border:251 38% 92%;
+  --secondary:249 54% 97%;--secondary-foreground:249 42% 13%;--muted:249 54% 97%;--muted-foreground:250 21% 40%;
+  --accent:254 100% 96%;--accent-foreground:254 76% 50%;--border:251 38% 92%;--input:251 38% 92%;
+  --sidebar:0 0% 100%;--sidebar-background:0 0% 100%;--sidebar-foreground:249 42% 13%;--sidebar-border:251 38% 92%;
+  --sidebar-primary:253 100% 61%;--sidebar-primary-foreground:0 0% 100%;--sidebar-accent:254 100% 96%;--sidebar-accent-foreground:254 76% 50%;--sidebar-ring:254 76% 50%;
+  --button-outline:rgba(23,19,46,.14);--badge-outline:rgba(23,19,46,.08);--primary-border:hsl(254 76% 50%);--secondary-border:hsl(251 38% 88%);--muted-border:hsl(251 38% 88%);--accent-border:hsl(254 80% 88%);
+  --elevate-1:rgba(98,54,255,.04);--elevate-2:rgba(75,31,224,.08);color-scheme:light;
 }
-.staff-surface .manager-root main{background:radial-gradient(ellipse at 55% -20%,hsl(var(--primary)/.09),transparent 55%),radial-gradient(ellipse at 100% 100%,#1eb9c508,transparent 45%),hsl(var(--background));}
-.staff-surface .manager-header{min-height:72px;background:hsl(var(--background)/.82);border-color:hsl(var(--border));backdrop-filter:blur(20px);gap:8px;}
+.staff-surface .manager-root main{background:radial-gradient(ellipse at 55% -20%,hsl(var(--primary)/.10),transparent 55%),hsl(var(--background));}
+.staff-surface .manager-header{min-height:72px;background:hsl(var(--background)/.88);border-color:hsl(var(--border));backdrop-filter:blur(20px);gap:8px;}
 .staff-cafe-title{min-width:0;}
 .staff-access-label{font-size:10px;border:1px solid hsl(var(--border));padding:7px 10px;border-radius:7px;display:flex;align-items:center;gap:7px;color:hsl(var(--muted-foreground));white-space:nowrap;}
-.staff-access-label>span{width:5px;height:5px;border-radius:50%;background:#57cbb7;box-shadow:0 0 9px #57cbb73b;}
+.staff-access-label>span{width:6px;height:6px;border-radius:50%;background:#C8FF42;box-shadow:0 0 10px #C8FF4280;}
 .staff-surface .staff-theme-toggle{color:hsl(var(--primary));border-radius:9px;flex-shrink:0;}
 .staff-surface [data-sidebar=sidebar]{background:hsl(var(--sidebar));border-color:hsl(var(--sidebar-border));}
 .staff-sidebar-brand{padding:25px 20px 22px;border-bottom:1px solid hsl(var(--sidebar-border));margin-bottom:16px;}
@@ -90,18 +90,19 @@
 .staff-restaurant-card .staff-restaurant-actions button{justify-content:center;}
 .staff-restaurant-card .staff-restaurant-actions button.bg-destructive{background:transparent;color:hsl(var(--muted-foreground));border-color:hsl(var(--border));box-shadow:none;}
 .staff-restaurant-card .staff-restaurant-actions button.bg-destructive:hover{color:hsl(var(--destructive));border-color:hsl(var(--destructive)/.5);}
-.staff-login{min-height:100svh;display:flex;flex-direction:column;position:relative;isolation:isolate;overflow:hidden;background:radial-gradient(ellipse at 25% 50%,#7821ba1c,transparent 45%),radial-gradient(ellipse at 82% 66%,#139abc17,transparent 45%),hsl(var(--background));}
+.staff-login{min-height:100svh;display:flex;flex-direction:column;position:relative;isolation:isolate;overflow:hidden;background:radial-gradient(ellipse at 25% 40%,rgba(98,54,255,.16),transparent 48%),radial-gradient(ellipse at 82% 72%,rgba(200,255,66,.08),transparent 45%),hsl(var(--background));}
 .staff-login-top{display:flex;align-items:center;justify-content:space-between;padding:26px 40px;z-index:1;gap:20px;}
 .staff-login-top>span{font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:hsl(var(--muted-foreground));}
 .staff-login-stage{flex:1;display:grid;place-items:center;padding:35px 24px 60px;position:relative;}
-.staff-login-watermark{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);width:min(78vw,980px);max-width:none;height:auto;z-index:-1;opacity:.13;filter:drop-shadow(0 0 70px #8434b035);user-select:none;pointer-events:none;}
-.staff-login-card{width:100%;max-width:410px;padding:36px;background:linear-gradient(140deg,hsl(var(--primary)/.055),#1cb6cd05),hsl(var(--card)/.93);border:1px solid hsl(var(--primary)/.25);border-radius:22px;backdrop-filter:blur(24px);box-shadow:0 30px 100px #00000030;position:relative;}
-.staff-login-card:before{content:'';position:absolute;top:-1px;left:20%;width:60%;height:1px;background:linear-gradient(90deg,transparent,#ac74f7,#3cbbc4,transparent);}
-.staff-login-card>.staff-brand{justify-content:center;margin-bottom:38px;}.staff-login-card h1{font-size:30px;letter-spacing:-.045em;font-weight:750;text-align:center;}
+.staff-login-watermark{position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);width:min(78vw,640px);max-width:none;height:auto;z-index:-1;opacity:.08;filter:drop-shadow(0 0 70px rgba(98,54,255,.28));user-select:none;pointer-events:none;}
+.staff-login-card{width:100%;max-width:410px;padding:36px;background:hsl(var(--card)/.95);border:1px solid hsl(var(--primary)/.28);border-radius:22px;backdrop-filter:blur(24px);box-shadow:0 30px 100px #00000038;position:relative;}
+.staff-login-card:before{content:'';position:absolute;top:-1px;left:20%;width:60%;height:1px;background:linear-gradient(90deg,transparent,#6236FF,#C8FF42,transparent);}
+.staff-login-card>.staff-brand{justify-content:center;margin-bottom:32px;}.staff-login-card h1{font-size:30px;letter-spacing:-.045em;font-weight:750;text-align:center;}
 .staff-login-card .staff-login-description{text-align:center;color:hsl(var(--muted-foreground));font-size:12px;margin:10px 0 32px;line-height:1.7;}
 .staff-login-card label{font-size:11px;font-weight:600;}.staff-login-card input{height:45px;border-radius:10px;border-color:hsl(var(--input));font-size:12px;}
-.staff-password-toggle{position:absolute;right:5px;top:5px;height:35px;width:35px;border-radius:7px;color:hsl(var(--muted-foreground));display:grid;place-items:center;}.staff-password-toggle:focus-visible{outline:2px solid hsl(var(--ring));outline-offset:2px;}
-.staff-login-card .staff-sign-in{width:100%;height:45px;margin-top:5px;border-radius:10px;border:1px solid #b96de959;background:linear-gradient(105deg,#8532df,#3c51ba 60%,#0d7389);color:white;box-shadow:0 8px 26px #8940d820;font-size:12px;font-weight:600;}
+.staff-password-toggle{position:absolute;right:5px;top:5px;height:35px;width:35px;border-radius:7px;color:hsl(var(--muted-foreground));display:grid;place-items:center;}.staff-password-toggle:focus-visible{outline:2px solid #4B1FE0;outline-offset:2px;}
+.staff-login-card .staff-sign-in{width:100%;height:46px;margin-top:5px;border-radius:12px;border:1px solid #4B1FE0;background:#6236FF;color:#FFFFFF;box-shadow:0 10px 26px rgba(98,54,255,.28);font-size:13px;font-weight:700;cursor:pointer;}
+.staff-login-card .staff-sign-in:hover{background:#4B1FE0;}
 .staff-login-help{font-size:10px;line-height:1.7;text-align:center;color:hsl(var(--muted-foreground));border-top:1px solid hsl(var(--border));padding-top:22px;margin-top:28px;}
 .staff-login-footer{padding:0 24px 25px;text-align:center;font-size:10px;letter-spacing:.08em;color:hsl(var(--muted-foreground));}
 @media(max-width:1200px){.staff-platform-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}

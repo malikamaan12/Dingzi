@@ -189,8 +189,8 @@ export const cafeProfileSchema = insertRestaurantSchema.pick({
 }).extend({
   name: z.string().trim().min(1).max(150),
   slug: z.string().trim().toLowerCase().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Slug must use lowercase letters, numbers, and hyphens').max(120).nullable().optional(),
-  theme: z.enum(['e3', 'forest', 'terracotta', 'ocean', 'plum']).optional(),
-  brandAccentHex: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Use a 6-digit hex color like #92400E').nullable().optional(),
+  theme: z.enum(['dingzi', 'e3', 'forest', 'terracotta', 'ocean', 'plum']).optional(),
+  brandAccentHex: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Use a 6-digit hex color like #6236FF').nullable().optional(),
   currency: z.enum(['SAR', 'QAR', 'INR', 'AED', 'USD', 'EUR', 'GBP']).optional(),
   timezone: z.string().max(100).refine(v => { try { new Intl.DateTimeFormat('en', { timeZone: v }); return true; } catch { return false; } }).optional(),
   coverMediaType: z.enum(['image', 'video', 'gif']).nullable().optional(),
@@ -640,6 +640,28 @@ export const aggregatorClicks = pgTable("aggregator_clicks", {
   clickedAt: timestamp("clicked_at").notNull().defaultNow(),
 });
 export type AggregatorClick = typeof aggregatorClicks.$inferSelect;
+
+// Platform Settings & Lock-Screen Web Push / Native Mobile Push Subscriptions
+export const platformSettings = pgTable("platform_settings", {
+  key: varchar("key", { length: 80 }).primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const pushSubscriptions = pgTable("push_subscriptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  scope: varchar("scope", { length: 80 }).notNull(),
+  restaurantId: varchar("restaurant_id").notNull().references(() => restaurants.id, { onDelete: "cascade" }),
+  platform: varchar("platform", { length: 24 }).notNull().default("web_push"), // 'web_push' | 'android_fcm' | 'ios_apns'
+  endpoint: text("endpoint").notNull(),
+  p256dh: text("p256dh"),
+  auth: text("auth"),
+  nativeToken: text("native_token"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  lastDeliveredAt: timestamp("last_delivered_at"),
+});
+export type PushSubscriptionRecord = typeof pushSubscriptions.$inferSelect;
 
 export type PublicCafe = Pick<
   Restaurant,

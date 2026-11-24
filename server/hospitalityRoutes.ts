@@ -8,6 +8,8 @@ import { isAuthenticated, isSuperAdmin } from './localAuth';
 import { getManagedCafe } from './accessControl';
 import { rateLimit } from './httpSecurity';
 import { attachSseStream, publishRealtimeEvent } from './realtimeHub';
+import { deferRequestTask } from './workerContext';
+import { dispatchPushAlertToScopes } from './pushService';
 import {
   createPaymentCheckoutSession,
   signGatewayPayload,
@@ -474,6 +476,14 @@ export function mountHospitalityRoutes(app: Express) {
         branchId: restaurant.id,
         data: { order: created.order, pager: created.pager },
       });
+      deferRequestTask(
+        dispatchPushAlertToScopes([`staff:${restaurant.id}`], {
+          title: `${restaurant.name} · New Order ${created.order.orderNumber}`,
+          body: `${payload.customerName} (${payload.channel.replace('_', ' ')}) · ${created.order.total} ${restaurant.currency}`,
+          tag: `order-${created.order.orderNumber}`,
+          url: '/admin/kds',
+        }),
+      );
 
       res.status(201).json({ order: created.order, pager: created.pager, checkout: null });
     } catch (e) {
@@ -790,6 +800,16 @@ export function mountHospitalityRoutes(app: Express) {
         branchId: bay.restaurantId,
         data: { ticket: updatedTicket, bay },
       });
+      if (body.etaStatus === 'arrived') {
+        deferRequestTask(
+          dispatchPushAlertToScopes([`staff:${bay.restaurantId}`], {
+            title: `Vehicle Arrived · ${bay.code}`,
+            body: `${body.vehicleColor} ${body.vehicleType} (${body.licensePlate.toUpperCase()}) · Ticket ${updatedTicket.ticketCode}`,
+            tag: `bay-${bay.code}-${updatedTicket.ticketCode}`,
+            url: '/admin/drive-thru',
+          }),
+        );
+      }
 
       res.json({ ticket: updatedTicket, bay });
     } catch (e) {
@@ -1289,6 +1309,16 @@ export function mountHospitalityRoutes(app: Express) {
           branchId: cafe.id,
           data: { ticket: buzzed },
         });
+        deferRequestTask(
+          dispatchPushAlertToScopes([`pager:${buzzed.trackingToken}`], {
+            title: `${cafe.name} · Order ${buzzed.ticketCode} Ready!`,
+            body: `Reminder (#${buzzed.buzzCount}): Your order is waiting at the pickup counter.`,
+            tag: `pager-${buzzed.ticketCode}`,
+            url: `/pager/${buzzed.trackingToken}`,
+            ticketCode: buzzed.ticketCode,
+            urgent: true,
+          }),
+        );
         return res.json({ ticket: buzzed });
       }
 
@@ -1315,6 +1345,18 @@ export function mountHospitalityRoutes(app: Express) {
         branchId: cafe.id,
         data: { ticket: updated },
       });
+      if (action === 'ready') {
+        deferRequestTask(
+          dispatchPushAlertToScopes([`pager:${updated.trackingToken}`], {
+            title: `${cafe.name} · Order ${updated.ticketCode} Ready!`,
+            body: 'Your order is hot and ready for pickup! Show your code at the counter.',
+            tag: `pager-${updated.ticketCode}`,
+            url: `/pager/${updated.trackingToken}`,
+            ticketCode: updated.ticketCode,
+            urgent: true,
+          }),
+        );
+      }
 
       res.json({ ticket: updated });
     } catch (e) {
@@ -1517,6 +1559,18 @@ export function mountHospitalityRoutes(app: Express) {
         branchId: cafe.id,
         data: { entry: updated },
       });
+      if (action === 'ready' || action === 'rebuzz') {
+        deferRequestTask(
+          dispatchPushAlertToScopes([`waitlist:${updated.trackingToken}`], {
+            title: `${cafe.name} · Your Table is Ready (${updated.ticketCode})!`,
+            body: 'Please head to the host stand — your table is held for 10 minutes.',
+            tag: `waitlist-${updated.ticketCode}`,
+            url: `/waitlist/${updated.trackingToken}`,
+            ticketCode: updated.ticketCode,
+            urgent: true,
+          }),
+        );
+      }
 
       res.json({ entry: updated });
     } catch (e) {
