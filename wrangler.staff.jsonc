@@ -1,12 +1,14 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "pager-staff",
+  "name": "dingzi-staff",
+  "account_id": "8c6a1df16f0c1df63f5b501a8902da63",
   "main": "server/worker.ts",
   "compatibility_date": "2026-10-09",
   "compatibility_flags": ["nodejs_compat", "enable_nodejs_http_server_modules"],
   "workers_dev": true,
+  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "bbb3e53971814cb8a74925b02c7558e0" }],
   "preview_urls": false,
-  "placement": { "region": "aws:ap-south-1" },
+  "placement": { "region": "aws:ap-northeast-1" },
   "minify": true,
   "alias": {
     "./db": "./server/workerDatabase.ts",
@@ -21,7 +23,9 @@
     "COOKIE_SECURE": "true",
     "TRUST_PROXY": "true",
     "TZ": "UTC",
-    "STORAGE_BUCKET": "pager-media"
+    "STORAGE_BUCKET": "pager-media",
+    "PUBLIC_MENU_ORIGIN": "https://dingzi-menu.amaanmalik12.workers.dev",
+    "MANAGEMENT_ORIGIN": "https://dingzi-staff.amaanmalik12.workers.dev"
   },
   "assets": {
     "directory": "./dist/public",

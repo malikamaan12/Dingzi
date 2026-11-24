@@ -15,6 +15,11 @@ BEGIN
   ] LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', cafe_table);
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM anon, authenticated', cafe_table);
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'dingzi_app') THEN
+      EXECUTE format('GRANT ALL ON TABLE public.%I TO dingzi_app', cafe_table);
+      EXECUTE format('DROP POLICY IF EXISTS dingzi_server_access ON public.%I', cafe_table);
+      EXECUTE format('CREATE POLICY dingzi_server_access ON public.%I FOR ALL TO dingzi_app USING (true) WITH CHECK (true)', cafe_table);
+    END IF;
   END LOOP;
 END $$;
 
