@@ -25,7 +25,7 @@ BEGIN
     'global_menu_items','payments','access_audit','sessions','media_objects','rate_limit_buckets',
     'service_bays','guest_orders','pager_tickets','dining_zones','dining_tables',
     'table_reservations','waitlist_entries','aggregator_links','aggregator_clicks',
-    'platform_settings','push_subscriptions'
+    'platform_settings','push_subscriptions','smart_tags'
   ] LOOP
     EXECUTE format('ALTER TABLE public.%I ENABLE ROW LEVEL SECURITY', cafe_table);
     EXECUTE format('REVOKE ALL ON TABLE public.%I FROM anon, authenticated', cafe_table);

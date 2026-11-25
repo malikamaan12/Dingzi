@@ -82,7 +82,7 @@ async function handleRequest(request: Request, env: WorkerEnvironment, ctx: Exec
       const match = url.pathname.match(/^\/api\/ws\/public\/([a-f0-9-]{36})\/?$/i);
       if (!match) return Response.json({ message: 'Invalid branch realtime room' }, { status: 400 });
       const scope = url.searchParams.get('scope') || '';
-      if (!/^(pager|waitlist):[a-f0-9-]{36}$/i.test(scope)) {
+      if (!/^(pager|waitlist|coaster):[a-f0-9-]{36}$/i.test(scope)) {
         return Response.json({ message: 'Guest sockets require a valid tracking scope' }, { status: 403 });
       }
       const stub = env.BRANCH_HUB.get(env.BRANCH_HUB.idFromName(match[1]));

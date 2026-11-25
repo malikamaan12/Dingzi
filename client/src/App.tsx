@@ -53,7 +53,7 @@ import { MobileStaffBottomNav } from '@/components/mobile/MobileStaffBottomNav';
 const VirtualPagerPage = lazy(() => import('@/pages/virtual-pager'));
 const GuestWaitlistPage = lazy(() => import('@/pages/guest-waitlist'));
 const GuestBookingPage = lazy(() => import('@/pages/guest-booking'));
-import { VenueBySlugEntry, BayQrEntry, TableQrEntry } from '@/pages/venue-slug-entry';
+import { VenueBySlugEntry, BayQrEntry, TableQrEntry, SmartTagEntry } from '@/pages/venue-slug-entry';
 const SuperAdminDashboard = lazy(() => import('@/pages/super-admin-dashboard'));
 const SuperAdminRestaurantDetail = lazy(() => import('@/pages/super-admin-restaurant-detail'));
 const CustomerMenu = lazy(() => import('@/pages/customer-menu'));
@@ -192,7 +192,8 @@ function Router() {
     location.startsWith('/waitlist/') ||
     location.startsWith('/booking/') ||
     location.startsWith('/bay/') ||
-    location.startsWith('/table/');
+    location.startsWith('/table/') ||
+    location.startsWith('/tag/');
   // The Worker separately enforces this boundary for direct URL requests.
   if (isGuestSurface) return (
     <Switch>
@@ -203,6 +204,7 @@ function Router() {
       <Route path="/booking/:token" component={GuestBookingPage}/>
       <Route path="/bay/:token" component={BayQrEntry}/>
       <Route path="/table/:token" component={TableQrEntry}/>
+      <Route path="/tag/:token" component={SmartTagEntry}/>
       <Route path="/" component={Home}/>
       <Route component={NotFound}/>
     </Switch>

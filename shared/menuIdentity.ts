@@ -20,3 +20,22 @@ export function permanentMenuUrl(restaurantId: string): string {
   }
   return `${PUBLIC_MENU_ORIGIN}/menu/${restaurantId}`;
 }
+
+export function publicExperienceOrigin(currentOrigin?: string): string {
+  const normalizedCurrent = (currentOrigin || '').replace(/\/+$/, '');
+  if (/^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/i.test(normalizedCurrent)) {
+    return normalizedCurrent;
+  }
+  if (PUBLIC_MENU_ORIGIN && !PUBLIC_MENU_ORIGIN.includes('.example.workers.dev')) {
+    return PUBLIC_MENU_ORIGIN;
+  }
+  return normalizedCurrent || PUBLIC_MENU_ORIGIN;
+}
+
+export function smartTagUrl(token: string, source?: 'nfc' | 'qr', currentOrigin?: string): string {
+  if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(token)) {
+    throw new Error('A valid smart tag token is required.');
+  }
+  const base = publicExperienceOrigin(currentOrigin);
+  return `${base}/tag/${token}${source === 'nfc' ? '?src=nfc' : ''}`;
+}

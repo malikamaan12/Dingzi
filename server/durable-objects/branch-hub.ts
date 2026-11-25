@@ -44,7 +44,7 @@ export class BranchRealtimeDO {
     }
 
     const scope = url.searchParams.get('scope') || '';
-    if (!/^(staff|pager:[a-f0-9-]{36}|waitlist:[a-f0-9-]{36})$/i.test(scope)) {
+    if (!/^(staff|pager:[a-f0-9-]{36}|waitlist:[a-f0-9-]{36}|coaster:[a-f0-9-]{36})$/i.test(scope)) {
       return Response.json({ message: 'Invalid realtime subscription scope' }, { status: 400 });
     }
 

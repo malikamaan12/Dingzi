@@ -116,7 +116,7 @@ await fetch(`${staffOrigin}/api/hospitality/pagers/${issuedTicket.id}/transition
   body: JSON.stringify({ action: 'collected' }),
 });
 
-console.log('5/5 Verifying Multi-Branch Tenant Analytics on dingzi-staff...');
+console.log('5/6 Verifying Multi-Branch Tenant Analytics on dingzi-staff...');
 const tenantRes = await fetch(`${staffOrigin}/api/hospitality/tenant-analytics`, {
   headers: { Cookie: staffCookie },
 });
@@ -124,4 +124,22 @@ assert.equal(tenantRes.status, 200);
 const tenantData = await tenantRes.json();
 assert.equal(tenantData.branches.length, 2, 'Tenant Owner must see both Urban Café and Qstrawberry');
 
-console.log('PASS: Live Cloudflare + Hyperdrive + Supabase Storage + Cross-Worker WebSocket Hibernation verified end-to-end!');
+console.log('6/6 Verifying QR & NFC Smart Tags + Reusable Coaster Lifecycle across dingzi-staff & dingzi-menu...');
+const tagsRes = await fetch(`${staffOrigin}/api/hospitality/smart-tags`, {
+  headers: { Cookie: staffCookie, 'X-Cafe-Context': urbanId },
+});
+assert.equal(tagsRes.status, 200);
+const tagsData = await tagsRes.json();
+const coaster1 = tagsData.tags.find(t => t.tagCode === 'COASTER-01');
+assert.ok(coaster1, 'Expected COASTER-01 on Urban Café');
+
+const tagHtmlRes = await fetch(`${guestOrigin}/tag/${coaster1.token}`);
+assert.equal(tagHtmlRes.status, 200, 'Public guest Worker must serve /tag/:token');
+assert.match(tagHtmlRes.headers.get('permissions-policy') || '', /camera=\(self\)/);
+
+const coasterNfcIdle = await fetch(`${guestOrigin}/api/public/tag/${coaster1.token}?src=nfc`);
+assert.equal(coasterNfcIdle.status, 200);
+const coasterIdleJson = await coasterNfcIdle.json();
+assert.equal(coasterIdleJson.coasterStatus, 'idle');
+
+console.log('PASS: Live Cloudflare + Hyperdrive + Supabase Storage + QR/NFC Smart Coasters + Cross-Worker WebSockets verified end-to-end!');

@@ -13,6 +13,7 @@ import {
   PlayCircle,
   QrCode,
   Receipt,
+  Wifi,
   Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -27,6 +28,7 @@ import { playStaffArrivalChime } from '@/lib/pagerAudio';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
 import { LocalQrBox } from '@/components/hospitality/LocalQrBox';
 import { subscribeStaffLockScreenPush } from '@/lib/mobileBridge';
+import { publicExperienceOrigin } from '@shared/menuIdentity';
 
 export default function AdminKdsPage() {
   const { toast } = useToast();
@@ -34,6 +36,7 @@ export default function AdminKdsPage() {
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [customerName, setCustomerName] = useState('');
   const [prepMins, setPrepMins] = useState(8);
+  const [selectedCoasterId, setSelectedCoasterId] = useState('');
   const [issuedQrTicket, setIssuedQrTicket] = useState<any | null>(null);
   const [kioskMode, setKioskMode] = useState(false);
   const [channelFilter, setChannelFilter] = useState<'all' | 'orders' | 'curbside' | 'counter'>('all');
@@ -44,7 +47,7 @@ export default function AdminKdsPage() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const kdsQuery = useQuery<{ tickets: any[]; orders: any[]; bays: any[] }>({
+  const kdsQuery = useQuery<{ tickets: any[]; orders: any[]; bays: any[]; coasters?: any[] }>({
     queryKey: ['/api/hospitality/pagers'],
     refetchInterval: 5000,
   });
@@ -63,17 +66,24 @@ export default function AdminKdsPage() {
         invoiceNumber: mode === 'pos_invoice' ? invoiceNumber : undefined,
         customerName: customerName.trim() || undefined,
         estimatedPrepMins: prepMins,
+        smartTagId: selectedCoasterId || undefined,
       });
       return res.json();
     },
     onSuccess: data => {
       setInvoiceNumber('');
       setCustomerName('');
+      setSelectedCoasterId('');
       setIssuedQrTicket(data.ticket);
       void queryClient.invalidateQueries({ queryKey: ['/api/hospitality/pagers'] });
+      void queryClient.invalidateQueries({ queryKey: ['/api/hospitality/smart-tags'] });
       toast({
-        title: `Issued Pager ${data.ticket.ticketCode}`,
-        description: 'Have the guest scan the QR code to activate live phone alerts.',
+        title: data.coaster
+          ? `Issued ${data.ticket.ticketCode} · Bound to ${data.coaster.tagCode}`
+          : `Issued Pager ${data.ticket.ticketCode}`,
+        description: data.coaster
+          ? 'Hand the NFC/QR coaster to the guest — tapping opens their live order pass.'
+          : 'Have the guest scan the QR code to activate live phone alerts.',
       });
     },
     onError: (e: Error) => toast({ title: 'Could not issue pager', description: e.message, variant: 'destructive' }),
@@ -116,9 +126,16 @@ export default function AdminKdsPage() {
   });
 
   const tickets = kdsQuery.data?.tickets || [];
+  const coasters = kdsQuery.data?.coasters || [];
   const ordersById = new Map((kdsQuery.data?.orders || []).map(o => [o.id, o]));
   const baysById = new Map((kdsQuery.data?.bays || []).map(b => [b.id, b]));
   const allActiveTickets = tickets.filter(t => ['waiting', 'preparing', 'ready'].includes(t.status));
+  const activeTicketIdSet = new Set(allActiveTickets.map(t => t.id));
+  const idleCoasters = coasters.filter(c => !c.activeTicketId || !activeTicketIdSet.has(c.activeTicketId));
+  const coasterByTicketId = new Map(
+    coasters.filter(c => c.activeTicketId && activeTicketIdSet.has(c.activeTicketId)).map(c => [c.activeTicketId, c]),
+  );
+  const publicBase = publicExperienceOrigin(typeof window !== 'undefined' ? window.location.origin : '');
   const activeTickets = allActiveTickets.filter(t => {
     if (channelFilter === 'orders') return Boolean(t.orderId);
     if (channelFilter === 'curbside') return Boolean(t.bayId || t.licensePlate || t.source === 'curbside');
@@ -213,7 +230,7 @@ export default function AdminKdsPage() {
                     Scan with your phone camera — your phone will ring &amp; vibrate even when locked as soon as your order is ready!
                   </p>
                   <div className="grid place-items-center py-2">
-                    <LocalQrBox url={`${window.location.origin}/pager/${latest.trackingToken}`} size={240} />
+                    <LocalQrBox url={`${publicBase}/pager/${latest.trackingToken}`} size={240} />
                   </div>
                 </div>
               );
@@ -270,6 +287,27 @@ export default function AdminKdsPage() {
               New Auto Pager
             </Button>
           </div>
+          {coasters.length > 0 && (
+            <div>
+              <Label className="text-xs flex items-center gap-1.5">
+                <Wifi className="w-3.5 h-3.5 rotate-90 text-primary" />
+                <span>Bind Physical NFC/QR Coaster (optional)</span>
+              </Label>
+              <select
+                value={selectedCoasterId}
+                onChange={e => setSelectedCoasterId(e.target.value)}
+                data-testid="select-kds-coaster"
+                className="manager-select w-full h-11 text-xs font-medium mt-1"
+              >
+                <option value="">Screen QR only — no physical coaster</option>
+                {idleCoasters.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.tagCode} — {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         <form
@@ -348,6 +386,7 @@ export default function AdminKdsPage() {
               const SlaIcon = sla.icon;
               const order = ticket.orderId ? ordersById.get(ticket.orderId) : null;
               const bay = ticket.bayId ? baysById.get(ticket.bayId) : null;
+              const boundCoaster = coasterByTicketId.get(ticket.id);
               const cooldownRemaining = ticket.lastBuzzedAt
                 ? Math.max(0, Math.ceil((20_000 - (now - new Date(ticket.lastBuzzedAt).getTime())) / 1000))
                 : 0;
@@ -373,6 +412,15 @@ export default function AdminKdsPage() {
                       <Badge variant="outline" className="uppercase">{ticket.status}</Badge>
                       <Badge variant="secondary">{ticket.source.replace('_', ' ')}</Badge>
                       {ticket.customerName && <span className="font-medium">{ticket.customerName}</span>}
+                      {boundCoaster && (
+                        <Badge
+                          data-testid={`badge-kds-coaster-${boundCoaster.tagCode}`}
+                          className="bg-[#EFEAFF] text-[#4B1FE0] hover:bg-[#EFEAFF] border border-[#6236FF]/30 font-mono font-bold inline-flex items-center gap-1"
+                        >
+                          <Wifi className="w-3 h-3 rotate-90" />
+                          <span>{boundCoaster.tagCode}</span>
+                        </Badge>
+                      )}
                       {bay && (
                         <Badge className="bg-[#C8FF42] text-[#17132E] hover:bg-[#C8FF42] font-extrabold border-0">
                           BAY ARRIVED · {bay.code}
@@ -587,7 +635,7 @@ export default function AdminKdsPage() {
           {issuedQrTicket && (
             <div className="space-y-4 py-2">
               <div className="mx-auto grid place-items-center">
-                <LocalQrBox url={`${window.location.origin}/pager/${issuedQrTicket.trackingToken}`} size={196} />
+                <LocalQrBox url={`${publicBase}/pager/${issuedQrTicket.trackingToken}`} size={196} />
               </div>
               <a
                 href={`/pager/${issuedQrTicket.trackingToken}`}

@@ -52,6 +52,7 @@ const adminMenuItems: {
   url: string;
   icon: any;
   roles: EffectiveStaffRole[];
+  testId?: string;
 }[] = [
   {
     title: "Dashboard",
@@ -138,10 +139,11 @@ const adminMenuItems: {
     roles: MANAGER_ROLES,
   },
   {
-    title: "QR Code",
+    title: "QR & NFC Studio",
     url: "/admin/qr-code",
     icon: QrCode,
     roles: MANAGER_ROLES,
+    testId: "link-qr-code",
   },
 ];
 
@@ -197,7 +199,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
             <SidebarMenu>
               {menuItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={location === item.url} data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                  <SidebarMenuButton asChild isActive={location === item.url} data-testid={(item as any).testId || `link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
                     <Link href={item.url}>
                       <item.icon />
                       <span>{item.title}</span>

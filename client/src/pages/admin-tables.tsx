@@ -15,12 +15,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useManagerMenu } from '@/lib/managerMenu';
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
-import { LocalQrBox } from '@/components/hospitality/LocalQrBox';
+import { NfcEncodeDialog, type NfcEncodeTarget } from '@/components/qr-nfc/NfcEncodeDialog';
+import { publicExperienceOrigin } from '@shared/menuIdentity';
 
 export default function AdminTablesPage() {
   const { toast } = useToast();
@@ -34,8 +34,9 @@ export default function AdminTablesPage() {
   const [minCovers, setMinCovers] = useState(1);
   const [maxCovers, setMaxCovers] = useState(4);
   const [isCombinable, setIsCombinable] = useState(false);
-  const [qrModal, setQrModal] = useState<{ title: string; url: string } | null>(null);
+  const [qrModal, setQrModal] = useState<NfcEncodeTarget | null>(null);
   const [now, setNow] = useState(Date.now());
+  const publicBase = publicExperienceOrigin(typeof window !== 'undefined' ? window.location.origin : '');
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 5000);
@@ -148,30 +149,38 @@ export default function AdminTablesPage() {
             <Button
               type="button"
               variant="outline"
-              className="cursor-pointer gap-2"
+              className="min-h-11 cursor-pointer gap-2"
               onClick={() =>
                 setQrModal({
-                  title: `${cafe.name} · Host Stand Walk-In Waitlist QR`,
-                  url: `${window.location.origin}/menu/${cafe.id}?action=waitlist`,
+                  venueName: cafe.name,
+                  title: 'Host Stand Walk-In Waitlist',
+                  code: 'WAITLIST',
+                  qrUrl: `${publicBase}/menu/${cafe.id}?action=waitlist`,
+                  nfcUrl: `${publicBase}/menu/${cafe.id}?action=waitlist`,
+                  accentHex: cafe.brandAccentHex,
                 })
               }
             >
               <QrCode className="w-4 h-4" />
-              Host Stand Waitlist QR
+              Host Stand Waitlist QR / NFC
             </Button>
             <Button
               type="button"
               variant="outline"
-              className="cursor-pointer gap-2"
+              className="min-h-11 cursor-pointer gap-2"
               onClick={() =>
                 setQrModal({
-                  title: `${cafe.name} · Advance Table Booking QR`,
-                  url: `${window.location.origin}/menu/${cafe.id}?action=reserve`,
+                  venueName: cafe.name,
+                  title: 'Advance Table Booking',
+                  code: 'RESERVE',
+                  qrUrl: `${publicBase}/menu/${cafe.id}?action=reserve`,
+                  nfcUrl: `${publicBase}/menu/${cafe.id}?action=reserve`,
+                  accentHex: cafe.brandAccentHex,
                 })
               }
             >
               <CalendarDays className="w-4 h-4" />
-              Table Booking QR
+              Table Booking QR / NFC
             </Button>
           </div>
         )}
@@ -371,7 +380,7 @@ export default function AdminTablesPage() {
                   type="button"
                   aria-label={`Delete zone ${z.name}`}
                   onClick={() => deleteZone.mutate(z.id)}
-                  className="text-muted-foreground hover:text-destructive cursor-pointer"
+                  className="w-11 h-11 rounded-xl grid place-items-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4" />
                 </button>
@@ -436,18 +445,22 @@ export default function AdminTablesPage() {
                     {zoneById.get(t.zoneId)?.name || 'Zone'} · {t.minCovers}–{t.maxCovers} seats
                   </span>
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-2">
                   {cafe && (
                     <button
                       type="button"
-                      aria-label={`Table ${t.tableCode} QR`}
+                      aria-label={`Table ${t.tableCode} QR & NFC`}
                       onClick={() =>
                         setQrModal({
-                          title: `Table ${t.tableCode} Dine-In QR`,
-                          url: `${window.location.origin}/table/${t.qrToken}`,
+                          venueName: cafe.name,
+                          title: `Table ${t.tableCode} Dine-In Menu`,
+                          code: t.tableCode,
+                          qrUrl: `${publicBase}/table/${t.qrToken}`,
+                          nfcUrl: `${publicBase}/table/${t.qrToken}`,
+                          accentHex: cafe.brandAccentHex,
                         })
                       }
-                      className="p-1.5 rounded-lg border hover:bg-muted cursor-pointer"
+                      className="w-11 h-11 rounded-xl border hover:bg-muted grid place-items-center cursor-pointer"
                     >
                       <QrCode className="w-4 h-4 text-primary" />
                     </button>
@@ -456,7 +469,7 @@ export default function AdminTablesPage() {
                     type="button"
                     aria-label={`Delete table ${t.tableCode}`}
                     onClick={() => deleteTable.mutate(t.id)}
-                    className="p-1.5 text-muted-foreground hover:text-destructive cursor-pointer"
+                    className="w-11 h-11 rounded-xl text-muted-foreground hover:text-destructive hover:bg-destructive/10 grid place-items-center cursor-pointer"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
@@ -467,22 +480,7 @@ export default function AdminTablesPage() {
         </form>
       </div>
 
-      <Dialog open={Boolean(qrModal)} onOpenChange={open => !open && setQrModal(null)}>
-        <DialogContent className="max-w-sm text-center rounded-3xl">
-          <DialogHeader>
-            <DialogTitle className="text-center">{qrModal?.title}</DialogTitle>
-            <DialogDescription className="text-center">Permanent QR target — never breaks across menu updates.</DialogDescription>
-          </DialogHeader>
-          {qrModal && (
-            <div className="space-y-3 py-2">
-              <div className="grid place-items-center">
-                <LocalQrBox url={qrModal.url} size={196} />
-              </div>
-              <p className="text-xs font-mono break-all text-muted-foreground">{qrModal.url}</p>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <NfcEncodeDialog target={qrModal} onClose={() => setQrModal(null)} />
     </div>
   );
 }

@@ -145,6 +145,18 @@ const messages: Readonly<Record<string, string>> = {
   'Table Reservation': 'حجز طاولة',
   'Parties ahead of you': 'مجموعات قبلك في الانتظار',
   'Browse Menu While You Wait': 'تصفح القائمة أثناء الانتظار',
+  'Scan QR / NFC': 'مسح QR / NFC',
+  'Scan QR or Tap NFC': 'امسح رمز QR أو قرّب NFC',
+  'Point your camera at any Dingzi table, curbside bay, menu, or reusable pager coaster.': 'وجّه الكاميرا نحو أي طاولة أو موقف استلام أو قائمة أو قطعة نداء ذكية من Dingzi.',
+  'Tap Start Camera to scan a Dingzi QR code, or tap your phone directly on any NFC coaster.': 'اضغط تشغيل الكاميرا لمسح رمز QR، أو قرّب هاتفك مباشرة من أي قطعة نداء NFC.',
+  'Start Camera Scanner': 'تشغيل ماسح الكاميرا',
+  'Scan from Photo': 'مسح من صورة',
+  'Tap NFC Coaster': 'قراءة شريحة NFC',
+  'Ready for NFC Tap…': 'جاهز لقراءة شريحة NFC…',
+  'Tip: Hold the top of your phone near any Dingzi NFC coaster to open instantly.': 'معلومة: قرّب أعلى هاتفك من أي قطعة نداء NFC لفتحها فوراً دون تطبيق.',
+  'Pager or coaster # (A-001, COASTER-01)': 'رقم النداء أو القطعة (A-001 أو COASTER-01)',
+  'Smart Pager Coaster Ready': 'قطعة النداء الذكية جاهزة',
+  'Keep this screen open — it connects automatically the moment the barista links your order, or explore the menu below.': 'أبقِ هذه الشاشة مفتوحة — ستتصل بطلبك تلقائياً فور ربطها من الكاشير، أو تصفح القائمة أدناه.',
 };
 type Values = Record<string, string | number>;
 export function menuMessage(language: MenuLanguage, key: string, values: Values = {}): string {

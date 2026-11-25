@@ -114,6 +114,13 @@ CREATE TABLE IF NOT EXISTS dingzi_backup.aggregator_links (
   display_name text NOT NULL, url text NOT NULL, badge_en varchar(80), badge_ar varchar(80),
   is_active boolean NOT NULL, "order" integer NOT NULL, created_at timestamp
 );
+CREATE TABLE IF NOT EXISTS dingzi_backup.smart_tags (
+  id varchar PRIMARY KEY, restaurant_id varchar NOT NULL, token varchar NOT NULL,
+  tag_code varchar(40) NOT NULL, label text NOT NULL, hardware_kind varchar(24) NOT NULL,
+  target_type varchar(32) NOT NULL, table_id varchar, bay_id varchar,
+  is_active boolean NOT NULL, qr_scans integer NOT NULL, nfc_taps integer NOT NULL,
+  last_scanned_at timestamp, created_at timestamp
+);
 CREATE TABLE IF NOT EXISTS dingzi_backup.global_menu_items (
   id varchar PRIMARY KEY, source_item_id varchar, source_cafe text NOT NULL, currency varchar NOT NULL,
   category_title text NOT NULL, name text NOT NULL, description text, price numeric(10,2) NOT NULL,
@@ -156,6 +163,7 @@ try {
   const diningTables = (await client.query('SELECT * FROM dining_tables WHERE restaurant_id = ANY($1) ORDER BY restaurant_id, table_code, id', [restaurantIds])).rows;
   const serviceBays = (await client.query('SELECT * FROM service_bays WHERE restaurant_id = ANY($1) ORDER BY restaurant_id, "order", id', [restaurantIds])).rows;
   const aggregatorLinks = (await client.query('SELECT * FROM aggregator_links WHERE restaurant_id = ANY($1) ORDER BY restaurant_id, "order", id', [restaurantIds])).rows;
+  const smartTags = (await client.query('SELECT id, restaurant_id, token, tag_code, label, hardware_kind, target_type, table_id, bay_id, is_active, qr_scans, nfc_taps, last_scanned_at, created_at FROM smart_tags WHERE restaurant_id = ANY($1) ORDER BY restaurant_id, tag_code, id', [restaurantIds])).rows;
   const globalMenuItems = (await client.query(`
     SELECT id, source_item_id, source_cafe, currency, category_title, name, description,
       price, unit, image_url, source_image_url, tags, allergen_tags, prep_time_mins,
@@ -206,6 +214,7 @@ try {
       diningTables: diningTables.filter((t) => t.restaurant_id === restaurant.id),
       serviceBays: serviceBays.filter((b) => b.restaurant_id === restaurant.id),
       aggregatorLinks: aggregatorLinks.filter((a) => a.restaurant_id === restaurant.id),
+      smartTags: smartTags.filter((s) => s.restaurant_id === restaurant.id),
     };
   });
 
@@ -241,6 +250,7 @@ try {
   const tableColumns = ['id', 'restaurant_id', 'zone_id', 'table_code', 'min_covers', 'max_covers', 'is_combinable', 'is_active', 'qr_token', 'created_at'];
   const bayColumns = ['id', 'restaurant_id', 'code', 'label', 'bay_type', 'qr_token', 'is_active', 'order', 'created_at'];
   const aggColumns = ['id', 'restaurant_id', 'platform', 'display_name', 'url', 'badge_en', 'badge_ar', 'is_active', 'order', 'created_at'];
+  const smartTagColumns = ['id', 'restaurant_id', 'token', 'tag_code', 'label', 'hardware_kind', 'target_type', 'table_id', 'bay_id', 'is_active', 'qr_scans', 'nfc_taps', 'last_scanned_at', 'created_at'];
   const libraryColumns = [
     'id', 'source_item_id', 'source_cafe', 'currency', 'category_title', 'name', 'description',
     'price', 'unit', 'image_url', 'source_image_url', 'tags', 'allergen_tags', 'prep_time_mins',
@@ -251,6 +261,7 @@ try {
   const numericCols = new Set([
     'price', 'discount', 'size', 'slot_interval_mins', 'default_turn_duration_mins',
     'reservation_deposit_amount', 'prep_time_mins', 'min_covers', 'max_covers', 'order',
+    'qr_scans', 'nfc_taps',
   ]);
   const scalar = (row, column) => numericCols.has(column) ? sqlNumber(row[column]) : sqlLiteral(row[column]);
 
@@ -269,6 +280,7 @@ try {
     sqlInsert('dining_tables', tableColumns, diningTables, scalar),
     sqlInsert('service_bays', bayColumns, serviceBays, scalar),
     sqlInsert('aggregator_links', aggColumns, aggregatorLinks, scalar),
+    sqlInsert('smart_tags', smartTagColumns, smartTags, scalar),
     sqlInsert('global_menu_items', libraryColumns, globalMenuItems, (row, column) => {
       if (column === 'tags' || column === 'allergen_tags') return sqlArray(row[column]);
       if (column === 'variants' || column === 'modifier_groups') return sqlJson(row[column]);

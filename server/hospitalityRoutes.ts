@@ -41,6 +41,9 @@ import {
   restaurants,
   serviceBays,
   sessions,
+  smartTagHardwareKinds,
+  smartTags,
+  smartTagTargetTypes,
   staffAssignments,
   staffRoles,
   tableReservations,
@@ -51,6 +54,7 @@ import {
   type OrderLineItem,
   type PublicCafe,
   type Restaurant,
+  type SmartTag,
   type TableReservation,
 } from '@shared/schema';
 
@@ -347,6 +351,20 @@ export function mountHospitalityRoutes(app: Express) {
     }
   });
 
+  app.get('/api/public/stream/coaster/:token', async (req, res, next) => {
+    try {
+      const token = z.string().uuid().parse(req.params.token);
+      const [tag] = await db
+        .select({ id: smartTags.id, restaurantId: smartTags.restaurantId, isActive: smartTags.isActive })
+        .from(smartTags)
+        .where(eq(smartTags.token, token));
+      if (!tag || !tag.isActive) return res.status(404).json({ message: 'Smart tag not found' });
+      attachSseStream(res, `coaster:${token}`, tag.restaurantId);
+    } catch (e) {
+      next(e);
+    }
+  });
+
   app.get('/api/hospitality/stream', isAuthenticated, async (req: any, res, next) => {
     try {
       const cafe = await getManagedCafe(req);
@@ -415,6 +433,156 @@ export function mountHospitalityRoutes(app: Express) {
         ? await db.select().from(diningZones).where(eq(diningZones.id, table.zoneId))
         : [];
       res.json({ restaurant: toPublicCafe(restaurant), table, zone: zone || null });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Resolve Dynamic QR & NFC Smart Tags + Reusable Counter Pager Coasters (/tag/:token)
+  async function resolvePublicSmartTagPayload(tag: SmartTag) {
+    const restaurant = await storage.getRestaurantById(tag.restaurantId);
+    if (!restaurant || restaurant.hidden || restaurant.status !== 'active') return null;
+    const publicCafe = toPublicCafe(restaurant);
+
+    if (tag.targetType === 'waitlist_join') {
+      return { destination: `/menu/${restaurant.id}?action=waitlist`, tag, restaurant: publicCafe, coasterStatus: null };
+    }
+    if (tag.targetType === 'reservations') {
+      return { destination: `/menu/${restaurant.id}?action=reserve`, tag, restaurant: publicCafe, coasterStatus: null };
+    }
+    if (tag.targetType === 'dining_table') {
+      if (tag.tableId) {
+        const [table] = await db
+          .select()
+          .from(diningTables)
+          .where(and(eq(diningTables.id, tag.tableId), eq(diningTables.restaurantId, restaurant.id), eq(diningTables.isActive, true)));
+        if (table) {
+          return {
+            destination: `/menu/${restaurant.id}?table=${encodeURIComponent(table.tableCode)}`,
+            tag,
+            restaurant: publicCafe,
+            table,
+            coasterStatus: null,
+          };
+        }
+      }
+      return { destination: `/menu/${restaurant.id}`, tag, restaurant: publicCafe, coasterStatus: null };
+    }
+    if (tag.targetType === 'curbside_bay') {
+      if (tag.bayId) {
+        const [bay] = await db
+          .select()
+          .from(serviceBays)
+          .where(and(eq(serviceBays.id, tag.bayId), eq(serviceBays.restaurantId, restaurant.id), eq(serviceBays.isActive, true)));
+        if (bay) {
+          const actionSuffix = restaurant.orderingMode === 'browse_and_pager' ? '&action=curbside' : '';
+          return {
+            destination: `/menu/${restaurant.id}?bay=${bay.id}${actionSuffix}`,
+            tag,
+            restaurant: publicCafe,
+            bay,
+            coasterStatus: null,
+          };
+        }
+      }
+      return { destination: `/menu/${restaurant.id}`, tag, restaurant: publicCafe, coasterStatus: null };
+    }
+    if (tag.targetType === 'reusable_pager') {
+      if (tag.activeTicketId) {
+        const [ticket] = await db
+          .select()
+          .from(pagerTickets)
+          .where(and(eq(pagerTickets.id, tag.activeTicketId), eq(pagerTickets.restaurantId, restaurant.id)));
+        if (ticket && ['waiting', 'preparing', 'ready'].includes(ticket.status)) {
+          return {
+            destination: `/pager/${ticket.trackingToken}`,
+            tag,
+            restaurant: publicCafe,
+            ticket: {
+              id: ticket.id,
+              ticketCode: ticket.ticketCode,
+              status: ticket.status,
+              trackingToken: ticket.trackingToken,
+            },
+            coasterStatus: 'assigned' as const,
+          };
+        }
+      }
+      return {
+        destination: null,
+        tag,
+        restaurant: publicCafe,
+        ticket: null,
+        coasterStatus: 'idle' as const,
+      };
+    }
+
+    return { destination: `/menu/${restaurant.id}`, tag, restaurant: publicCafe, coasterStatus: null };
+  }
+
+  app.get('/api/public/tag/:token', async (req, res, next) => {
+    try {
+      const token = z.string().uuid().parse(req.params.token);
+      const src = req.query.src === 'nfc' ? 'nfc' : req.query.src === 'poll' ? 'poll' : 'qr';
+      const [existing] = await db
+        .select()
+        .from(smartTags)
+        .where(and(eq(smartTags.token, token), eq(smartTags.isActive, true)));
+      if (!existing) return res.status(404).json({ message: 'Smart QR/NFC tag not found or inactive' });
+
+      const resolved = await resolvePublicSmartTagPayload(existing);
+      if (!resolved) return res.status(404).json({ message: 'Venue unavailable' });
+
+      if (src !== 'poll') {
+        const [updated] = await db
+          .update(smartTags)
+          .set({
+            qrScans: src === 'qr' ? sql`${smartTags.qrScans} + 1` : smartTags.qrScans,
+            nfcTaps: src === 'nfc' ? sql`${smartTags.nfcTaps} + 1` : smartTags.nfcTaps,
+            lastScannedAt: new Date(),
+          })
+          .where(eq(smartTags.id, existing.id))
+          .returning();
+        if (updated) resolved.tag = updated;
+      }
+
+      res.json(resolved);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/public/tag/lookup', rateLimit(25, 5 * 60 * 1000, req => req.ip || 'unknown'), async (req, res, next) => {
+    try {
+      const { restaurantId, code } = z
+        .object({
+          restaurantId: z.string().uuid(),
+          code: z.string().trim().min(1).max(40),
+        })
+        .strict()
+        .parse(req.body);
+      const normalized = code.toUpperCase();
+      const [tag] = await db
+        .select()
+        .from(smartTags)
+        .where(
+          and(
+            eq(smartTags.restaurantId, restaurantId),
+            eq(smartTags.isActive, true),
+            sql`upper(${smartTags.tagCode}) = ${normalized}`,
+          ),
+        )
+        .limit(1);
+      if (!tag) return res.status(404).json({ message: 'No smart tag or coaster found for that code.' });
+      const resolved = await resolvePublicSmartTagPayload(tag);
+      if (!resolved) return res.status(404).json({ message: 'Venue unavailable' });
+      const [updated] = await db
+        .update(smartTags)
+        .set({ qrScans: sql`${smartTags.qrScans} + 1`, lastScannedAt: new Date() })
+        .where(eq(smartTags.id, tag.id))
+        .returning();
+      if (updated) resolved.tag = updated;
+      res.json(resolved);
     } catch (e) {
       next(e);
     }
@@ -962,7 +1130,43 @@ export function mountHospitalityRoutes(app: Express) {
         )
         .orderBy(desc(pagerTickets.queuedAt))
         .limit(1);
-      if (!ticket) return res.status(404).json({ message: 'No active pager found for that receipt or pager code.' });
+      if (!ticket) {
+        const [coaster] = await db
+          .select()
+          .from(smartTags)
+          .where(
+            and(
+              eq(smartTags.restaurantId, restaurantId),
+              eq(smartTags.isActive, true),
+              eq(smartTags.targetType, 'reusable_pager'),
+              sql`upper(${smartTags.tagCode}) = ${normalized}`,
+            ),
+          )
+          .limit(1);
+        if (coaster) {
+          if (coaster.activeTicketId) {
+            const [boundTicket] = await db
+              .select()
+              .from(pagerTickets)
+              .where(and(eq(pagerTickets.id, coaster.activeTicketId), eq(pagerTickets.restaurantId, restaurantId)));
+            if (boundTicket && ['waiting', 'preparing', 'ready'].includes(boundTicket.status)) {
+              return res.json({
+                trackingToken: boundTicket.trackingToken,
+                ticketCode: boundTicket.ticketCode,
+                status: boundTicket.status,
+                coasterCode: coaster.tagCode,
+              });
+            }
+          }
+          return res.json({
+            trackingToken: null,
+            coasterToken: coaster.token,
+            ticketCode: coaster.tagCode,
+            status: 'idle',
+          });
+        }
+        return res.status(404).json({ message: 'No active pager found for that receipt or pager code.' });
+      }
       res.json({ trackingToken: ticket.trackingToken, ticketCode: ticket.ticketCode, status: ticket.status });
     } catch (e) {
       next(e);
@@ -1605,7 +1809,7 @@ export function mountHospitalityRoutes(app: Express) {
     try {
       const cafe = await getManagedCafe(req);
       if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
-      const [tickets, orders, bays] = await Promise.all([
+      const [tickets, orders, bays, coasters] = await Promise.all([
         db
           .select()
           .from(pagerTickets)
@@ -1623,8 +1827,13 @@ export function mountHospitalityRoutes(app: Express) {
           .from(serviceBays)
           .where(eq(serviceBays.restaurantId, cafe.id))
           .orderBy(asc(serviceBays.order)),
+        db
+          .select()
+          .from(smartTags)
+          .where(and(eq(smartTags.restaurantId, cafe.id), eq(smartTags.targetType, 'reusable_pager'), eq(smartTags.isActive, true)))
+          .orderBy(asc(smartTags.tagCode)),
       ]);
-      res.json({ tickets, orders, bays });
+      res.json({ tickets, orders, bays, coasters });
     } catch (e) {
       next(e);
     }
@@ -1642,6 +1851,7 @@ export function mountHospitalityRoutes(app: Express) {
           notes: z.string().trim().max(300).optional(),
           estimatedPrepMins: z.number().int().min(1).max(120).default(8),
           bayId: z.string().uuid().optional().nullable(),
+          smartTagId: z.string().uuid().optional().nullable(),
         })
         .strict()
         .parse(req.body);
@@ -1651,7 +1861,20 @@ export function mountHospitalityRoutes(app: Express) {
       }
 
       const ticketDate = branchLocalDate(cafe.timezone);
-      const ticket = await db.transaction(async tx => {
+      const { ticket, coaster } = await db.transaction(async tx => {
+        let targetCoaster: SmartTag | undefined;
+        if (body.smartTagId) {
+          const [found] = await tx
+            .select()
+            .from(smartTags)
+            .where(and(eq(smartTags.id, body.smartTagId), eq(smartTags.restaurantId, cafe.id)))
+            .for('update');
+          if (!found || !found.isActive || found.targetType !== 'reusable_pager') {
+            throw Object.assign(new Error('Selected reusable NFC/QR coaster is unavailable.'), { status: 400 });
+          }
+          targetCoaster = found;
+        }
+
         const auto = body.mode === 'auto_number' ? await nextDailyPagerCode(tx as any, cafe.id, ticketDate) : null;
         const ticketCode = auto ? auto.code : body.invoiceNumber!.trim().toUpperCase();
         const [created] = await tx
@@ -1669,16 +1892,33 @@ export function mountHospitalityRoutes(app: Express) {
             estimatedPrepMins: body.estimatedPrepMins,
           })
           .returning();
-        return created;
+
+        let boundCoaster: SmartTag | null = null;
+        if (targetCoaster) {
+          const [updatedTag] = await tx
+            .update(smartTags)
+            .set({ activeTicketId: created.id })
+            .where(eq(smartTags.id, targetCoaster.id))
+            .returning();
+          boundCoaster = updatedTag || null;
+        }
+        return { ticket: created, coaster: boundCoaster };
       });
 
       publishRealtimeEvent([`branch:${cafe.id}`, `pager:${ticket.trackingToken}`], {
         type: 'pager.created',
         branchId: cafe.id,
-        data: { ticket },
+        data: { ticket, coaster },
       });
+      if (coaster) {
+        publishRealtimeEvent([`branch:${cafe.id}`, `coaster:${coaster.token}`], {
+          type: 'coaster.updated',
+          branchId: cafe.id,
+          data: { tag: coaster, ticket },
+        });
+      }
 
-      res.status(201).json({ ticket });
+      res.status(201).json({ ticket, coaster });
     } catch (e) {
       next(e);
     }
@@ -1764,6 +2004,22 @@ export function mountHospitalityRoutes(app: Express) {
         .set(patch)
         .where(eq(pagerTickets.id, existing.id))
         .returning();
+
+      let releasedCoasters: SmartTag[] = [];
+      if (action === 'collected' || action === 'no_show') {
+        releasedCoasters = await db
+          .update(smartTags)
+          .set({ activeTicketId: null })
+          .where(and(eq(smartTags.restaurantId, cafe.id), eq(smartTags.activeTicketId, existing.id)))
+          .returning();
+        for (const c of releasedCoasters) {
+          publishRealtimeEvent([`branch:${cafe.id}`, `coaster:${c.token}`], {
+            type: 'coaster.updated',
+            branchId: cafe.id,
+            data: { tag: c, ticket: null },
+          });
+        }
+      }
 
       publishRealtimeEvent([`branch:${cafe.id}`, `pager:${updated.trackingToken}`], {
         type: action === 'ready' ? 'pager.buzzed' : 'pager.updated',
@@ -2181,6 +2437,312 @@ export function mountHospitalityRoutes(app: Express) {
       await db
         .delete(aggregatorLinks)
         .where(and(eq(aggregatorLinks.id, req.params.id), eq(aggregatorLinks.restaurantId, cafe.id)));
+      res.json({ success: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // ===== QR & NFC SMART TAG STUDIO + REUSABLE PAGER COASTERS =====
+
+  app.get('/api/hospitality/smart-tags', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const [tags, tables, bays, activeTickets] = await Promise.all([
+        db
+          .select()
+          .from(smartTags)
+          .where(eq(smartTags.restaurantId, cafe.id))
+          .orderBy(asc(smartTags.tagCode)),
+        db
+          .select()
+          .from(diningTables)
+          .where(eq(diningTables.restaurantId, cafe.id))
+          .orderBy(asc(diningTables.tableCode)),
+        db
+          .select()
+          .from(serviceBays)
+          .where(eq(serviceBays.restaurantId, cafe.id))
+          .orderBy(asc(serviceBays.order), asc(serviceBays.code)),
+        db
+          .select()
+          .from(pagerTickets)
+          .where(
+            and(
+              eq(pagerTickets.restaurantId, cafe.id),
+              inArray(pagerTickets.status, ['waiting', 'preparing', 'ready']),
+            ),
+          )
+          .orderBy(asc(pagerTickets.queuedAt)),
+      ]);
+      const activeTicketIds = new Set(activeTickets.map(t => t.id));
+      const reusableCoasters = tags.filter(t => t.targetType === 'reusable_pager');
+      res.json({
+        tags,
+        tables,
+        bays,
+        activeTickets,
+        summary: {
+          totalTags: tags.length,
+          reusableCoasters: reusableCoasters.length,
+          activeCoasters: reusableCoasters.filter(t => t.activeTicketId && activeTicketIds.has(t.activeTicketId)).length,
+          totalQrScans: tags.reduce((s, t) => s + (t.qrScans || 0), 0),
+          totalNfcTaps: tags.reduce((s, t) => s + (t.nfcTaps || 0), 0),
+        },
+      });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/hospitality/smart-tags', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const body = z
+        .object({
+          tagCode: z
+            .string()
+            .trim()
+            .min(1)
+            .max(40)
+            .regex(/^[A-Za-z0-9_-]+$/, 'Use letters, numbers, hyphens, or underscores for the tag code'),
+          label: z.string().trim().min(1).max(120),
+          hardwareKind: z.enum(smartTagHardwareKinds).default('dual_qr_nfc'),
+          targetType: z.enum(smartTagTargetTypes).default('venue_menu'),
+          tableId: z.string().uuid().optional().nullable(),
+          bayId: z.string().uuid().optional().nullable(),
+        })
+        .strict()
+        .parse(req.body);
+
+      const normalizedCode = body.tagCode.toUpperCase();
+      const [dup] = await db
+        .select({ id: smartTags.id })
+        .from(smartTags)
+        .where(and(eq(smartTags.restaurantId, cafe.id), sql`upper(${smartTags.tagCode}) = ${normalizedCode}`));
+      if (dup) {
+        return res.status(409).json({ message: `Smart tag code ${normalizedCode} already exists in this branch.` });
+      }
+
+      if (body.targetType === 'dining_table') {
+        if (!body.tableId) return res.status(400).json({ message: 'Select a dining table for this smart tag.' });
+        const [tbl] = await db
+          .select({ id: diningTables.id })
+          .from(diningTables)
+          .where(and(eq(diningTables.id, body.tableId), eq(diningTables.restaurantId, cafe.id)));
+        if (!tbl) return res.status(400).json({ message: 'Selected table does not belong to this branch.' });
+      }
+      if (body.targetType === 'curbside_bay') {
+        if (!body.bayId) return res.status(400).json({ message: 'Select a curbside or drive-thru bay for this smart tag.' });
+        const [bay] = await db
+          .select({ id: serviceBays.id })
+          .from(serviceBays)
+          .where(and(eq(serviceBays.id, body.bayId), eq(serviceBays.restaurantId, cafe.id)));
+        if (!bay) return res.status(400).json({ message: 'Selected bay does not belong to this branch.' });
+      }
+
+      const [tag] = await db
+        .insert(smartTags)
+        .values({
+          restaurantId: cafe.id,
+          tagCode: normalizedCode,
+          label: body.label,
+          hardwareKind: body.hardwareKind,
+          targetType: body.targetType,
+          tableId: body.targetType === 'dining_table' ? body.tableId || null : null,
+          bayId: body.targetType === 'curbside_bay' ? body.bayId || null : null,
+        })
+        .returning();
+
+      res.status(201).json({ tag });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/hospitality/smart-tags/bulk-coasters', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const body = z
+        .object({
+          prefix: z
+            .string()
+            .trim()
+            .min(2)
+            .max(20)
+            .regex(/^[A-Za-z0-9]+$/, 'Prefix may contain letters and digits only')
+            .default('COASTER'),
+          count: z.number().int().min(1).max(50).default(5),
+        })
+        .strict()
+        .parse(req.body);
+
+      const prefixUpper = body.prefix.toUpperCase();
+      const existing = await db
+        .select({ tagCode: smartTags.tagCode })
+        .from(smartTags)
+        .where(eq(smartTags.restaurantId, cafe.id));
+      const existingSet = new Set(existing.map(r => r.tagCode.toUpperCase()));
+
+      const toInsert: (typeof smartTags.$inferInsert)[] = [];
+      let seq = 1;
+      while (toInsert.length < body.count && seq <= 999) {
+        const candidate = `${prefixUpper}-${String(seq).padStart(2, '0')}`;
+        if (!existingSet.has(candidate)) {
+          existingSet.add(candidate);
+          toInsert.push({
+            restaurantId: cafe.id,
+            tagCode: candidate,
+            label: `Reusable Pager Coaster #${String(seq).padStart(2, '0')}`,
+            hardwareKind: 'coaster_puck',
+            targetType: 'reusable_pager',
+          });
+        }
+        seq++;
+      }
+
+      const created = toInsert.length
+        ? await db.insert(smartTags).values(toInsert).returning()
+        : [];
+      res.status(201).json({ tags: created });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.put('/api/hospitality/smart-tags/:id', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const tagId = z.string().uuid().parse(req.params.id);
+      const body = z
+        .object({
+          label: z.string().trim().min(1).max(120).optional(),
+          hardwareKind: z.enum(smartTagHardwareKinds).optional(),
+          targetType: z.enum(smartTagTargetTypes).optional(),
+          tableId: z.string().uuid().nullable().optional(),
+          bayId: z.string().uuid().nullable().optional(),
+          isActive: z.boolean().optional(),
+          rotateToken: z.boolean().optional(),
+        })
+        .strict()
+        .parse(req.body);
+
+      const [existing] = await db
+        .select()
+        .from(smartTags)
+        .where(and(eq(smartTags.id, tagId), eq(smartTags.restaurantId, cafe.id)));
+      if (!existing) return res.status(404).json({ message: 'Smart tag not found in this branch' });
+
+      const nextTarget = body.targetType ?? existing.targetType;
+      const nextTableId = body.tableId !== undefined ? body.tableId : existing.tableId;
+      const nextBayId = body.bayId !== undefined ? body.bayId : existing.bayId;
+
+      if (nextTarget === 'dining_table' && nextTableId) {
+        const [tbl] = await db
+          .select({ id: diningTables.id })
+          .from(diningTables)
+          .where(and(eq(diningTables.id, nextTableId), eq(diningTables.restaurantId, cafe.id)));
+        if (!tbl) return res.status(400).json({ message: 'Selected table does not belong to this branch.' });
+      }
+      if (nextTarget === 'curbside_bay' && nextBayId) {
+        const [bay] = await db
+          .select({ id: serviceBays.id })
+          .from(serviceBays)
+          .where(and(eq(serviceBays.id, nextBayId), eq(serviceBays.restaurantId, cafe.id)));
+        if (!bay) return res.status(400).json({ message: 'Selected bay does not belong to this branch.' });
+      }
+
+      const patch: Partial<typeof smartTags.$inferInsert> = {};
+      if (body.label !== undefined) patch.label = body.label;
+      if (body.hardwareKind !== undefined) patch.hardwareKind = body.hardwareKind;
+      if (body.targetType !== undefined) patch.targetType = body.targetType;
+      if (body.isActive !== undefined) patch.isActive = body.isActive;
+      patch.tableId = nextTarget === 'dining_table' ? nextTableId || null : null;
+      patch.bayId = nextTarget === 'curbside_bay' ? nextBayId || null : null;
+      if (nextTarget !== 'reusable_pager') patch.activeTicketId = null;
+      if (body.rotateToken) patch.token = randomUUID();
+
+      const [updated] = await db
+        .update(smartTags)
+        .set(patch)
+        .where(and(eq(smartTags.id, tagId), eq(smartTags.restaurantId, cafe.id)))
+        .returning();
+
+      res.json({ tag: updated });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/hospitality/smart-tags/:id/assign-ticket', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const tagId = z.string().uuid().parse(req.params.id);
+      const { ticketId } = z
+        .object({ ticketId: z.string().uuid().nullable() })
+        .strict()
+        .parse(req.body);
+
+      const [existing] = await db
+        .select()
+        .from(smartTags)
+        .where(and(eq(smartTags.id, tagId), eq(smartTags.restaurantId, cafe.id)));
+      if (!existing) return res.status(404).json({ message: 'Smart tag not found in this branch' });
+      if (existing.targetType !== 'reusable_pager') {
+        return res.status(400).json({ message: 'Only Reusable Pager Coaster tags can bind live tickets.' });
+      }
+
+      const result = await db.transaction(async tx => {
+        let targetTicket = null;
+        if (ticketId) {
+          const [found] = await tx
+            .select()
+            .from(pagerTickets)
+            .where(and(eq(pagerTickets.id, ticketId), eq(pagerTickets.restaurantId, cafe.id)));
+          if (!found || !['waiting', 'preparing', 'ready'].includes(found.status)) {
+            throw Object.assign(new Error('Active pager ticket not found in this branch.'), { status: 400 });
+          }
+          targetTicket = found;
+          await tx
+            .update(smartTags)
+            .set({ activeTicketId: null })
+            .where(and(eq(smartTags.restaurantId, cafe.id), eq(smartTags.activeTicketId, ticketId)));
+        }
+        const [updated] = await tx
+          .update(smartTags)
+          .set({ activeTicketId: ticketId })
+          .where(and(eq(smartTags.id, tagId), eq(smartTags.restaurantId, cafe.id)))
+          .returning();
+        return { tag: updated, ticket: targetTicket };
+      });
+
+      publishRealtimeEvent([`branch:${cafe.id}`, `coaster:${result.tag.token}`], {
+        type: 'coaster.updated',
+        branchId: cafe.id,
+        data: result,
+      });
+
+      res.json(result);
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.delete('/api/hospitality/smart-tags/:id', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const tagId = z.string().uuid().parse(req.params.id);
+      const deleted = await db
+        .delete(smartTags)
+        .where(and(eq(smartTags.id, tagId), eq(smartTags.restaurantId, cafe.id)))
+        .returning({ id: smartTags.id });
+      if (!deleted.length) return res.status(404).json({ message: 'Smart tag not found in this branch' });
       res.json({ success: true });
     } catch (e) {
       next(e);

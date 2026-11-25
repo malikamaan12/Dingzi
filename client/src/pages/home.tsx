@@ -7,6 +7,7 @@ import {
   CalendarDays,
   Car,
   Coffee,
+  QrCode,
   Search,
   Truck,
   Users,
@@ -21,6 +22,7 @@ import { PUBLIC_MENU_ORIGIN } from '@shared/menuIdentity';
 import { DingziWordmark } from '@/components/staff-brand';
 import { ActiveGuestPassesBar } from '@/components/hospitality/ActiveGuestPassesBar';
 import { PwaInstallBanner } from '@/components/mobile/PwaInstallBanner';
+import { QrNfcScannerModal } from '@/components/qr-nfc/QrNfcScannerModal';
 
 type Cafe = {
   id: string;
@@ -57,6 +59,7 @@ function HomeDirectoryContent() {
   const [selectedVenueId, setSelectedVenueId] = useState('');
   const [pagerCode, setPagerCode] = useState('');
   const [pagerError, setPagerError] = useState('');
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   const lookupPager = useMutation({
     mutationFn: async () => {
@@ -70,7 +73,11 @@ function HomeDirectoryContent() {
       return res.json();
     },
     onSuccess: data => {
-      navigate(`/pager/${data.trackingToken}`);
+      if (data.trackingToken) {
+        navigate(`/pager/${data.trackingToken}`);
+      } else if (data.coasterToken) {
+        navigate(`/tag/${data.coasterToken}`);
+      }
     },
     onError: (e: Error) => setPagerError(e.message),
   });
@@ -185,14 +192,26 @@ function HomeDirectoryContent() {
 
               {pagerError && <p className="text-xs text-destructive font-medium">{pagerError}</p>}
 
-              <Button
-                type="submit"
-                data-testid="button-home-pager-submit"
-                disabled={!pagerCode.trim() || lookupPager.isPending}
-                className="w-full min-h-11 rounded-xl bg-[#6236FF] hover:bg-[#4B1FE0] text-white font-semibold cursor-pointer"
-              >
-                {lookupPager.isPending ? 'Locating…' : t('Track Pager')}
-              </Button>
+              <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-2">
+                <Button
+                  type="submit"
+                  data-testid="button-home-pager-submit"
+                  disabled={!pagerCode.trim() || lookupPager.isPending}
+                  className="w-full min-h-11 rounded-xl bg-[#6236FF] hover:bg-[#4B1FE0] text-white font-semibold cursor-pointer"
+                >
+                  {lookupPager.isPending ? 'Locating…' : t('Track Pager')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setScannerOpen(true)}
+                  data-testid="button-home-scan-qr-nfc"
+                  className="w-full min-h-11 rounded-xl border-[#E5E2F2] text-[#4B1FE0] hover:bg-[#EFEAFF] font-semibold cursor-pointer gap-2"
+                >
+                  <QrCode className="w-4 h-4" />
+                  <span>{t('Scan QR / NFC')}</span>
+                </Button>
+              </div>
             </form>
           )}
         </section>
@@ -338,6 +357,14 @@ function HomeDirectoryContent() {
           </Link>
         )}
       </footer>
+      <QrNfcScannerModal
+        open={scannerOpen}
+        onOpenChange={setScannerOpen}
+        venues={(cafes || []).map(c => ({ id: c.id, name: label(c.name) }))}
+        dir={dir}
+        lang={language}
+        t={t}
+      />
     </div>
   );
 }

@@ -5,7 +5,8 @@ import { deferRequestTask, workerRequests } from './workerContext';
 export type RealtimeChannelScope =
   | `branch:${string}`
   | `pager:${string}`
-  | `waitlist:${string}`;
+  | `waitlist:${string}`
+  | `coaster:${string}`;
 
 export interface RealtimePayload {
   type:
@@ -17,7 +18,8 @@ export interface RealtimePayload {
     | 'waitlist.updated'
     | 'waitlist.buzzed'
     | 'reservation.updated'
-    | 'curbside.arrived';
+    | 'curbside.arrived'
+    | 'coaster.updated';
   branchId: string;
   at: string;
   data: unknown;

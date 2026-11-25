@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { BellRing, Car, CheckCircle2, Clock, Download, ExternalLink, Plus, QrCode, Trash2 } from 'lucide-react';
+import { BellRing, Car, CheckCircle2, Clock, ExternalLink, Plus, QrCode, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,7 +12,8 @@ import { useManagerMenu } from '@/lib/managerMenu';
 import { playStaffArrivalChime } from '@/lib/pagerAudio';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
 import { LocalQrBox } from '@/components/hospitality/LocalQrBox';
-import QRCodeStyling from 'qr-code-styling';
+import { NfcEncodeDialog } from '@/components/qr-nfc/NfcEncodeDialog';
+import { publicExperienceOrigin } from '@shared/menuIdentity';
 
 const VEHICLE_SWATCH: Record<string, string> = {
   White: '#F8FAFC',
@@ -131,21 +132,7 @@ export default function AdminDriveThruPage() {
   const bays = query.data?.bays || [];
   const vehicles = query.data?.activeVehicles || [];
   const bayById = new Map(bays.map(b => [b.id, b]));
-
-  async function downloadBaySignageSvg(bay: any) {
-    const qr = new QRCodeStyling({
-      width: 600,
-      height: 600,
-      type: 'svg',
-      data: `${window.location.origin}/bay/${bay.qrToken}`,
-      margin: 24,
-      dotsOptions: { color: '#17132E', type: 'rounded' },
-      backgroundOptions: { color: '#FFFFFF' },
-      cornersSquareOptions: { type: 'extra-rounded', color: '#6236FF' },
-      cornersDotOptions: { type: 'dot', color: '#4B1FE0' },
-    });
-    await qr.download({ extension: 'svg', name: `dingzi-bay-${bay.code.toLowerCase()}` });
-  }
+  const publicBase = publicExperienceOrigin(typeof window !== 'undefined' ? window.location.origin : '');
 
   return (
     <div className="space-y-6 max-w-[1400px]">
@@ -386,28 +373,21 @@ export default function AdminDriveThruPage() {
         </div>
       </section>
 
-      <Dialog open={Boolean(qrBay)} onOpenChange={open => !open && setQrBay(null)}>
-        <DialogContent className="max-w-sm text-center rounded-3xl">
-          <DialogHeader>
-            <DialogTitle className="text-center font-mono">{qrBay?.code} Bollard Signage QR</DialogTitle>
-            <DialogDescription className="text-center">
-              Permanent UUID target — pre-fills this bay into checkout or car-side check-in.
-            </DialogDescription>
-          </DialogHeader>
-          {qrBay && (
-            <div className="space-y-3 py-2">
-              <div className="grid place-items-center">
-                <LocalQrBox url={`${window.location.origin}/bay/${qrBay.qrToken}`} size={196} />
-              </div>
-              <p className="text-xs font-mono break-all text-muted-foreground">{`${window.location.origin}/bay/${qrBay.qrToken}`}</p>
-              <Button type="button" variant="outline" className="w-full cursor-pointer gap-2" onClick={() => downloadBaySignageSvg(qrBay)}>
-                <Download className="w-4 h-4" />
-                Download Printable SVG
-              </Button>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      <NfcEncodeDialog
+        target={
+          qrBay
+            ? {
+                venueName: cafe?.name || 'Dingzi Venue',
+                title: `${qrBay.code} — ${qrBay.label}`,
+                code: qrBay.code,
+                qrUrl: `${publicBase}/bay/${qrBay.qrToken}`,
+                nfcUrl: `${publicBase}/bay/${qrBay.qrToken}`,
+                accentHex: cafe?.brandAccentHex,
+              }
+            : null
+        }
+        onClose={() => setQrBay(null)}
+      />
 
       <Dialog open={Boolean(carPagerTicket)} onOpenChange={open => !open && setCarPagerTicket(null)}>
         <DialogContent className="max-w-sm text-center rounded-3xl">
@@ -420,7 +400,7 @@ export default function AdminDriveThruPage() {
           {carPagerTicket && (
             <div className="space-y-3 py-2">
               <div className="grid place-items-center">
-                <LocalQrBox url={`${window.location.origin}/pager/${carPagerTicket.trackingToken}`} size={196} />
+                <LocalQrBox url={`${publicBase}/pager/${carPagerTicket.trackingToken}`} size={196} />
               </div>
               <a
                 href={`/pager/${carPagerTicket.trackingToken}`}

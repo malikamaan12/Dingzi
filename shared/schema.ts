@@ -724,6 +724,44 @@ export const pushSubscriptions = pgTable("push_subscriptions", {
 });
 export type PushSubscriptionRecord = typeof pushSubscriptions.$inferSelect;
 
+// Dynamic QR & NFC Smart Tags + Reusable Counter Pager Coasters
+export const smartTagTargetTypes = [
+  "venue_menu",
+  "dining_table",
+  "curbside_bay",
+  "waitlist_join",
+  "reservations",
+  "reusable_pager",
+] as const;
+export type SmartTagTargetType = (typeof smartTagTargetTypes)[number];
+
+export const smartTagHardwareKinds = [
+  "qr_only",
+  "nfc_tag",
+  "dual_qr_nfc",
+  "coaster_puck",
+] as const;
+export type SmartTagHardwareKind = (typeof smartTagHardwareKinds)[number];
+
+export const smartTags = pgTable("smart_tags", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull().references(() => restaurants.id, { onDelete: "cascade" }),
+  token: varchar("token").notNull().default(sql`gen_random_uuid()`),
+  tagCode: varchar("tag_code", { length: 40 }).notNull(),
+  label: text("label").notNull(),
+  hardwareKind: varchar("hardware_kind", { length: 24 }).notNull().default("dual_qr_nfc"),
+  targetType: varchar("target_type", { length: 32 }).notNull().default("venue_menu"),
+  tableId: varchar("table_id").references(() => diningTables.id, { onDelete: "set null" }),
+  bayId: varchar("bay_id").references(() => serviceBays.id, { onDelete: "set null" }),
+  activeTicketId: varchar("active_ticket_id").references(() => pagerTickets.id, { onDelete: "set null" }),
+  isActive: boolean("is_active").notNull().default(true),
+  qrScans: integer("qr_scans").notNull().default(0),
+  nfcTaps: integer("nfc_taps").notNull().default(0),
+  lastScannedAt: timestamp("last_scanned_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type SmartTag = typeof smartTags.$inferSelect;
+
 export type PublicCafe = Pick<
   Restaurant,
   | 'id'

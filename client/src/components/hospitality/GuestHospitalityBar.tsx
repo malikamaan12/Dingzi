@@ -10,6 +10,7 @@ import {
   ExternalLink,
   Minus,
   Plus,
+  QrCode,
   ShoppingBag,
   Trash2,
   Truck,
@@ -23,6 +24,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { apiRequest } from '@/lib/queryClient';
 import { saveGuestPass } from '@/lib/guestSession';
 import { useMenuLanguage } from '@/lib/menuLanguage';
+import { QrNfcScannerModal } from '@/components/qr-nfc/QrNfcScannerModal';
 import type { PublicCafe, PublicHospitalityConfig } from '@shared/schema';
 
 export interface GuestCartItem {
@@ -59,6 +61,7 @@ export default function GuestHospitalityBar({
   const [, navigate] = useLocation();
 
   const [pagerOpen, setPagerOpen] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
   const [reserveOpen, setReserveOpen] = useState(false);
   const [waitlistOpen, setWaitlistOpen] = useState(false);
   const [curbsideOpen, setCurbsideOpen] = useState(false);
@@ -188,15 +191,21 @@ export default function GuestHospitalityBar({
       return res.json();
     },
     onSuccess: data => {
-      saveGuestPass({
-        kind: 'pager',
-        trackingToken: data.trackingToken,
-        code: data.ticketCode,
-        restaurantId: restaurant.id,
-        restaurantName: restaurant.name,
-      });
       setPagerOpen(false);
-      navigate(`/pager/${data.trackingToken}`);
+      if (data.trackingToken) {
+        saveGuestPass({
+          kind: 'pager',
+          trackingToken: data.trackingToken,
+          code: data.ticketCode,
+          restaurantId: restaurant.id,
+          restaurantName: restaurant.name,
+        });
+        navigate(`/pager/${data.trackingToken}`);
+        return;
+      }
+      if (data.coasterToken) {
+        navigate(`/tag/${data.coasterToken}`);
+      }
     },
     onError: (e: Error) => setLookupError(e.message),
   });
@@ -482,6 +491,16 @@ export default function GuestHospitalityBar({
         >
           <Bell className="w-4 h-4 text-primary shrink-0" />
           <span>{t('Virtual Pager')}</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setScannerOpen(true)}
+          data-testid="button-open-qr-nfc-scanner"
+          className="inline-flex items-center gap-1.5 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border bg-card/95 text-foreground text-xs font-semibold shadow-sm hover:shadow active:scale-[0.99] transition-all cursor-pointer"
+        >
+          <QrCode className="w-4 h-4 text-primary shrink-0" />
+          <span>{t('Scan QR / NFC')}</span>
         </button>
 
         {restaurant.reservationsEnabled && (
@@ -1086,6 +1105,15 @@ export default function GuestHospitalityBar({
           )}
         </SheetContent>
       </Sheet>
+      <QrNfcScannerModal
+        open={scannerOpen}
+        onOpenChange={setScannerOpen}
+        restaurantId={restaurant.id}
+        restaurantName={label(restaurant.name)}
+        dir={dir}
+        lang={language}
+        t={t}
+      />
     </>
   );
 }
