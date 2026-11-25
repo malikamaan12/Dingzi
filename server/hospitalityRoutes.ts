@@ -1890,6 +1890,7 @@ export function mountHospitalityRoutes(app: Express) {
             customerName: body.customerName || null,
             notes: body.notes || null,
             estimatedPrepMins: body.estimatedPrepMins,
+            lastCoasterId: targetCoaster?.id || null,
           })
           .returning();
 
@@ -1924,13 +1925,108 @@ export function mountHospitalityRoutes(app: Express) {
     }
   });
 
+  // Per-Item Order Prep Checkoff (atomic row-locked JSONB toggle + auto-start 'preparing')
+  app.post('/api/hospitality/pagers/:id/line-items/:lineIndex/toggle', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const id = z.string().uuid().parse(req.params.id);
+      const lineIndex = z.coerce.number().int().min(0).max(99).parse(req.params.lineIndex);
+      const body = z
+        .object({ prepared: z.boolean().optional() })
+        .strict()
+        .parse(req.body || {});
+
+      const result = await db.transaction(async tx => {
+        const [ticket] = await tx
+          .select()
+          .from(pagerTickets)
+          .where(and(eq(pagerTickets.id, id), eq(pagerTickets.restaurantId, cafe.id)))
+          .for('update');
+        if (!ticket) {
+          throw Object.assign(new Error('Pager ticket not found in this branch'), { status: 404 });
+        }
+        if (!ticket.orderId) {
+          throw Object.assign(new Error('This pager ticket does not have itemized order lines.'), { status: 400 });
+        }
+
+        const [order] = await tx
+          .select()
+          .from(guestOrders)
+          .where(and(eq(guestOrders.id, ticket.orderId), eq(guestOrders.restaurantId, cafe.id)))
+          .for('update');
+        if (!order) {
+          throw Object.assign(new Error('Linked order not found in this branch'), { status: 404 });
+        }
+
+        const currentLines = Array.isArray(order.lineItems) ? order.lineItems : [];
+        if (lineIndex < 0 || lineIndex >= currentLines.length) {
+          throw Object.assign(new Error('Order line item index out of range'), { status: 400 });
+        }
+
+        const nextPrepared =
+          body.prepared !== undefined ? body.prepared : !Boolean(currentLines[lineIndex]?.prepared);
+        const nowIso = new Date().toISOString();
+        const nextLines: OrderLineItem[] = currentLines.map((li, idx) =>
+          idx === lineIndex
+            ? {
+                ...li,
+                prepared: nextPrepared,
+                preparedAt: nextPrepared ? nowIso : null,
+              }
+            : li,
+        );
+
+        const [updatedOrder] = await tx
+          .update(guestOrders)
+          .set({ lineItems: nextLines })
+          .where(eq(guestOrders.id, order.id))
+          .returning();
+
+        let updatedTicket = ticket;
+        if (ticket.status === 'waiting' && nextPrepared) {
+          const [promoted] = await tx
+            .update(pagerTickets)
+            .set({
+              status: 'preparing',
+              preparingAt: ticket.preparingAt || new Date(),
+            })
+            .where(eq(pagerTickets.id, ticket.id))
+            .returning();
+          if (promoted) updatedTicket = promoted;
+        }
+
+        const preparedCount = nextLines.filter(l => Boolean(l.prepared)).length;
+        return {
+          ticket: updatedTicket,
+          order: updatedOrder,
+          preparedCount,
+          totalCount: nextLines.length,
+        };
+      });
+
+      publishRealtimeEvent([`branch:${cafe.id}`, `pager:${result.ticket.trackingToken}`], {
+        type: 'pager.updated',
+        branchId: cafe.id,
+        data: result,
+      });
+
+      res.json(result);
+    } catch (e) {
+      next(e);
+    }
+  });
+
   app.post('/api/hospitality/pagers/:id/transition', isAuthenticated, async (req: any, res, next) => {
     try {
       const cafe = await getManagedCafe(req);
       if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
       const id = z.string().uuid().parse(req.params.id);
-      const { action } = z
-        .object({ action: z.enum(['preparing', 'ready', 'rebuzz', 'collected', 'no_show', 'confirm_venue_payment']) })
+      const { action, targetStatus } = z
+        .object({
+          action: z.enum(['preparing', 'ready', 'rebuzz', 'collected', 'no_show', 'confirm_venue_payment', 'recall']),
+          targetStatus: z.enum(['waiting', 'preparing', 'ready']).optional(),
+        })
         .strict()
         .parse(req.body);
 
@@ -1939,6 +2035,88 @@ export function mountHospitalityRoutes(app: Express) {
         .from(pagerTickets)
         .where(and(eq(pagerTickets.id, id), eq(pagerTickets.restaurantId, cafe.id)));
       if (!existing) return res.status(404).json({ message: 'Pager ticket not found in this branch' });
+
+      if (action === 'recall') {
+        const now = new Date();
+        let restoredStatus: 'waiting' | 'preparing' | 'ready';
+        if (targetStatus) {
+          restoredStatus = targetStatus;
+        } else if (existing.status === 'collected' || existing.status === 'no_show') {
+          restoredStatus = existing.readyAt ? 'ready' : existing.preparingAt ? 'preparing' : 'waiting';
+        } else if (existing.status === 'ready') {
+          restoredStatus = 'preparing';
+        } else if (existing.status === 'preparing') {
+          restoredStatus = 'waiting';
+        } else {
+          return res.status(400).json({ message: 'Ticket is already at the start of the queue.' });
+        }
+
+        const { recalledTicket, reboundCoaster } = await db.transaction(async tx => {
+          const recallPatch: Partial<typeof pagerTickets.$inferInsert> = {
+            status: restoredStatus,
+            collectedAt: null,
+            recalledCount: (existing.recalledCount || 0) + 1,
+          };
+          if (restoredStatus === 'preparing') {
+            recallPatch.readyAt = null;
+            recallPatch.preparingAt = existing.preparingAt || now;
+          } else if (restoredStatus === 'waiting') {
+            recallPatch.readyAt = null;
+            recallPatch.preparingAt = null;
+          }
+
+          const [savedTicket] = await tx
+            .update(pagerTickets)
+            .set(recallPatch)
+            .where(eq(pagerTickets.id, existing.id))
+            .returning();
+
+          let reattached: SmartTag | null = null;
+          if (
+            (existing.status === 'collected' || existing.status === 'no_show') &&
+            existing.lastCoasterId
+          ) {
+            const [idleCoaster] = await tx
+              .select()
+              .from(smartTags)
+              .where(
+                and(
+                  eq(smartTags.id, existing.lastCoasterId),
+                  eq(smartTags.restaurantId, cafe.id),
+                  eq(smartTags.isActive, true),
+                  eq(smartTags.targetType, 'reusable_pager'),
+                  sql`${smartTags.activeTicketId} IS NULL`,
+                ),
+              )
+              .for('update');
+            if (idleCoaster) {
+              const [updatedTag] = await tx
+                .update(smartTags)
+                .set({ activeTicketId: savedTicket.id })
+                .where(eq(smartTags.id, idleCoaster.id))
+                .returning();
+              reattached = updatedTag || null;
+            }
+          }
+
+          return { recalledTicket: savedTicket, reboundCoaster: reattached };
+        });
+
+        publishRealtimeEvent([`branch:${cafe.id}`, `pager:${recalledTicket.trackingToken}`], {
+          type: 'pager.updated',
+          branchId: cafe.id,
+          data: { ticket: recalledTicket, recalled: true },
+        });
+        if (reboundCoaster) {
+          publishRealtimeEvent([`branch:${cafe.id}`, `coaster:${reboundCoaster.token}`], {
+            type: 'coaster.updated',
+            branchId: cafe.id,
+            data: { tag: reboundCoaster, ticket: recalledTicket },
+          });
+        }
+
+        return res.json({ ticket: recalledTicket, reboundCoaster });
+      }
 
       if (action === 'confirm_venue_payment' && existing.orderId) {
         await db
@@ -2712,6 +2890,10 @@ export function mountHospitalityRoutes(app: Express) {
             .update(smartTags)
             .set({ activeTicketId: null })
             .where(and(eq(smartTags.restaurantId, cafe.id), eq(smartTags.activeTicketId, ticketId)));
+          await tx
+            .update(pagerTickets)
+            .set({ lastCoasterId: tagId })
+            .where(and(eq(pagerTickets.id, ticketId), eq(pagerTickets.restaurantId, cafe.id)));
         }
         const [updated] = await tx
           .update(smartTags)

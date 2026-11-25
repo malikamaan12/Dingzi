@@ -545,6 +545,8 @@ export interface OrderLineItem {
   unitTotal: string;
   lineTotal: string;
   notes?: string;
+  prepared?: boolean;
+  preparedAt?: string | null;
 }
 
 // Pillar 1: Guest Orders (Pay at Venue & Online SkipCash/Sadad Checkout)
@@ -597,6 +599,8 @@ export const pagerTickets = pgTable("pager_tickets", {
   arrivedAt: timestamp("arrived_at"),
   buzzCount: integer("buzz_count").notNull().default(0),
   lastBuzzedAt: timestamp("last_buzzed_at"),
+  lastCoasterId: varchar("last_coaster_id"),
+  recalledCount: integer("recalled_count").notNull().default(0),
   rating: integer("rating"),
   feedbackComment: text("feedback_comment"),
   queuedAt: timestamp("queued_at").notNull().defaultNow(),

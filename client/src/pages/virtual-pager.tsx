@@ -464,24 +464,46 @@ function VirtualPagerContent() {
         )}
 
         {/* Order Summary */}
-        {data.order && (
+        {data.order && (() => {
+          const orderLines: any[] = data.order.lineItems || [];
+          const doneCount = orderLines.filter(l => Boolean(l.prepared)).length;
+          return (
           <section className="rounded-2xl border bg-card p-4 space-y-2.5 text-sm">
-            <div className="flex items-center justify-between font-semibold">
-              <span>{data.order.orderNumber}</span>
+            <div className="flex flex-wrap items-center justify-between gap-2 font-semibold">
+              <div className="flex items-center gap-2">
+                <span>{data.order.orderNumber}</span>
+                {orderLines.length > 0 && doneCount > 0 && (
+                  <span
+                    data-testid="badge-guest-items-prepared"
+                    className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      doneCount === orderLines.length
+                        ? 'bg-[#C8FF42] text-[#17132E]'
+                        : 'bg-[#EFEAFF] text-[#4B1FE0]'
+                    }`}
+                  >
+                    {t('{done}/{total} prepared', { done: doneCount, total: orderLines.length })}
+                  </span>
+                )}
+              </div>
               <span className="px-2.5 py-0.5 rounded-full text-xs bg-muted">
                 {data.order.paymentStatus === 'paid' ? 'Paid' : 'Pay at Venue'} · {data.order.total} {data.order.currency}
               </span>
             </div>
             <ul className="divide-y text-xs text-muted-foreground">
-              {(data.order.lineItems || []).map((line: any, i: number) => (
-                <li key={i} className="py-1.5 flex justify-between gap-2">
-                  <span>
-                    <strong className="text-foreground">{line.quantity}× {label(line.name)}</strong>
-                    {line.variantLabel ? ` (${line.variantLabel})` : ''}
-                    {line.modifiers?.length ? ` · ${line.modifiers.map((m: any) => m.label).join(', ')}` : ''}
-                    {line.notes ? ` · “${line.notes}”` : ''}
+              {orderLines.map((line: any, i: number) => (
+                <li key={i} className="py-1.5 flex justify-between items-start gap-2">
+                  <span className="inline-flex items-start gap-1.5">
+                    {line.prepared && (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-[#6236FF] shrink-0 mt-0.5" aria-hidden="true" />
+                    )}
+                    <span>
+                      <strong className="text-foreground">{line.quantity}× {label(line.name)}</strong>
+                      {line.variantLabel ? ` (${line.variantLabel})` : ''}
+                      {line.modifiers?.length ? ` · ${line.modifiers.map((m: any) => m.label).join(', ')}` : ''}
+                      {line.notes ? ` · “${line.notes}”` : ''}
+                    </span>
                   </span>
-                  <span className="font-medium text-foreground">{line.lineTotal}</span>
+                  <span className="font-medium text-foreground shrink-0">{line.lineTotal}</span>
                 </li>
               ))}
             </ul>
@@ -497,7 +519,7 @@ function VirtualPagerContent() {
                   `Date: ${new Date(data.order.createdAt).toLocaleString()}`,
                   `Status: ${data.order.paymentStatus.toUpperCase()}`,
                   '--------------------------------',
-                  ...(data.order.lineItems || []).map(
+                  ...orderLines.map(
                     (l: any) => `${l.quantity}x ${l.name}${l.variantLabel ? ` (${l.variantLabel})` : ''} - ${l.lineTotal} ${data.order.currency}`,
                   ),
                   '--------------------------------',
@@ -517,7 +539,8 @@ function VirtualPagerContent() {
               <span>Download Order Receipt</span>
             </Button>
           </section>
-        )}
+          );
+        })()}
 
         {/* Curbside / Drive-Thru Bay Arrival Check-in */}
         {restaurant.driveThruEnabled && !isCollected && data.bays?.length > 0 && (

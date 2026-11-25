@@ -251,10 +251,11 @@ function staffRoleAllowsRequest(staffRole: EffectiveStaffRole, method: string, p
   }
 
   if (staffRole === 'prep_barista') {
-    // Barista / Prep / Runner: advance prep states, snooze items/modifiers, view bays & orders
+    // Barista / Prep / Runner: advance prep states, check off line items, snooze items/modifiers, view bays & orders
     if (
       method === 'POST' &&
       (/^\/api\/hospitality\/pagers\/[^/]+\/transition$/.test(path) ||
+        /^\/api\/hospitality\/pagers\/[^/]+\/line-items\/\d+\/toggle$/.test(path) ||
         /^\/api\/hospitality\/items\/[^/]+\/snooze$/.test(path) ||
         /^\/api\/hospitality\/items\/[^/]+\/modifiers\/[^/]+\/snooze$/.test(path))
     ) {
@@ -264,12 +265,13 @@ function staffRoleAllowsRequest(staffRole: EffectiveStaffRole, method: string, p
   }
 
   if (staffRole === 'host_cashier') {
-    // Host / Cashier: issue pagers, confirm pay-at-venue, manage floor reservations & waitlist, create/update POS orders
+    // Host / Cashier: issue pagers, confirm pay-at-venue, check off items, manage floor reservations & waitlist, create/update POS orders
     if (isRead && path === '/api/hospitality/floor') return true;
     if (
       method === 'POST' &&
       (path === '/api/hospitality/pagers/issue' ||
         /^\/api\/hospitality\/pagers\/[^/]+\/transition$/.test(path) ||
+        /^\/api\/hospitality\/pagers\/[^/]+\/line-items\/\d+\/toggle$/.test(path) ||
         /^\/api\/hospitality\/reservations\/[^/]+\/status$/.test(path) ||
         /^\/api\/hospitality\/waitlist\/[^/]+\/action$/.test(path) ||
         path === '/api/hospitality/orders' ||

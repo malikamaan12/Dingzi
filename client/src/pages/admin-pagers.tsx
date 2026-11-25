@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   BellRing,
   CheckCircle2,
+  CheckSquare,
   ChefHat,
   Clock,
   CreditCard,
@@ -13,7 +14,10 @@ import {
   PlayCircle,
   QrCode,
   Receipt,
+  RotateCcw,
+  Square,
   Wifi,
+  X,
   Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -30,6 +34,14 @@ import { LocalQrBox } from '@/components/hospitality/LocalQrBox';
 import { subscribeStaffLockScreenPush } from '@/lib/mobileBridge';
 import { publicExperienceOrigin } from '@shared/menuIdentity';
 
+interface LastBumpState {
+  id: string;
+  ticketCode: string;
+  action: 'ready' | 'collected' | 'no_show';
+  previousStatus: 'waiting' | 'preparing' | 'ready';
+  expiresAt: number;
+}
+
 export default function AdminPagersPage() {
   const { toast } = useToast();
   const menuQuery = useManagerMenu();
@@ -40,10 +52,11 @@ export default function AdminPagersPage() {
   const [issuedQrTicket, setIssuedQrTicket] = useState<any | null>(null);
   const [kioskMode, setKioskMode] = useState(false);
   const [channelFilter, setChannelFilter] = useState<'all' | 'orders' | 'curbside' | 'counter'>('all');
+  const [lastBump, setLastBump] = useState<LastBumpState | null>(null);
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), 5000);
+    const timer = window.setInterval(() => setNow(Date.now()), 3000);
     return () => window.clearInterval(timer);
   }, []);
 
@@ -90,17 +103,107 @@ export default function AdminPagersPage() {
   });
 
   const transitionMutation = useMutation({
-    mutationFn: async ({ id, action }: { id: string; action: string }) => {
-      const res = await apiRequest('POST', `/api/hospitality/pagers/${id}/transition`, { action });
+    mutationFn: async ({
+      id,
+      action,
+      targetStatus,
+    }: {
+      id: string;
+      action: string;
+      targetStatus?: 'waiting' | 'preparing' | 'ready';
+      ticketCode?: string;
+      previousStatus?: 'waiting' | 'preparing' | 'ready';
+    }) => {
+      const payload: Record<string, unknown> = { action };
+      if (targetStatus) payload.targetStatus = targetStatus;
+      const res = await apiRequest('POST', `/api/hospitality/pagers/${id}/transition`, payload);
       return res.json();
     },
-    onSuccess: (_data, vars) => {
+    onSuccess: (data, vars) => {
       void queryClient.invalidateQueries({ queryKey: ['/api/hospitality/pagers'] });
+      void queryClient.invalidateQueries({ queryKey: ['/api/hospitality/smart-tags'] });
+
+      if (
+        (vars.action === 'collected' || vars.action === 'no_show' || vars.action === 'ready') &&
+        vars.ticketCode &&
+        vars.previousStatus
+      ) {
+        setLastBump({
+          id: vars.id,
+          ticketCode: vars.ticketCode,
+          action: vars.action,
+          previousStatus: vars.previousStatus,
+          expiresAt: Date.now() + 30_000,
+        });
+      }
+
       if (vars.action === 'ready' || vars.action === 'rebuzz') {
-        toast({ title: 'Guest buzzed!', description: 'Instant audio & vibration sent to guest browser.' });
+        toast({ title: 'Guest buzzed!', description: 'Instant audio & vibration sent to guest phone.' });
+      } else if (vars.action === 'recall') {
+        setLastBump(prev => (prev?.id === vars.id ? null : prev));
+        toast({
+          title: `Recalled Ticket ${data.ticket?.ticketCode || ''}`,
+          description: data.reboundCoaster
+            ? `Restored to ${data.ticket.status.toUpperCase()} and re-attached ${data.reboundCoaster.tagCode}.`
+            : `Restored to ${data.ticket?.status?.toUpperCase() || 'active queue'}.`,
+        });
       }
     },
     onError: (e: Error) => toast({ title: 'Action blocked', description: e.message, variant: 'destructive' }),
+  });
+
+  const toggleLineItemMutation = useMutation({
+    mutationFn: async ({
+      ticketId,
+      lineIndex,
+      prepared,
+    }: {
+      ticketId: string;
+      orderId: string;
+      lineIndex: number;
+      prepared: boolean;
+    }) => {
+      const res = await apiRequest(
+        'POST',
+        `/api/hospitality/pagers/${ticketId}/line-items/${lineIndex}/toggle`,
+        { prepared },
+      );
+      return res.json();
+    },
+    onMutate: async vars => {
+      await queryClient.cancelQueries({ queryKey: ['/api/hospitality/pagers'] });
+      const previous = queryClient.getQueryData<any>(['/api/hospitality/pagers']);
+      if (previous) {
+        queryClient.setQueryData(['/api/hospitality/pagers'], {
+          ...previous,
+          tickets: (previous.tickets || []).map((t: any) =>
+            t.id === vars.ticketId && t.status === 'waiting' && vars.prepared
+              ? { ...t, status: 'preparing' }
+              : t,
+          ),
+          orders: (previous.orders || []).map((o: any) =>
+            o.id === vars.orderId
+              ? {
+                  ...o,
+                  lineItems: (o.lineItems || []).map((li: any, idx: number) =>
+                    idx === vars.lineIndex ? { ...li, prepared: vars.prepared } : li,
+                  ),
+                }
+              : o,
+          ),
+        });
+      }
+      return { previous };
+    },
+    onError: (e: Error, _vars, ctx) => {
+      if (ctx?.previous) {
+        queryClient.setQueryData(['/api/hospitality/pagers'], ctx.previous);
+      }
+      toast({ title: 'Could not update item prep state', description: e.message, variant: 'destructive' });
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['/api/hospitality/pagers'] });
+    },
   });
 
   const snoozeMutation = useMutation({
@@ -144,8 +247,10 @@ export default function AdminPagersPage() {
   });
   const recentCompleted = tickets
     .filter(t => ['collected', 'no_show'].includes(t.status))
-    .slice(-8)
+    .slice(-12)
     .reverse();
+
+  const visibleLastBump = lastBump && lastBump.expiresAt > now ? lastBump : null;
 
   function slaBadge(queuedAt: string) {
     const elapsedMins = Math.max(0, Math.floor((now - new Date(queuedAt).getTime()) / 60_000));
@@ -180,7 +285,7 @@ export default function AdminPagersPage() {
           <p className="manager-eyebrow">BARISTA &amp; COUNTER OPERATIONS</p>
           <h1 className="text-2xl sm:text-3xl font-bold">Live Virtual Pager &amp; Order Queue</h1>
           <p className="text-sm text-muted-foreground">
-            Issue 1-tap hardware-free pagers, manage incoming orders, and buzz guest phones in under 250 ms.
+            Check off individual items as they brew or cook, buzz guest phones in under 250 ms, and recall bumped tickets in one tap.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-sm w-full sm:w-auto" role="status" aria-atomic="true">
@@ -214,6 +319,51 @@ export default function AdminPagersPage() {
           </Badge>
         </div>
       </div>
+
+      {/* Instant 1-Tap Undo Last Bump Banner */}
+      {visibleLastBump && (
+        <div
+          role="status"
+          aria-live="polite"
+          data-testid="banner-undo-last-bump"
+          className="rounded-2xl border-2 border-[#6236FF]/35 bg-[#EFEAFF] text-[#17132E] px-4 py-3 flex flex-wrap items-center justify-between gap-3 shadow-sm"
+        >
+          <div className="flex items-center gap-2.5 text-sm">
+            <RotateCcw className="w-4 h-4 text-[#4B1FE0] shrink-0" aria-hidden="true" />
+            <span>
+              Ticket <strong className="font-mono font-black">{visibleLastBump.ticketCode}</strong> marked{' '}
+              <strong className="uppercase">{visibleLastBump.action.replace('_', '-')}</strong>.
+            </span>
+          </div>
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Button
+              type="button"
+              size="sm"
+              data-testid="button-undo-last-bump"
+              disabled={transitionMutation.isPending}
+              onClick={() =>
+                transitionMutation.mutate({
+                  id: visibleLastBump.id,
+                  action: 'recall',
+                  targetStatus: visibleLastBump.previousStatus,
+                })
+              }
+              className="min-h-11 flex-1 sm:flex-none rounded-xl bg-[#6236FF] hover:bg-[#4B1FE0] text-white font-semibold cursor-pointer gap-1.5"
+            >
+              <RotateCcw className="w-4 h-4" />
+              <span>Undo · Recall {visibleLastBump.ticketCode}</span>
+            </Button>
+            <button
+              type="button"
+              aria-label="Dismiss undo notice"
+              onClick={() => setLastBump(null)}
+              className="w-11 h-11 rounded-xl border border-[#4B1FE0]/20 hover:bg-white/70 grid place-items-center text-[#4B1FE0] cursor-pointer shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {kioskMode && (
         <section className="rounded-3xl bg-[#17132E] text-white p-8 text-center space-y-5 shadow-2xl border-2 border-[#241E42]">
@@ -391,15 +541,24 @@ export default function AdminPagersPage() {
                 ? Math.max(0, Math.ceil((20_000 - (now - new Date(ticket.lastBuzzedAt).getTime())) / 1000))
                 : 0;
 
+              const lineItems: any[] = order?.lineItems || [];
+              const preparedCount = lineItems.filter(li => Boolean(li.prepared)).length;
+              const allItemsPrepared = lineItems.length > 0 && preparedCount === lineItems.length;
+              const progressPct = lineItems.length > 0 ? Math.round((preparedCount / lineItems.length) * 100) : 0;
+
               return (
                 <article
                   key={ticket.id}
                   data-testid={`card-pager-ticket-${ticket.ticketCode}`}
-                  className={`rounded-2xl border-2 p-4 bg-card shadow-sm flex flex-col justify-between gap-3 ${
-                    ticket.status === 'ready' ? 'border-[#C8FF42]' : 'border-border'
+                  className={`rounded-2xl border-2 p-4 bg-card shadow-sm flex flex-col justify-between gap-3 transition-colors duration-150 ${
+                    ticket.status === 'ready'
+                      ? 'border-[#C8FF42]'
+                      : allItemsPrepared
+                        ? 'border-[#6236FF]'
+                        : 'border-border'
                   }`}
                 >
-                  <div className="space-y-2">
+                  <div className="space-y-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-2xl font-black font-mono">{ticket.ticketCode}</span>
                       <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold border ${sla.className}`}>
@@ -411,6 +570,15 @@ export default function AdminPagersPage() {
                     <div className="flex flex-wrap items-center gap-1.5 text-xs">
                       <Badge variant="outline" className="uppercase">{ticket.status}</Badge>
                       <Badge variant="secondary">{ticket.source.replace('_', ' ')}</Badge>
+                      {(ticket.recalledCount || 0) > 0 && (
+                        <Badge
+                          data-testid={`badge-recalled-${ticket.ticketCode}`}
+                          className="bg-[#EFEAFF] text-[#4B1FE0] hover:bg-[#EFEAFF] border border-[#6236FF]/30 font-semibold inline-flex items-center gap-1"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>Recalled</span>
+                        </Badge>
+                      )}
                       {ticket.customerName && <span className="font-medium">{ticket.customerName}</span>}
                       {boundCoaster && (
                         <Badge
@@ -434,28 +602,120 @@ export default function AdminPagersPage() {
                     </div>
 
                     {order && (
-                      <div className="rounded-xl bg-muted/50 p-2.5 text-xs space-y-1">
-                        <div className="flex items-center justify-between font-semibold">
-                          <span>{order.orderNumber} ({order.channel.replace('_', ' ')})</span>
+                      <div className="rounded-2xl border bg-muted/35 p-3 text-xs space-y-2.5">
+                        <div className="flex flex-wrap items-center justify-between gap-1.5 font-semibold">
                           <span>
+                            {order.orderNumber} ({order.channel.replace('_', ' ')})
+                            {order.tableCode ? ` · Table ${order.tableCode}` : ''}
+                          </span>
+                          <span className="text-muted-foreground">
                             {order.paymentStatus === 'paid' ? 'PAID' : 'PAY AT VENUE'} · {order.total} {order.currency}
                           </span>
                         </div>
-                        <ul className="space-y-0.5 text-muted-foreground">
-                          {(order.lineItems || []).map((li: any, idx: number) => (
-                            <li key={idx}>
-                              <strong className="text-foreground">{li.quantity}× {li.name}</strong>
-                              {li.variantLabel ? ` (${li.variantLabel})` : ''}
-                              {li.modifiers?.length ? ` + ${li.modifiers.map((m: any) => m.label).join(', ')}` : ''}
-                            </li>
-                          ))}
-                        </ul>
+
+                        {lineItems.length > 0 && (
+                          <div className="space-y-1.5">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-medium text-muted-foreground">
+                                Tap items as prepared
+                              </span>
+                              <span
+                                data-testid={`text-prep-progress-${ticket.ticketCode}`}
+                                className={`px-2 py-0.5 rounded-full font-mono text-[11px] font-bold ${
+                                  allItemsPrepared
+                                    ? 'bg-[#C8FF42] text-[#17132E]'
+                                    : 'bg-[#EFEAFF] text-[#4B1FE0]'
+                                }`}
+                              >
+                                {allItemsPrepared
+                                  ? `All ${lineItems.length}/${lineItems.length} Ready`
+                                  : `${preparedCount}/${lineItems.length} Prepared`}
+                              </span>
+                            </div>
+                            <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden" aria-hidden="true">
+                              <div
+                                className={`h-full transition-all duration-200 ${
+                                  allItemsPrepared ? 'bg-[#C8FF42]' : 'bg-[#6236FF]'
+                                }`}
+                                style={{ width: `${progressPct}%` }}
+                              />
+                            </div>
+
+                            <div className="space-y-2 pt-0.5" role="group" aria-label={`Order items for ${ticket.ticketCode}`}>
+                              {lineItems.map((li: any, idx: number) => {
+                                const isDone = Boolean(li.prepared);
+                                return (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    role="checkbox"
+                                    aria-checked={isDone}
+                                    data-testid={`button-checkoff-${ticket.ticketCode}-${idx}`}
+                                    onClick={() =>
+                                      toggleLineItemMutation.mutate({
+                                        ticketId: ticket.id,
+                                        orderId: order.id,
+                                        lineIndex: idx,
+                                        prepared: !isDone,
+                                      })
+                                    }
+                                    className={`w-full min-h-11 px-3 py-2 rounded-xl border text-left flex items-start justify-between gap-2.5 transition-colors duration-150 cursor-pointer ${
+                                      isDone
+                                        ? 'bg-[#EFEAFF]/75 border-[#6236FF]/35 text-[#17132E] dark:bg-[#241E42] dark:text-white'
+                                        : 'bg-card hover:bg-muted/70 border-border text-foreground'
+                                    }`}
+                                  >
+                                    <div className="flex items-start gap-2.5 min-w-0">
+                                      {isDone ? (
+                                        <CheckSquare className="w-4 h-4 text-[#6236FF] dark:text-[#C8FF42] shrink-0 mt-0.5" aria-hidden="true" />
+                                      ) : (
+                                        <Square className="w-4 h-4 text-muted-foreground shrink-0 mt-0.5" aria-hidden="true" />
+                                      )}
+                                      <div className="min-w-0 space-y-0.5">
+                                        <strong className={`block text-xs leading-snug ${isDone ? 'line-through opacity-75' : ''}`}>
+                                          {li.quantity}× {li.name}
+                                          {li.variantLabel ? ` (${li.variantLabel})` : ''}
+                                        </strong>
+                                        {li.modifiers?.length > 0 && (
+                                          <span className="block text-[11px] text-muted-foreground">
+                                            + {li.modifiers.map((m: any) => m.label).join(', ')}
+                                          </span>
+                                        )}
+                                        {li.notes && (
+                                          <span className="block text-[11px] font-medium text-[#4B1FE0] dark:text-[#C8FF42]">
+                                            Note: “{li.notes}”
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <span
+                                      className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-md shrink-0 mt-0.5 ${
+                                        isDone
+                                          ? 'bg-[#6236FF] text-white'
+                                          : 'bg-muted text-muted-foreground'
+                                      }`}
+                                    >
+                                      {isDone ? 'Done' : 'Prep'}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {order.notes && (
+                          <p className="text-[11px] font-medium text-[#4B1FE0] dark:text-[#C8FF42] pt-1 border-t">
+                            Order Note: “{order.notes}”
+                          </p>
+                        )}
+
                         {order.paymentStatus === 'pay_at_venue' && (
                           <Button
                             type="button"
                             size="sm"
                             variant="outline"
-                            className="w-full mt-1.5 min-h-11 md:min-h-9 text-xs cursor-pointer gap-1.5"
+                            className="w-full min-h-11 md:min-h-9 text-xs cursor-pointer gap-1.5"
                             onClick={() => transitionMutation.mutate({ id: ticket.id, action: 'confirm_venue_payment' })}
                           >
                             <CreditCard className="w-3.5 h-3.5" />
@@ -484,12 +744,21 @@ export default function AdminPagersPage() {
                       {ticket.status !== 'ready' ? (
                         <Button
                           type="button"
-                          className="min-h-11 cursor-pointer gap-1.5 bg-[#C8FF42] hover:bg-[#b8f52c] text-[#17132E] font-extrabold border-0"
-                          onClick={() => transitionMutation.mutate({ id: ticket.id, action: 'ready' })}
+                          className={`min-h-11 cursor-pointer gap-1.5 bg-[#C8FF42] hover:bg-[#b8f52c] text-[#17132E] font-extrabold border-0 ${
+                            ticket.status !== 'waiting' ? 'col-span-2' : ''
+                          }`}
+                          onClick={() =>
+                            transitionMutation.mutate({
+                              id: ticket.id,
+                              action: 'ready',
+                              ticketCode: ticket.ticketCode,
+                              previousStatus: ticket.status,
+                            })
+                          }
                           data-testid={`button-ready-${ticket.ticketCode}`}
                         >
                           <BellRing className="w-4 h-4" />
-                          Buzz Ready
+                          {allItemsPrepared ? 'All Ready · Buzz Guest' : 'Buzz Ready'}
                         </Button>
                       ) : (
                         <Button
@@ -511,7 +780,14 @@ export default function AdminPagersPage() {
                         <Button
                           type="button"
                           className="min-h-11 cursor-pointer gap-1.5"
-                          onClick={() => transitionMutation.mutate({ id: ticket.id, action: 'collected' })}
+                          onClick={() =>
+                            transitionMutation.mutate({
+                              id: ticket.id,
+                              action: 'collected',
+                              ticketCode: ticket.ticketCode,
+                              previousStatus: 'ready',
+                            })
+                          }
                           data-testid={`button-collected-${ticket.ticketCode}`}
                         >
                           <CheckCircle2 className="w-4 h-4" />
@@ -520,22 +796,43 @@ export default function AdminPagersPage() {
                       )}
                     </div>
 
-                    <div className="flex items-center justify-between gap-2 text-xs">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
                       <button
                         type="button"
                         onClick={() => setIssuedQrTicket(ticket)}
                         className="min-h-11 px-3 rounded-xl bg-muted/40 hover:bg-muted text-primary font-semibold inline-flex items-center gap-1.5 cursor-pointer"
                       >
                         <QrCode className="w-4 h-4" />
-                        Show Guest QR
+                        <span>Guest QR</span>
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => transitionMutation.mutate({ id: ticket.id, action: 'no_show' })}
-                        className="min-h-11 px-3 rounded-xl text-muted-foreground hover:text-destructive hover:bg-destructive/10 inline-flex items-center cursor-pointer"
-                      >
-                        Mark No-Show
-                      </button>
+
+                      <div className="flex items-center gap-2">
+                        {(ticket.status === 'preparing' || ticket.status === 'ready') && (
+                          <button
+                            type="button"
+                            data-testid={`button-stepback-${ticket.ticketCode}`}
+                            onClick={() => transitionMutation.mutate({ id: ticket.id, action: 'recall' })}
+                            className="min-h-11 px-3 rounded-xl border hover:bg-muted text-foreground font-medium inline-flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            <span>{ticket.status === 'ready' ? 'Back to Prep' : 'Back to Waiting'}</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            transitionMutation.mutate({
+                              id: ticket.id,
+                              action: 'no_show',
+                              ticketCode: ticket.ticketCode,
+                              previousStatus: ticket.status,
+                            })
+                          }
+                          className="min-h-11 px-3 rounded-xl text-muted-foreground hover:text-destructive hover:bg-destructive/10 inline-flex items-center cursor-pointer"
+                        >
+                          No-Show
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </article>
@@ -607,15 +904,47 @@ export default function AdminPagersPage() {
         </section>
       )}
 
-      {/* Recently Collected Log */}
+      {/* Recently Bumped & Collected Log with 1-Tap Recall */}
       {recentCompleted.length > 0 && (
-        <section className="manager-panel p-5 space-y-2">
-          <h3 className="font-semibold text-sm text-muted-foreground">Recently Archived Tickets</h3>
-          <div className="flex flex-wrap gap-2 text-xs">
+        <section className="manager-panel p-5 space-y-3">
+          <div>
+            <h3 className="font-bold text-base">Recently Bumped &amp; Collected Tickets</h3>
+            <p className="text-xs text-muted-foreground">
+              Accidentally bumped an order? Recall any ticket below back into the live queue (re-attaches its coaster if still idle).
+            </p>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5 text-xs">
             {recentCompleted.map(t => (
-              <span key={t.id} className="px-3 py-1.5 rounded-xl border bg-muted/40 font-mono">
-                {t.ticketCode} · {t.status} {t.rating ? `· ★${t.rating}` : ''}
-              </span>
+              <div
+                key={t.id}
+                data-testid={`row-archived-ticket-${t.ticketCode}`}
+                className="rounded-xl border bg-muted/30 p-3 flex items-center justify-between gap-2"
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <strong className="font-mono text-sm">{t.ticketCode}</strong>
+                    <Badge variant="outline" className="uppercase text-[10px]">
+                      {t.status.replace('_', '-')}
+                    </Badge>
+                    {t.rating ? <span className="font-semibold text-amber-600">★{t.rating}</span> : null}
+                  </div>
+                  {t.customerName && (
+                    <span className="block text-muted-foreground truncate mt-0.5">{t.customerName}</span>
+                  )}
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={transitionMutation.isPending}
+                  data-testid={`button-recall-${t.ticketCode}`}
+                  onClick={() => transitionMutation.mutate({ id: t.id, action: 'recall' })}
+                  className="min-h-11 rounded-xl shrink-0 cursor-pointer gap-1.5"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Recall</span>
+                </Button>
+              </div>
             ))}
           </div>
         </section>

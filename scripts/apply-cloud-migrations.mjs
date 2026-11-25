@@ -20,7 +20,7 @@ const client = new Client({
 await client.connect();
 
 try {
-  console.log('1/3 Applying Drizzle migrations (0000..0012) to isolated Dingzi Supabase Postgres...');
+  console.log('1/3 Applying Drizzle migrations (0000..0013) to isolated Dingzi Supabase Postgres...');
   await migrate(drizzle(client), { migrationsFolder: 'migrations' });
 
   console.log('2/3 Enforcing Row-Level Security & server policy on smart_tags...');

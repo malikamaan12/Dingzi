@@ -157,6 +157,7 @@ const messages: Readonly<Record<string, string>> = {
   'Pager or coaster # (A-001, COASTER-01)': 'رقم النداء أو القطعة (A-001 أو COASTER-01)',
   'Smart Pager Coaster Ready': 'قطعة النداء الذكية جاهزة',
   'Keep this screen open — it connects automatically the moment the barista links your order, or explore the menu below.': 'أبقِ هذه الشاشة مفتوحة — ستتصل بطلبك تلقائياً فور ربطها من الكاشير، أو تصفح القائمة أدناه.',
+  '{done}/{total} prepared': '{done}/{total} جاهز',
 };
 type Values = Record<string, string | number>;
 export function menuMessage(language: MenuLanguage, key: string, values: Values = {}): string {

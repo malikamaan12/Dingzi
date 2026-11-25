@@ -302,7 +302,114 @@ try {
     404,
   );
 
-  console.log('PASS: QR & NFC Smart Tags, Reusable Coaster Lifecycle, Token Rotation & Cross-Tenant Isolation verified!');
+  // 7. Verify Per-Item Prep Checkoffs + Recall / Undo Bumped Ticket (including automatic idle coaster re-attachment)
+  const catA = (await api('POST', '/api/categories', { restaurantId: cafeA, title: 'Espresso & Kitchen' }, cookieA)).data;
+  assert.ok(catA?.id);
+  const itemLatte = (await api('POST', '/api/manager-menu', {
+    item: {
+      categoryId: catA.id,
+      name: 'Spanish Latte',
+      price: '24.00',
+      discount: '0',
+      unit: 'cup',
+      isAvailable: true,
+      hasMultiplePricing: false,
+      prepTimeMins: 5,
+    },
+    variants: [],
+  }, cookieA)).data;
+  const itemPizza = (await api('POST', '/api/manager-menu', {
+    item: {
+      categoryId: catA.id,
+      name: 'Margherita Pizza',
+      price: '42.00',
+      discount: '0',
+      unit: 'serving',
+      isAvailable: true,
+      hasMultiplePricing: false,
+      prepTimeMins: 12,
+    },
+    variants: [],
+  }, cookieA)).data;
+
+  // Provision a prep_barista staff login to verify scoped RBAC checkoffs & recall
+  const baristaPass = 'Barista-Prep-' + randomBytes(6).toString('hex');
+  const baristaCreate = await api('POST', '/api/hospitality/team', {
+    email: 'prep@msheireb.qa',
+    password: baristaPass,
+    firstName: 'Zaid',
+    lastName: 'Barista',
+    staffRole: 'prep_barista',
+  }, cookieA);
+  assert.equal(baristaCreate.status, 201);
+  const baristaCookie = (await api('POST', '/api/login', { email: 'prep@msheireb.qa', password: baristaPass })).cookie;
+
+  // Guest places a 2-item Pay-at-Venue order
+  const multiOrder = await api('POST', '/api/public/orders', {
+    restaurantId: cafeA,
+    channel: 'dine_in',
+    tableCode: 'T-01',
+    customerName: 'Fatima',
+    items: [
+      { menuItemId: itemLatte.id, quantity: 2, modifiers: {}, notes: 'Oat milk' },
+      { menuItemId: itemPizza.id, quantity: 1, modifiers: {} },
+    ],
+  });
+  assert.equal(multiOrder.status, 201);
+  const orderPager = multiOrder.data.pager;
+  assert.equal(orderPager.status, 'waiting');
+
+  // Bind COASTER-02 to Fatima's order ticket
+  const coaster2 = bulkRes.data.tags[1];
+  assert.equal((await api('POST', `/api/hospitality/smart-tags/${coaster2.id}/assign-ticket`, {
+    ticketId: orderPager.id,
+  }, cookieA)).status, 200);
+
+  // Barista checks off line 0 -> auto-promotes ticket from 'waiting' to 'preparing'
+  const check0 = await api('POST', `/api/hospitality/pagers/${orderPager.id}/line-items/0/toggle`, {}, baristaCookie);
+  assert.equal(check0.status, 200);
+  assert.equal(check0.data.preparedCount, 1);
+  assert.equal(check0.data.totalCount, 2);
+  assert.equal(check0.data.ticket.status, 'preparing');
+  assert.equal(check0.data.order.lineItems[0].prepared, true);
+  assert.equal(Boolean(check0.data.order.lineItems[1].prepared), false);
+
+  // Foreign branch manager cannot toggle Cafe A's line items (404)
+  assert.equal(
+    (await api('POST', `/api/hospitality/pagers/${orderPager.id}/line-items/1/toggle`, {}, cookieB)).status,
+    404,
+  );
+
+  // Barista checks off line 1 -> 2/2 prepared, visible on public guest Virtual Pager API
+  const check1 = await api('POST', `/api/hospitality/pagers/${orderPager.id}/line-items/1/toggle`, {}, baristaCookie);
+  assert.equal(check1.status, 200);
+  assert.equal(check1.data.preparedCount, 2);
+  const guestPagerView = await api('GET', `/api/public/pager/${orderPager.trackingToken}`);
+  assert.equal(guestPagerView.status, 200);
+  assert.equal(guestPagerView.data.order.lineItems.filter((l: any) => l.prepared).length, 2);
+
+  // Buzz Ready, then accidentally bump to 'collected' (which frees COASTER-02)
+  assert.equal((await api('POST', `/api/hospitality/pagers/${orderPager.id}/transition`, { action: 'ready' }, baristaCookie)).status, 200);
+  assert.equal((await api('POST', `/api/hospitality/pagers/${orderPager.id}/transition`, { action: 'collected' }, baristaCookie)).status, 200);
+  assert.equal((await api('GET', `/api/public/tag/${coaster2.token}?src=poll`)).data.coasterStatus, 'idle');
+
+  // Barista taps Recall -> restores ticket to 'ready', increments recalledCount, and re-attaches idle COASTER-02!
+  const recalled1 = await api('POST', `/api/hospitality/pagers/${orderPager.id}/transition`, { action: 'recall' }, baristaCookie);
+  assert.equal(recalled1.status, 200);
+  assert.equal(recalled1.data.ticket.status, 'ready');
+  assert.equal(recalled1.data.ticket.recalledCount, 1);
+  assert.equal(recalled1.data.ticket.collectedAt, null);
+  assert.equal(recalled1.data.reboundCoaster.id, coaster2.id);
+  assert.equal((await api('GET', `/api/public/tag/${coaster2.token}?src=poll`)).data.destination, `/pager/${orderPager.trackingToken}`);
+
+  // Barista taps Back to Prep (recall from 'ready' -> 'preparing')
+  const stepBack = await api('POST', `/api/hospitality/pagers/${orderPager.id}/transition`, { action: 'recall' }, baristaCookie);
+  assert.equal(stepBack.status, 200);
+  assert.equal(stepBack.data.ticket.status, 'preparing');
+  assert.equal(stepBack.data.ticket.recalledCount, 2);
+  assert.equal(stepBack.data.ticket.readyAt, null);
+
+  console.log('PASS: QR & NFC Smart Tags, Reusable Coaster Lifecycle, Per-Item Prep Checkoffs, Recall/Undo & Cross-Tenant Isolation verified!');
 } finally {
   server.kill();
   await new Promise(r => setTimeout(r, 300));
