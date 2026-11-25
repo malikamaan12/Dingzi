@@ -121,7 +121,7 @@ export default function AdminQRCode() {
       void queryClient.invalidateQueries({ queryKey: ['/api/hospitality/smart-tags'] });
       toast({
         title: `Provisioned ${data.tags.length} reusable NFC/QR coasters`,
-        description: 'Encode once onto counter pucks — bind and release guest orders infinitely from KDS.',
+        description: 'Encode once onto counter pucks — bind and release guest orders infinitely from the Pager Queue.',
       });
     },
     onError: (e: Error) => toast({ title: 'Could not provision coasters', description: e.message, variant: 'destructive' }),

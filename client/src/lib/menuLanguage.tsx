@@ -125,7 +125,7 @@ const messages: Readonly<Record<string, string>> = {
   'Scan the table.': 'امسح رمز الطاولة.', 'Skip the crowd.': 'وتجاوز طابور الانتظار.',
   'Search venues or cuisines…': 'ابحث عن مقهى أو مطعم أو صنف…',
   'All Venues': 'كل الوجهات', 'Order Ahead': 'اطلب مسبقاً', 'Tables': 'حجز طاولات', 'Curbside': 'استلام السيارة',
-  'Open venue menu →': 'افتح قائمة الوجهة ←', 'Staff & KDS Console ↗': 'لوحة الموظفين والمطبخ ↗',
+  'Open venue menu →': 'افتح قائمة الوجهة ←', 'Staff Console ↗': 'لوحة الموظفين ↗',
   'Have a Pager or Receipt Code?': 'لديك رقم نداء أو فاتورة؟',
   'Select venue': 'اختر الوجهة', 'Quantity': 'الكمية',
   'Special instructions for kitchen (optional)': 'ملاحظات خاصة للتحضير (اختياري)',

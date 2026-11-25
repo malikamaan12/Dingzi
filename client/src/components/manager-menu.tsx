@@ -548,7 +548,7 @@ export function ManagerMenu({ dashboard = false }: { dashboard?: boolean }) {
                       value={d.prepTimeMins}
                       onChange={e => update({ prepTimeMins: Number(e.target.value) || 8 })}
                     />
-                    <p className="text-[11px] text-muted-foreground mt-1">Used for Virtual Pager countdown &amp; KDS SLA.</p>
+                    <p className="text-[11px] text-muted-foreground mt-1">Used for Virtual Pager countdown &amp; prep-time SLA.</p>
                   </div>
                 </div>
 

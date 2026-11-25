@@ -796,7 +796,7 @@ export function mountHospitalityRoutes(app: Express) {
           })
           .returning();
 
-        // In Mode B (cart_pay_at_venue), immediately release pager ticket to KDS.
+        // In Mode B (cart_pay_at_venue), immediately release pager ticket to the live order queue.
         // In Mode C (full_online_checkout), issue pager ticket only once payment succeeds (or create waiting ticket on confirmation).
         let pager = null;
         if (!isOnlineCheckout) {
@@ -863,7 +863,7 @@ export function mountHospitalityRoutes(app: Express) {
           title: `${restaurant.name} · New Order ${created.order.orderNumber}`,
           body: `${payload.customerName} (${payload.channel.replace('_', ' ')}) · ${created.order.total} ${restaurant.currency}`,
           tag: `order-${created.order.orderNumber}`,
-          url: '/admin/kds',
+          url: '/admin/pagers',
         }),
       );
 
@@ -1804,7 +1804,7 @@ export function mountHospitalityRoutes(app: Express) {
   // ===== PROTECTED STAFF & MANAGER ENDPOINTS (/api/hospitality/...) =====
   // Tenant boundary & X-Cafe-Context checks are enforced upstream in mountAccessControl.
 
-  // KDS & Virtual Pager Console
+  // Live Order Queue & Virtual Pager Console
   app.get('/api/hospitality/pagers', isAuthenticated, async (req: any, res, next) => {
     try {
       const cafe = await getManagedCafe(req);
@@ -2045,7 +2045,7 @@ export function mountHospitalityRoutes(app: Express) {
     }
   });
 
-  // 1-Tap KDS Out-of-Stock Item Snooze
+  // 1-Tap Out-of-Stock Item Snooze
   app.post('/api/hospitality/items/:id/snooze', isAuthenticated, async (req: any, res, next) => {
     try {
       const cafe = await getManagedCafe(req);
@@ -2061,7 +2061,7 @@ export function mountHospitalityRoutes(app: Express) {
     }
   });
 
-  // 1-Tap KDS Out-of-Stock Modifier Option Snooze (PRD §3 & §4.1.3)
+  // 1-Tap Out-of-Stock Modifier Option Snooze (PRD §3 & §4.1.3)
   app.post('/api/hospitality/items/:id/modifiers/:optionId/snooze', isAuthenticated, async (req: any, res, next) => {
     try {
       const cafe = await getManagedCafe(req);

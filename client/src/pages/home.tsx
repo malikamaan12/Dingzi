@@ -124,7 +124,7 @@ function HomeDirectoryContent() {
                 href="/login"
                 className="hidden sm:inline-flex items-center min-h-11 text-xs sm:text-sm font-semibold px-4 rounded-xl border border-[#E5E2F2] bg-white text-[#4B1FE0] hover:bg-[#EFEAFF] transition-colors cursor-pointer"
               >
-                {t('Staff & KDS Console ↗')}
+                {t('Staff Console ↗')}
               </Link>
             )}
           </div>

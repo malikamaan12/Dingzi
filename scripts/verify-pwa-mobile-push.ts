@@ -326,7 +326,7 @@ try {
   const statusAfterPrune = await api('GET', '/api/hospitality/push/status', undefined, mgrCookie);
   assert.equal(statusAfterPrune.data.guestDevices, 1, 'HTTP 410 dead subscription must be pruned');
 
-  // Subscribe Staff KDS device & trigger staff lock-screen test push
+  // Subscribe Staff device & trigger staff lock-screen test push
   const staffSub = await api(
     'POST',
     '/api/hospitality/push/subscribe',
@@ -358,11 +358,11 @@ try {
       clientAuthSecret,
     ),
   );
-  assert.equal(decryptedStaffJson.url, '/admin/kds');
+  assert.equal(decryptedStaffJson.url, '/admin/pagers');
   assert.equal(decryptedStaffJson.urgent, true);
 
   console.log(
-    'PASS: Installable PWA assets, Service Worker, RFC 8292 VAPID ES256 JWT, RFC 8291 aes128gcm encryption/decryption, SSRF protection, KDS->Guest Lock-Screen Push, Staff KDS Push, and 410 pruning verified end-to-end.',
+    'PASS: Installable PWA assets, Service Worker, RFC 8292 VAPID ES256 JWT, RFC 8291 aes128gcm encryption/decryption, SSRF protection, Staff->Guest Lock-Screen Push, Staff Device Push, and 410 pruning verified end-to-end.',
   );
 } finally {
   server.kill('SIGTERM');

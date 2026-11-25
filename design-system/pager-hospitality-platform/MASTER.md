@@ -11,9 +11,9 @@
 |---|---|---|---|---|
 | **Primary Brand** | Electric Violet | `#6236FF` | `#FFFFFF` on fill (6.0:1 AA) | Primary CTAs, active category pills, QR badges, and "Preparing" progress bar |
 | **Deep Link Shade** | Hyper Indigo | `#4B1FE0` | On `#FFFFFF` (8.2:1 AAA) | Small inline text links, hover/pressed button state, and focus rings |
-| **Ready Signal** | Volt Lime | `#C8FF42` | `#17132E` on fill (15.3:1 AAA) | Order Ready full-screen pager flash, sound-wave accents, `i`-dots, and "Bay Arrived" KDS badge |
-| **Dark Anchor** | Midnight Indigo | `#17132E` | `#FFFFFF` (18.0:1 AAA) | Wordmark typography, dark-mode Barista KDS canvas, and drive-thru bollards |
-| **Dark Elevated** | Cosmic Slate | `#241E42` | `#FFFFFF` (14.6:1 AAA) | Active ticket rows and modals inside the dark KDS / staff console |
+| **Ready Signal** | Volt Lime | `#C8FF42` | `#17132E` on fill (15.3:1 AAA) | Order Ready full-screen pager flash, sound-wave accents, `i`-dots, and "Bay Arrived" dispatch badge |
+| **Dark Anchor** | Midnight Indigo | `#17132E` | `#FFFFFF` (18.0:1 AAA) | Wordmark typography, dark-mode Barista Pager Queue canvas, and drive-thru bollards |
+| **Dark Elevated** | Cosmic Slate | `#241E42` | `#FFFFFF` (14.6:1 AAA) | Active ticket rows and modals inside the dark Barista / Staff console |
 | **Light Canvas** | Pure White | `#FFFFFF` | `#17132E` (18.0:1 AAA) | Default guest menu cards, item overlays, and counter QR cards |
 | **Soft Surface** | Lilac Mist | `#F6F5FC` | `#17132E` (16.7:1 AAA) | Page backdrop, search inputs, modifier group backgrounds, and inactive tabs |
 | **Violet Tint** | Iris Wash | `#EFEAFF` | `#4B1FE0` (7.3:1 AAA) | Selected modifier chips, table slot highlights, and subtle feature callouts |

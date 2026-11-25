@@ -20,8 +20,8 @@ import { useToast } from '@/hooks/use-toast';
 import type { StaffRole } from '@shared/schema';
 
 const ROLE_DESCRIPTIONS: Record<StaffRole, { label: string; summary: string }> = {
-  kds_barista: {
-    label: 'KDS / Barista / Runner',
+  prep_barista: {
+    label: 'Barista / Prep / Runner',
     summary: 'Advance live pager & order states (Preparing → Ready → Collected), view arrived bay cars, and 1-tap snooze items/modifiers.',
   },
   host_cashier: {
@@ -46,7 +46,7 @@ export default function AdminTeamPage() {
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [staffRole, setStaffRole] = useState<StaffRole>('kds_barista');
+  const [staffRole, setStaffRole] = useState<StaffRole>('prep_barista');
   const [applyTenantWide, setApplyTenantWide] = useState(false);
 
   const teamQuery = useQuery<{
@@ -148,7 +148,7 @@ export default function AdminTeamPage() {
         <p className="manager-eyebrow">ROLE-BASED ACCESS &amp; MULTI-BRANCH WORKSPACE</p>
         <h1 className="text-2xl sm:text-3xl font-bold">Team Roles &amp; Branch Group</h1>
         <p className="text-sm text-muted-foreground">
-          Provision dedicated logins for Barista KDS tablets, Host stands, Branch Managers, and Multi-Branch Tenant Owners.
+          Provision dedicated logins for Barista prep tablets, Host stands, Branch Managers, and Multi-Branch Tenant Owners.
         </p>
       </div>
 
@@ -310,7 +310,7 @@ export default function AdminTeamPage() {
         </h2>
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {(['kds_barista', 'host_cashier', 'branch_manager', ...(canAssignTenantOwner && hasTenantGroup ? (['tenant_owner'] as const) : [])] as StaffRole[]).map(
+          {(['prep_barista', 'host_cashier', 'branch_manager', ...(canAssignTenantOwner && hasTenantGroup ? (['tenant_owner'] as const) : [])] as StaffRole[]).map(
             roleKey => {
               const info = ROLE_DESCRIPTIONS[roleKey];
               const selected = staffRole === roleKey;
@@ -347,7 +347,7 @@ export default function AdminTeamPage() {
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              placeholder="kds.lusail@cafe.qa"
+              placeholder="barista.lusail@cafe.qa"
               required
               className="h-11"
             />
@@ -412,7 +412,7 @@ export default function AdminTeamPage() {
 
         {(teamQuery.data?.assignments || []).length === 0 ? (
           <p className="text-xs text-muted-foreground pt-2">
-            No additional KDS, Host/Cashier, or Multi-Branch staff roles assigned yet.
+            No additional Barista/Prep, Host/Cashier, or Multi-Branch staff roles assigned yet.
           </p>
         ) : (
           <div className="space-y-2">

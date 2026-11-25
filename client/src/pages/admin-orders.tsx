@@ -91,7 +91,7 @@ export default function AdminOrdersPage() {
       void queryClient.invalidateQueries({ queryKey: ['/api/hospitality/pagers'] });
       toast({
         title: `Created ${data.order.orderNumber} · Pager ${data.pager.ticketCode}`,
-        description: 'Ticket released directly to the Barista KDS.',
+        description: 'Ticket released directly to the live order & pager queue.',
       });
     },
     onError: (e: Error) => toast({ title: 'Could not create order', description: e.message, variant: 'destructive' }),
@@ -470,7 +470,7 @@ export default function AdminOrdersPage() {
           <DialogHeader>
             <DialogTitle>New Counter POS Order</DialogTitle>
             <DialogDescription>
-              Ring up a walk-in or dine-in order and issue a live Virtual Pager straight to the KDS.
+              Ring up a walk-in or dine-in order and issue a live Virtual Pager straight to the prep queue.
             </DialogDescription>
           </DialogHeader>
 

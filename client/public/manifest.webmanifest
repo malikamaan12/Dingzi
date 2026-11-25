@@ -32,8 +32,8 @@
       "icons": [{ "src": "/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml" }]
     },
     {
-      "name": "Barista & KDS Console",
-      "url": "/admin/kds",
+      "name": "Live Pagers & Order Queue",
+      "url": "/admin/pagers",
       "icons": [{ "src": "/icon-192.svg", "sizes": "192x192", "type": "image/svg+xml" }]
     }
   ]

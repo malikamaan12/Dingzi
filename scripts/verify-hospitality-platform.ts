@@ -399,14 +399,14 @@ try {
   assert.equal(depositConfirmed.data.reservation.status, 'confirmed');
   assert.equal(depositConfirmed.data.reservation.depositStatus, 'paid');
 
-  // 9. Role Matrix Enforcement (kds_barista & host_cashier) + Counter POS Orders + Multi-Branch Tenant Owner Switching
+  // 9. Role Matrix Enforcement (prep_barista & host_cashier) + Counter POS Orders + Multi-Branch Tenant Owner Switching
   const staffPass = 'Staff-Role-' + randomBytes(6).toString('hex');
   const baristaCreate = await api('POST', '/api/hospitality/team', {
     email: 'barista@pearl.qa',
     password: staffPass,
     firstName: 'Omar',
     lastName: 'Barista',
-    staffRole: 'kds_barista',
+    staffRole: 'prep_barista',
   }, cookieB);
   assert.equal(baristaCreate.status, 201);
 
@@ -422,7 +422,7 @@ try {
   const baristaCookie = (await api('POST', '/api/login', { email: 'barista@pearl.qa', password: staffPass })).cookie;
   const cashierCookie = (await api('POST', '/api/login', { email: 'cashier@pearl.qa', password: staffPass })).cookie;
 
-  // Barista can snooze items & view KDS, but CANNOT modify restaurant profile or payment vault (403)
+  // Barista can snooze items & view order/pager queue, but CANNOT modify restaurant profile or payment vault (403)
   assert.equal((await api('GET', '/api/hospitality/pagers', undefined, baristaCookie)).status, 200);
   assert.equal((await api('POST', '/api/restaurant', { name: 'Unauthorized Rename' }, baristaCookie)).status, 403);
   assert.equal((await api('PUT', '/api/hospitality/payment-config', { sadadMerchantId: 'HACK' }, baristaCookie)).status, 403);
@@ -483,7 +483,7 @@ try {
   assert.equal(impLib.status, 200);
   assert.equal(impLib.data.added, 1);
 
-  console.log('PASS: All Dingzi PRD modules verified end-to-end (Menu Studio, 1-tap snooze, Auto Pager + 20s cooldown, late-night hours, combinable multi-table booking, interactive reservation deposits, encrypted gateway vault, POS orders/receipts, KDS/Cashier RBAC, Multi-Branch Tenant Owner switching/analytics, and Shared Menu Library hospitality parity).');
+  console.log('PASS: All Dingzi PRD modules verified end-to-end (Menu Studio, 1-tap snooze, Auto Pager + 20s cooldown, late-night hours, combinable multi-table booking, interactive reservation deposits, encrypted gateway vault, POS orders/receipts, Barista/Cashier RBAC, Multi-Branch Tenant Owner switching/analytics, and Shared Menu Library hospitality parity).');
 } finally {
   server.kill('SIGTERM');
   await new Promise(resolve => { server.once('exit', resolve); setTimeout(resolve, 4000).unref(); });

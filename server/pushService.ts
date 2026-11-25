@@ -143,7 +143,7 @@ export async function dispatchPushAlertToScopes(
           if (response.ok) delivered++;
         }
       } catch {
-        // Network failures to push endpoints never break KDS transitions.
+        // Network failures to push endpoints never break pager queue transitions.
       }
     }),
   );

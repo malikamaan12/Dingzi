@@ -226,7 +226,7 @@ try {
   assert.equal(idleLookup.data.status, 'idle');
   assert.equal(idleLookup.data.coasterToken, coaster1.token);
 
-  // Issue KDS Auto Pager bound directly to COASTER-01
+  // Issue Auto Pager bound directly to COASTER-01
   const issue1 = await api('POST', '/api/hospitality/pagers/issue', {
     mode: 'auto_number',
     customerName: 'Guest One',

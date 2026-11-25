@@ -91,7 +91,7 @@ export default function AdminMobileAppPage() {
         </div>
 
         <div className="manager-panel p-5">
-          <span className="text-xs uppercase font-semibold text-muted-foreground">Staff KDS / Runner Devices</span>
+          <span className="text-xs uppercase font-semibold text-muted-foreground">Staff Counter / Runner Devices</span>
           <strong className="block text-2xl font-black mt-1">{info?.staffDevices ?? '…'}</strong>
           <span className="text-xs text-muted-foreground mt-1 block">Receiving order &amp; curbside pushes</span>
         </div>

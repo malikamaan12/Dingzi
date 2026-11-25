@@ -40,7 +40,7 @@ const AccessHistory = lazy(() => import('@/pages/access-history'));
 import { returnToPlatform } from '@/lib/cafeAccess';
 import { useToast } from '@/hooks/use-toast';
 const AdminQRCode = lazy(() => import('@/pages/admin-qrcode'));
-const AdminKds = lazy(() => import('@/pages/admin-kds'));
+const AdminPagers = lazy(() => import('@/pages/admin-pagers'));
 const AdminTables = lazy(() => import('@/pages/admin-tables'));
 const AdminDriveThru = lazy(() => import('@/pages/admin-drive-thru'));
 const AdminDelivery = lazy(() => import('@/pages/admin-delivery'));
@@ -262,8 +262,8 @@ function StaffRouter() {
           <Redirect to={isSuperAdmin ? '/super-admin' : '/admin'}/>
         </Route>
         <Route path="/admin">
-          {user?.staffRole === 'kds_barista' || user?.staffRole === 'host_cashier' ? (
-            <Redirect to="/admin/kds" />
+          {user?.staffRole === 'prep_barista' || user?.staffRole === 'host_cashier' ? (
+            <Redirect to="/admin/pagers" />
           ) : (
             <AdminLayout>
               <AdminDashboard />
@@ -287,7 +287,7 @@ function StaffRouter() {
         </Route>
         <Route path="/admin/settings"><AdminLayout><CafeSettings /></AdminLayout></Route>
         <Route path="/admin/library"><AdminLayout><MenuLibrary /></AdminLayout></Route>
-        <Route path="/admin/kds"><AdminLayout><AdminKds /></AdminLayout></Route>
+        <Route path="/admin/pagers"><AdminLayout><AdminPagers /></AdminLayout></Route>
         <Route path="/admin/orders"><AdminLayout><AdminOrders /></AdminLayout></Route>
         <Route path="/admin/tables"><AdminLayout><AdminTables /></AdminLayout></Route>
         <Route path="/admin/drive-thru"><AdminLayout><AdminDriveThru /></AdminLayout></Route>

@@ -227,12 +227,12 @@ export default function AdminDeliveryAndCommercePage() {
             {
               id: 'cart_pay_at_venue',
               title: 'Mode B · Order Now & Pay at Venue',
-              desc: 'Guests submit dine-in, counter, or curbside orders straight to KDS and pay cash/POS on pickup.',
+              desc: 'Guests submit dine-in, counter, or curbside orders straight to the live order queue and pay cash/POS on pickup.',
             },
             {
               id: 'full_online_checkout',
               title: 'Mode C · Full Online Checkout',
-              desc: 'Pre-paid checkout via SkipCash or Sadad (Apple Pay, Google Pay, NAPS, Visa/Mastercard) prior to KDS.',
+              desc: 'Pre-paid checkout via SkipCash or Sadad (Apple Pay, Google Pay, NAPS, Visa/Mastercard) prior to prep queue release.',
             },
           ].map(m => (
             <button

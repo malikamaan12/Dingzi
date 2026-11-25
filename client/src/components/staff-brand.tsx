@@ -73,7 +73,7 @@ export function StaffBrand({ compact = false }: { compact?: boolean }) {
           <DingziMark size={36} />
           <span>
             <strong>DINGZI</strong>
-            <small>Menus · Pager · KDS</small>
+            <small>Menus · Pagers · Orders</small>
           </span>
         </>
       ) : (

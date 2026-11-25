@@ -221,10 +221,10 @@ export function mountPushRoutes(app: Express) {
       const cafe = await getManagedCafe(req);
       if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
       const stats = await dispatchPushAlertToScopes([`staff:${cafe.id}`], {
-        title: `${cafe.name} · KDS & Curbside Alert Test`,
+        title: `${cafe.name} · Order & Curbside Alert Test`,
         body: 'Staff lock-screen push notifications are active for new orders and arrived vehicles.',
         tag: `staff-test-${cafe.id.slice(0, 8)}`,
-        url: '/admin/kds',
+        url: '/admin/pagers',
         urgent: true,
       });
       res.json({ sent: true, ...stats });

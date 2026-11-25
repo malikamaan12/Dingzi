@@ -82,7 +82,7 @@ export const orderingModes = ['browse_and_pager', 'cart_pay_at_venue', 'full_onl
 export type OrderingMode = (typeof orderingModes)[number];
 export const paymentGateways = ['none', 'skipcash', 'sadad'] as const;
 export type PaymentGateway = (typeof paymentGateways)[number];
-export const staffRoles = ['tenant_owner', 'branch_manager', 'host_cashier', 'kds_barista'] as const;
+export const staffRoles = ['tenant_owner', 'branch_manager', 'host_cashier', 'prep_barista'] as const;
 export type StaffRole = (typeof staffRoles)[number];
 export type EffectiveStaffRole = 'super_admin' | StaffRole;
 
@@ -239,7 +239,7 @@ export const staffAssignments = pgTable("staff_assignments", {
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, table => [
-  check("staff_assignments_role_check", sql`${table.staffRole} in ('tenant_owner', 'branch_manager', 'host_cashier', 'kds_barista')`),
+  check("staff_assignments_role_check", sql`${table.staffRole} in ('tenant_owner', 'branch_manager', 'host_cashier', 'prep_barista')`),
 ]);
 export type StaffAssignment = typeof staffAssignments.$inferSelect;
 

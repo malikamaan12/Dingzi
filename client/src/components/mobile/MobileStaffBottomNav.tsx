@@ -28,23 +28,23 @@ export function MobileStaffBottomNav() {
         { label: 'Library', url: '/admin/library', icon: LibraryBig },
         { label: 'Audit', url: '/super-admin/access-history', icon: History },
       ]
-    : role === 'kds_barista'
+    : role === 'prep_barista'
       ? [
-          { label: 'KDS', url: '/admin/kds', icon: BellRing },
+          { label: 'Pagers', url: '/admin/pagers', icon: BellRing },
           { label: 'Curbside', url: '/admin/drive-thru', icon: Car },
           { label: 'Orders', url: '/admin/orders', icon: Receipt },
           { label: 'App & Push', url: '/admin/mobile-app', icon: Smartphone },
         ]
       : role === 'host_cashier'
         ? [
-            { label: 'KDS', url: '/admin/kds', icon: BellRing },
+            { label: 'Pagers', url: '/admin/pagers', icon: BellRing },
             { label: 'Tables', url: '/admin/tables', icon: CalendarDays },
             { label: 'Orders', url: '/admin/orders', icon: Receipt },
             { label: 'Curbside', url: '/admin/drive-thru', icon: Car },
             { label: 'App & Push', url: '/admin/mobile-app', icon: Smartphone },
           ]
         : [
-            { label: 'KDS', url: '/admin/kds', icon: BellRing },
+            { label: 'Pagers', url: '/admin/pagers', icon: BellRing },
             { label: 'Orders', url: '/admin/orders', icon: Receipt },
             { label: 'Tables', url: '/admin/tables', icon: CalendarDays },
             { label: 'Menu', url: '/admin/menu', icon: UtensilsCrossed },

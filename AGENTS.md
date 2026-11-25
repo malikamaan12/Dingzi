@@ -19,7 +19,7 @@ On **every task** in this repository (`a:\Software Projects\pager`), you MUST ac
      - Soft Surface: Lilac Mist `#F6F5FC` (`#17132E` text, 16.7:1 AAA)
      - Violet Tint: Iris Wash `#EFEAFF` (`#4B1FE0` text, 7.3:1 AAA)
      - Muted Copy & Hairline: Violet-Slate `#57507A` / Mist Border `#E5E2F2` (7.1:1 AAA)
-   - Enforce 44x44px minimum touch targets with 8px+ separation, Hyper Indigo (`#4B1FE0`) focus rings, atomic `role="status"` live announcements, dual cues (icon + label + color) on KDS/pager states, and seamless English/Arabic (`dir="rtl"`) mirroring down to 320px with `prefers-reduced-motion` support.
+   - Enforce 44x44px minimum touch targets with 8px+ separation, Hyper Indigo (`#4B1FE0`) focus rings, atomic `role="status"` live announcements, dual cues (icon + label + color) on order/pager states, and seamless English/Arabic (`dir="rtl"`) mirroring down to 320px with `prefers-reduced-motion` support.
 
 3. **`taste-skill` (`.agents/skills/taste-skill`) — Anti-Slop Frontend Craft**
    - Build interfaces that read like a real shipped hospitality product (**Dingzi**), never a generic template.

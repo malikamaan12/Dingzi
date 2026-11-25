@@ -38,7 +38,7 @@ const photoBytes = Buffer.from(await photoRes.arrayBuffer());
 assert.equal(photoBytes.toString('ascii', 0, 4), 'RIFF');
 
 console.log('2/5 Verifying split-origin security boundary on dingzi-menu...');
-for (const blockedPath of ['/login', '/admin', '/admin/kds', '/super-admin', '/api/auth/user']) {
+for (const blockedPath of ['/login', '/admin', '/admin/pagers', '/super-admin', '/api/auth/user']) {
   const r = await fetch(`${guestOrigin}${blockedPath}`);
   assert.equal(r.status, 404, `Public guest origin must block ${blockedPath}`);
 }
@@ -66,7 +66,7 @@ const issueRes = await fetch(`${staffOrigin}/api/hospitality/pagers/issue`, {
 assert.equal(issueRes.status, 201);
 const issuedTicket = (await issueRes.json()).ticket;
 
-console.log('4/5 Verifying Cross-Worker WebSocket Hibernation (dingzi-menu guest WS <- dingzi-staff KDS buzz)...');
+console.log('4/6 Verifying Cross-Worker WebSocket Hibernation (dingzi-menu guest WS <- dingzi-staff Ready buzz)...');
 const wsUrl = `${guestOrigin.replace(/^https:/, 'wss:')}/api/ws/public/${urbanId}?scope=${encodeURIComponent(`pager:${issuedTicket.trackingToken}`)}`;
 const wsReceived = await new Promise((resolve, reject) => {
   const timer = setTimeout(() => reject(new Error('Timed out waiting for cross-Worker BranchRealtimeDO WebSocket event')), 12_000);

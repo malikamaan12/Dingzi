@@ -46,7 +46,7 @@ const ROLE_PRIORITY: Record<StaffRole, number> = {
   tenant_owner: 4,
   branch_manager: 3,
   host_cashier: 2,
-  kds_barista: 1,
+  prep_barista: 1,
 };
 
 async function resolveUserAccess(req: any): Promise<ResolvedAccess> {
@@ -228,7 +228,7 @@ export async function authUser(req: any): Promise<AuthUser> {
 
 /**
  * Enforces the PRD §3 User Roles & Permissions Matrix for scoped sub-roles
- * (`kds_barista` and `host_cashier`) while `super_admin`, `tenant_owner`, and
+ * (`prep_barista` and `host_cashier`) while `super_admin`, `tenant_owner`, and
  * `branch_manager` retain full branch management permissions.
  */
 function staffRoleAllowsRequest(staffRole: EffectiveStaffRole, method: string, path: string): boolean {
@@ -238,7 +238,7 @@ function staffRoleAllowsRequest(staffRole: EffectiveStaffRole, method: string, p
 
   const isRead = method === 'GET' || method === 'HEAD';
 
-  // Read-only context endpoints needed by both KDS tablets and Host/Cashier terminals
+  // Read-only context endpoints needed by both Barista prep tablets and Host/Cashier terminals
   if (
     isRead &&
     (/^\/api\/(?:restaurant|manager-menu|categories|menu-items)$/.test(path) ||
@@ -250,8 +250,8 @@ function staffRoleAllowsRequest(staffRole: EffectiveStaffRole, method: string, p
     return true;
   }
 
-  if (staffRole === 'kds_barista') {
-    // KDS / Barista / Runner: advance prep states, snooze items/modifiers, view bays & orders
+  if (staffRole === 'prep_barista') {
+    // Barista / Prep / Runner: advance prep states, snooze items/modifiers, view bays & orders
     if (
       method === 'POST' &&
       (/^\/api\/hospitality\/pagers\/[^/]+\/transition$/.test(path) ||
@@ -338,7 +338,7 @@ export function mountAccessControl(app: Express) {
         if (sharedPath.test(requestPath)) {
           if (requestPath.startsWith('/api/menu-library')) {
             const staffRole = await getEffectiveStaffRole(req);
-            if (staffRole === 'kds_barista' || staffRole === 'host_cashier') {
+            if (staffRole === 'prep_barista' || staffRole === 'host_cashier') {
               return res.status(403).json({ message: 'Menu library requires Branch Manager or Tenant Owner access.' });
             }
           }

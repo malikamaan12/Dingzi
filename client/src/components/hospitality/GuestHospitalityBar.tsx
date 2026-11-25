@@ -917,7 +917,7 @@ export default function GuestHospitalityBar({
             <SheetDescription>
               {restaurant.orderingMode === 'full_online_checkout'
                 ? `Secure online payment via ${(restaurant.paymentGateway || 'skipcash').toUpperCase()}`
-                : 'Sent straight to the barista KDS — pay when you pick up or at your table.'}
+                : 'Sent straight to the barista prep queue — pay when you pick up or at your table.'}
             </SheetDescription>
           </SheetHeader>
 

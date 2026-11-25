@@ -19,7 +19,7 @@ This platform is a clean-slate, multi-tenant SaaS application for cafés, restau
 | Principle | Architectural Implementation |
 | :--- | :--- |
 | **Clean-Slate Multi-Tenancy** | Built from scratch with strict `tenant_id` and `branch_id` isolation enforced at both the API middleware layer and PostgreSQL Row-Level Security (RLS), supporting multi-branch brands and single-site cafés alike. |
-| **Split Worker Security Boundary** | Replicates Cafe Menu's two-origin isolation: a public customer origin (`menu.<domain>`) serving zero-auth guest experiences, and a separate staff/admin origin (`staff.<domain>`) protecting KDS, host stands, branch settings, and super-admin controls. |
+| **Split Worker Security Boundary** | Replicates Cafe Menu's two-origin isolation: a public customer origin (`menu.<domain>`) serving zero-auth guest experiences, and a separate staff/admin origin (`staff.<domain>`) protecting the order & pager queue, host stands, branch settings, and super-admin controls. |
 | **Sub-Second Stateful Edge Queue** | Uses [Cloudflare Durable Objects with WebSocket Hibernation](https://developers.cloudflare.com/durable-objects/best-practices/websockets/) (one stateful room per active `branch_id`) paired with the browser Web Push API so status changes reach guest phones and barista tablets in under 250 ms without idle Worker billing. |
 | **Per-Tenant Commerce Flexibility** | Every branch selects its own `ordering_mode` (`browse_and_pager`, `cart_pay_at_venue`, or `full_online_checkout`) so browse-only cafés and full pre-order drive-thrus run on one unified codebase. |
 | **Permanent QR Targets** | Venue menus, dine-in tables, curbside parking bays, walk-in waitlist stands, and counter pager screens use immutable UUID routing tokens so printed acrylics and stickers never break across rebrands or menu edits. |
@@ -29,7 +29,7 @@ This platform is a clean-slate, multi-tenant SaaS application for cafés, restau
 | Role | Scope | Primary Capabilities |
 | :--- | :--- | :--- |
 | **Guest (Customer)** | Public (`menu.<domain>`) | Browse EN/AR menus, search/filter, customize items, spin the suggestion wheel, place orders (when enabled), track live virtual pager status, book tables or join walk-in waitlists, check into curbside/drive-thru bays, and launch aggregator delivery storefronts. |
-| **KDS / Barista / Runner** | Assigned Branch (`staff.<domain>`) | View live incoming orders, POS/auto-numbered pager tickets, and arrived drive-thru vehicles; advance prep states (`Preparing` to `Ready` to `Collected`); snooze out-of-stock items or modifiers. |
+| **Barista / Prep / Runner** | Assigned Branch (`staff.<domain>`) | View live incoming orders, POS/auto-numbered pager tickets, and arrived drive-thru vehicles; advance prep states (`Preparing` to `Ready` to `Collected`); snooze out-of-stock items or modifiers. |
 | **Host / Cashier** | Assigned Branch (`staff.<domain>`) | Issue instant virtual pager QR codes (by POS receipt number or 1-tap auto-number), manage floor table reservations, seat walk-in waitlist parties, and confirm pay-at-venue tickets. |
 | **Branch Manager** | Assigned Branch (`staff.<domain>`) | Configure branch profile, theme, ordering/payment mode, categories, items, variants, toppings, floor tables, curbside bays, aggregator links, permanent QR downloads, and branch analytics; import templates from the shared library. |
 | **Tenant Owner** | All Branches in Tenant | Compare branch prep times, peak hours, reservation volume, and aggregator clicks side-by-side (matching and extending [Pager App](https://pager-app.com/en/coffee-shop-pager) multi-branch analytics); manage branch managers and payment credentials. |
@@ -49,8 +49,8 @@ This platform is a clean-slate, multi-tenant SaaS application for cafés, restau
    - Copy-on-import **Shared Menu Library** allowing branches to clone curated items into independent branch records so subsequent edits never affect other cafés.
 4. **Configurable Tenant Ordering & Payment Modes:**
    - **Mode A — `browse_and_pager`:** Displays the interactive item customizer and live estimated total for reference only (zero cart, zero checkout), keeping guest browsing identical to Cafe Menu while enabling Virtual Pager, Table Booking, Waitlist, and Aggregator Delivery buttons.
-   - **Mode B — `cart_pay_at_venue`:** Enables cart submission for dine-in table QR orders, counter pickup, or drive-thru/curbside pre-orders, injecting tickets straight into the branch KDS while collecting payment via cash/POS terminal at the venue.
-   - **Mode C — `full_online_checkout`:** Enables online payment prior to KDS release through pluggable Qatar/GCC payment adapters supporting [SkipCash](https://skipcash.app/solutions) and [Sadad](https://sadad.qa/en/best-payment-gateway-qatar/) (Apple Pay, Google Pay, NAPS, Visa, Mastercard), verified via signed webhooks and idempotency keys.
+   - **Mode B — `cart_pay_at_venue`:** Enables cart submission for dine-in table QR orders, counter pickup, or drive-thru/curbside pre-orders, injecting tickets straight into the branch live order queue while collecting payment via cash/POS terminal at the venue.
+   - **Mode C — `full_online_checkout`:** Enables online payment prior to prep queue release through pluggable Qatar/GCC payment adapters supporting [SkipCash](https://skipcash.app/solutions) and [Sadad](https://sadad.qa/en/best-payment-gateway-qatar/) (Apple Pay, Google Pay, NAPS, Visa, Mastercard), verified via signed webhooks and idempotency keys.
 
 ### 4.2 Pillar 2 — Hardware-Free Virtual Pager & Counter Display
 
@@ -89,7 +89,7 @@ This platform is a clean-slate, multi-tenant SaaS application for cafés, restau
    - Pre-ordering guests enter vehicle color, car make/body type (SUV, Sedan, Pickup, Coupe), and license plate number during order placement, then tap **5 Mins Away** and **I'm Here — Select Bay** on arrival.
    - Drive-up guests without a pre-order scan the parking-bay QR directly from their car window: if ordering is enabled, their bay ID pre-fills into checkout; if `browse_and_pager` is active, staff take the order car-side and link the bay's virtual pager to the vehicle.
 3. **Runner & Window Dispatch Board:**
-   - Dedicated KDS Drive-Thru view highlights arrived vehicles with distinct visual car-color badges, plate numbers, bay codes, and wait timers since arrival check-in (`arrived_at`), firing an audible chime when a pre-ordered vehicle pulls into a bay.
+   - Dedicated Drive-Thru dispatch view highlights arrived vehicles with distinct visual car-color badges, plate numbers, bay codes, and wait timers since arrival check-in (`arrived_at`), firing an audible chime when a pre-ordered vehicle pulls into a bay.
 
 ### 4.5 Pillar 5 — Aggregator Delivery Storefront Handoff (v1)
 
@@ -108,8 +108,8 @@ This platform is a clean-slate, multi-tenant SaaS application for cafés, restau
 | Component | Runtime / Service | Responsibility |
 | :--- | :--- | :--- |
 | **Public Guest Worker** (`wrangler.jsonc`) | Cloudflare Worker + React SPA (`menu.<domain>`) | Serves guest menus, item customizer, virtual pager screen, reservation/waitlist forms, curbside check-in, checkout redirects, and aggregator handoff links. Zero admin routes or staff bundles exposed. |
-| **Staff & Admin Worker** (`wrangler.staff.jsonc`) | Cloudflare Worker + React SPA (`staff.<domain>`) | Serves KDS/Barista console, Counter Pager issuer, Host table/waitlist map, Drive-Thru bay board, Branch Manager studio, and Super-Admin portal. |
-| **Branch Realtime Hub** (`BranchRealtimeDO`) | [Cloudflare Durable Objects](https://developers.cloudflare.com/durable-objects/) | Maintains hibernatable WebSockets per `branch_id` for guests (scoped strictly to their `tracking_token` channel) and authenticated staff (receiving live KDS, pager, waitlist, and curbside bay diffs). |
+| **Staff & Admin Worker** (`wrangler.staff.jsonc`) | Cloudflare Worker + React SPA (`staff.<domain>`) | Serves Barista & Pager Queue console, Counter Pager issuer, Host table/waitlist map, Drive-Thru bay board, Branch Manager studio, and Super-Admin portal. |
+| **Branch Realtime Hub** (`BranchRealtimeDO`) | [Cloudflare Durable Objects](https://developers.cloudflare.com/durable-objects/) | Maintains hibernatable WebSockets per `branch_id` for guests (scoped strictly to their `tracking_token` channel) and authenticated staff (receiving live order queue, pager, waitlist, and curbside bay diffs). |
 | **Primary Relational Store** | PostgreSQL 16 (Supabase + Hyperdrive) | Stores multi-tenant relational state, enforces `tstzrange` table booking exclusions, Row-Level Security (RLS), optimistic concurrency (`version`), and JSON/SQL backup exports. |
 | **Object Media Store** | Cloudflare R2 / Supabase Storage | Stores tenant logos, cover banners, and dedicated menu item photos served through edge caching. |
 
@@ -119,13 +119,13 @@ This platform is a clean-slate, multi-tenant SaaS application for cafés, restau
 /
 ├── client/
 │   ├── guest/                # Public mobile menu, virtual pager, table booking, drive-thru, delivery sheet
-│   ├── staff/                # KDS/Pager bar console, host floor view, drive-thru board, manager & super-admin
+│   ├── staff/                # Pager & Order Queue console, host floor view, drive-thru board, manager & super-admin
 │   └── shared-ui/            # RTL-safe primitives, theme tokens (plum, ocean, terracotta, custom)
 ├── server/
 │   ├── public-worker.ts      # Public Worker entry + guest read/booking/pager/checkout endpoints
 │   ├── staff-worker.ts       # Protected Staff/Admin Worker entry + RBAC & tenant boundary middleware
 │   ├── durable-objects/
-│   │   └── branch-hub.ts     # WebSocket Hibernation room for sub-second pager, waitlist & KDS events
+│   │   └── branch-hub.ts     # WebSocket Hibernation room for sub-second pager, waitlist & order events
 │   ├── payments/             # Pluggable SkipCash, Sadad & Pay-at-Venue gateway adapters + webhook verifier
 │   └── db/                   # Hyperdrive/Postgres client + RLS session context setter
 ├── shared/
@@ -149,7 +149,7 @@ This platform is a clean-slate, multi-tenant SaaS application for cafés, restau
 1. A Super Admin can provision two independent tenants (one set to `browse_and_pager`, one set to `full_online_checkout`) and import items from the Global Menu Library without later edits leaking across cafés.
 2. A cashier in a POS-free kiosk can tap **Auto Pager**, display QR `A-001`, have a guest scan on iOS/Android browser with zero app install, tap **Ready** on the barista screen, and trigger an audible/visual alert on the guest's phone in under 1 second.
 3. Concurrent booking requests for the same table and overlapping time window result in exactly one confirmed reservation and zero double-bookings at the PostgreSQL constraint layer.
-4. A drive-thru guest scanning `Bay 3` QR and tapping **I'm Here** immediately surfaces their car color, make, and plate number at the top of the branch's Drive-Thru KDS lane with an arrival timestamp.
+4. A drive-thru guest scanning `Bay 3` QR and tapping **I'm Here** immediately surfaces their car color, make, and plate number at the top of the branch's Drive-Thru dispatch lane with an arrival timestamp.
 5. A guest tapping **Delivery** on a branch menu sees only that branch's active [Talabat Qatar](https://www.talabat.com/qatar), [Snoonu](https://partner.snoonu.com/), or [Keeta Qatar](https://www.keeta-global.com/QA/en/wst) links, redirects cleanly, and increments the branch's outbound aggregator click counter without storing personal guest data.
 
 ## 8. External References

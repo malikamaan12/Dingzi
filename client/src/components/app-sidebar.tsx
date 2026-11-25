@@ -43,7 +43,7 @@ const ALL_ROLE_ACCESS: EffectiveStaffRole[] = [
   'tenant_owner',
   'branch_manager',
   'host_cashier',
-  'kds_barista',
+  'prep_barista',
 ];
 const MANAGER_ROLES: EffectiveStaffRole[] = ['super_admin', 'tenant_owner', 'branch_manager'];
 
@@ -61,8 +61,8 @@ const adminMenuItems: {
     roles: MANAGER_ROLES,
   },
   {
-    title: "Virtual Pager & KDS",
-    url: "/admin/kds",
+    title: "Live Pagers & Queue",
+    url: "/admin/pagers",
     icon: BellRing,
     roles: ALL_ROLE_ACCESS,
   },
@@ -164,7 +164,7 @@ const STAFF_ROLE_LABELS: Record<EffectiveStaffRole, string> = {
   tenant_owner: 'Tenant Owner',
   branch_manager: 'Branch Manager',
   host_cashier: 'Host / Cashier',
-  kds_barista: 'KDS / Barista',
+  prep_barista: 'Barista / Prep',
 };
 
 interface AppSidebarProps {

@@ -30,7 +30,7 @@ import { LocalQrBox } from '@/components/hospitality/LocalQrBox';
 import { subscribeStaffLockScreenPush } from '@/lib/mobileBridge';
 import { publicExperienceOrigin } from '@shared/menuIdentity';
 
-export default function AdminKdsPage() {
+export default function AdminPagersPage() {
   const { toast } = useToast();
   const menuQuery = useManagerMenu();
   const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -47,7 +47,7 @@ export default function AdminKdsPage() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const kdsQuery = useQuery<{ tickets: any[]; orders: any[]; bays: any[]; coasters?: any[] }>({
+  const queueQuery = useQuery<{ tickets: any[]; orders: any[]; bays: any[]; coasters?: any[] }>({
     queryKey: ['/api/hospitality/pagers'],
     refetchInterval: 5000,
   });
@@ -125,10 +125,10 @@ export default function AdminKdsPage() {
     },
   });
 
-  const tickets = kdsQuery.data?.tickets || [];
-  const coasters = kdsQuery.data?.coasters || [];
-  const ordersById = new Map((kdsQuery.data?.orders || []).map(o => [o.id, o]));
-  const baysById = new Map((kdsQuery.data?.bays || []).map(b => [b.id, b]));
+  const tickets = queueQuery.data?.tickets || [];
+  const coasters = queueQuery.data?.coasters || [];
+  const ordersById = new Map((queueQuery.data?.orders || []).map(o => [o.id, o]));
+  const baysById = new Map((queueQuery.data?.bays || []).map(b => [b.id, b]));
   const allActiveTickets = tickets.filter(t => ['waiting', 'preparing', 'ready'].includes(t.status));
   const activeTicketIdSet = new Set(allActiveTickets.map(t => t.id));
   const idleCoasters = coasters.filter(c => !c.activeTicketId || !activeTicketIdSet.has(c.activeTicketId));
@@ -178,7 +178,7 @@ export default function AdminKdsPage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <p className="manager-eyebrow">BARISTA &amp; COUNTER OPERATIONS</p>
-          <h1 className="text-2xl sm:text-3xl font-bold">Virtual Pager &amp; Live KDS Console</h1>
+          <h1 className="text-2xl sm:text-3xl font-bold">Live Virtual Pager &amp; Order Queue</h1>
           <p className="text-sm text-muted-foreground">
             Issue 1-tap hardware-free pagers, manage incoming orders, and buzz guest phones in under 250 ms.
           </p>
@@ -296,7 +296,7 @@ export default function AdminKdsPage() {
               <select
                 value={selectedCoasterId}
                 onChange={e => setSelectedCoasterId(e.target.value)}
-                data-testid="select-kds-coaster"
+                data-testid="select-pager-coaster"
                 className="manager-select w-full h-11 text-xs font-medium mt-1"
               >
                 <option value="">Screen QR only — no physical coaster</option>
@@ -351,11 +351,11 @@ export default function AdminKdsPage() {
         </form>
       </section>
 
-      {/* Active KDS Queue Grid */}
+      {/* Active Order & Pickup Queue Grid */}
       <section className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h2 className="text-lg font-bold">Active Prep &amp; Pickup Queue ({activeTickets.length})</h2>
-          <div className="flex flex-nowrap sm:flex-wrap overflow-x-auto no-scrollbar pb-1 gap-2" role="group" aria-label="Filter KDS tickets">
+          <div className="flex flex-nowrap sm:flex-wrap overflow-x-auto no-scrollbar pb-1 gap-2" role="group" aria-label="Filter order queue tickets">
             {[
               { id: 'all', label: `All (${allActiveTickets.length})` },
               { id: 'orders', label: 'In-App Orders' },
@@ -394,7 +394,7 @@ export default function AdminKdsPage() {
               return (
                 <article
                   key={ticket.id}
-                  data-testid={`card-kds-ticket-${ticket.ticketCode}`}
+                  data-testid={`card-pager-ticket-${ticket.ticketCode}`}
                   className={`rounded-2xl border-2 p-4 bg-card shadow-sm flex flex-col justify-between gap-3 ${
                     ticket.status === 'ready' ? 'border-[#C8FF42]' : 'border-border'
                   }`}
@@ -414,7 +414,7 @@ export default function AdminKdsPage() {
                       {ticket.customerName && <span className="font-medium">{ticket.customerName}</span>}
                       {boundCoaster && (
                         <Badge
-                          data-testid={`badge-kds-coaster-${boundCoaster.tagCode}`}
+                          data-testid={`badge-pager-coaster-${boundCoaster.tagCode}`}
                           className="bg-[#EFEAFF] text-[#4B1FE0] hover:bg-[#EFEAFF] border border-[#6236FF]/30 font-mono font-bold inline-flex items-center gap-1"
                         >
                           <Wifi className="w-3 h-3 rotate-90" />

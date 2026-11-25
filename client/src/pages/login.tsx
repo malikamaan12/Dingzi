@@ -34,7 +34,7 @@ export default function Login() {
       <section className="staff-login-card" aria-labelledby="staff-login-title">
         <StaffBrand/>
         <h1 id="staff-login-title">Welcome back.</h1>
-        <p className="staff-login-description">Your venues. Your KDS &amp; pagers. One place.<br/>Sign in to your Dingzi workspace.</p>
+        <p className="staff-login-description">Your venues. Your orders &amp; pagers. One place.<br/>Sign in to your Dingzi workspace.</p>
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-2"><Label htmlFor="email">Email address</Label><div className="relative"><Mail className="absolute left-3 top-3.5 h-4 w-4 text-muted-foreground"/><Input id="email" name="email" type="email" autoComplete="username" placeholder="Your work email" value={email} onChange={e=>setEmail(e.target.value)} required disabled={isLoading} className="pl-10" data-testid="input-email"/></div></div>
           <div className="space-y-2"><Label htmlFor="password">Password</Label><div className="relative"><Lock className="absolute left-3 top-3.5 h-4 w-4 text-muted-foreground"/><Input id="password" name="password" type={visible?'text':'password'} autoComplete="current-password" placeholder="Enter your password" value={password} onChange={e=>setPassword(e.target.value)} required disabled={isLoading} className="pl-10 pr-12" data-testid="input-password"/><button type="button" className="staff-password-toggle" disabled={isLoading} onClick={()=>setVisible(v=>!v)} aria-label={visible?'Hide password':'Show password'} aria-pressed={visible}>{visible?<EyeOff size={16}/>:<Eye size={16}/>}</button></div></div>
@@ -43,6 +43,6 @@ export default function Login() {
         <p className="staff-login-help">Need access? Contact your Dingzi platform administrator.</p>
       </section>
     </main>
-    <footer className="staff-login-footer">DINGZI HOSPITALITY · STAFF &amp; KDS ACCESS</footer>
+    <footer className="staff-login-footer">DINGZI HOSPITALITY · STAFF WORKSPACE</footer>
   </div>;
 }
