@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Download, Share, Smartphone, X } from 'lucide-react';
+import { Download, Share, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { detectDeviceCapabilities } from '@/lib/mobileBridge';
+import { DingziMark } from '@/components/staff-brand';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -34,14 +35,12 @@ export function PwaInstallBanner({ compact = false }: { compact?: boolean }) {
           compact ? 'text-xs' : 'text-sm'
         }`}
         role="region"
-        aria-label="Install Dingzi Mobile App"
+        aria-label="Install dingzi mobile app"
       >
         <div className="flex items-start min-[420px]:items-center gap-2.5 min-w-0 flex-1">
-          <span className="w-9 h-9 rounded-xl bg-[#EFEAFF] text-[#4B1FE0] grid place-items-center shrink-0">
-            <Smartphone className="w-4 h-4" />
-          </span>
+          <DingziMark size={36} />
           <div className="min-w-0 flex-1">
-            <strong className="block leading-snug">Install Dingzi App for Lock-Screen Ringing</strong>
+            <strong className="block leading-snug">Install dingzi for Lock-Screen Ringing</strong>
             <span className="text-xs text-muted-foreground block leading-snug mt-0.5">
               Instant push alerts even when your screen is locked or switched away.
             </span>

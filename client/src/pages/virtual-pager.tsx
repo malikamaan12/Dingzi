@@ -33,6 +33,7 @@ import {
 import { subscribeGuestLockScreenPush } from '@/lib/mobileBridge';
 import { dismissGuestPass, saveGuestPass } from '@/lib/guestSession';
 import { PwaInstallBanner } from '@/components/mobile/PwaInstallBanner';
+import { DingziMark } from '@/components/staff-brand';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
 
 function BeanCatcherMiniGame() {
@@ -277,16 +278,10 @@ function VirtualPagerContent() {
       <div className="max-w-lg mx-auto px-4 space-y-4">
         <header className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            {restaurant.logoUrl ? (
-              <img src={restaurant.logoUrl} alt="" className="w-11 h-11 rounded-xl object-cover border" />
-            ) : (
-              <div className="w-11 h-11 rounded-xl bg-primary text-primary-foreground grid place-items-center shrink-0">
-                <Coffee className="w-5 h-5" aria-hidden="true" />
-              </div>
-            )}
+            <DingziMark size={42} />
             <div className="min-w-0">
-              <p className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">
-                Dingzi · {t('Virtual Pager')}
+              <p className="text-xs tracking-wide text-muted-foreground font-semibold">
+                <span className="lowercase font-display font-extrabold text-[#6236FF]" dir="ltr" lang="en">dingzi</span> · {t('Virtual Pager')}
               </p>
               <h1 className="font-bold text-lg truncate">{label(restaurant.name)}</h1>
             </div>
@@ -300,14 +295,14 @@ function VirtualPagerContent() {
         {isRinging && (
           <div
             role="alert"
-            className="rounded-3xl bg-[#C8FF42] text-[#17132E] p-5 shadow-2xl space-y-3 border-2 border-[#17132E]"
+            className="rounded-3xl bg-[#C8FF42] text-[#17132E] p-5 shadow-dz-volt space-y-3 border-2 border-[#17132E]"
           >
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2.5">
-                <BellRing className="w-7 h-7 motion-safe:animate-pulse shrink-0 text-[#17132E]" aria-hidden="true" />
+                <BellRing className="w-7 h-7 motion-safe:animate-bell-swing shrink-0 text-[#17132E]" aria-hidden="true" />
                 <div>
-                  <strong className="block text-lg font-extrabold leading-tight">
-                    Pager {ticket.ticketCode} Ringing!
+                  <strong className="block text-lg font-display font-extrabold leading-tight">
+                    {t('Ding! Your food is ready.')} ({ticket.ticketCode})
                   </strong>
                   <span className="text-xs font-medium text-[#17132E]/85">
                     Head to the pickup counter — tap below to silence alarm.
@@ -374,19 +369,24 @@ function VirtualPagerContent() {
           )}
 
           {!isReady && !isCollected && (
-            <div className="mt-4 flex items-center justify-center gap-4 text-xs text-muted-foreground">
-              <span className="px-3 py-1.5 rounded-xl bg-muted font-medium">
-                Queue ahead: <strong className="text-foreground">{data.queueAhead}</strong>
-              </span>
-              <span className="px-3 py-1.5 rounded-xl bg-muted font-medium">
-                Est. prep: <strong className="text-foreground">~{ticket.estimatedPrepMins} min</strong>
-              </span>
+            <div className="mt-4 space-y-2.5">
+              <p className="text-xs font-semibold text-[#57507A]">
+                {t("Sit easy. We'll ding your phone when it's hot.")}
+              </p>
+              <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground font-mono">
+                <span className="px-3 py-1.5 rounded-xl bg-muted font-medium">
+                  {t('Queue ahead')}: <strong className="text-foreground">{data.queueAhead}</strong>
+                </span>
+                <span className="px-3 py-1.5 rounded-xl bg-muted font-medium">
+                  {t('Est. prep')}: <strong className="text-foreground">~{ticket.estimatedPrepMins} min</strong>
+                </span>
+              </div>
             </div>
           )}
 
           {isReady && (
-            <div className="mt-4 p-3 rounded-2xl bg-[#C8FF42] text-[#17132E] font-extrabold text-sm shadow">
-              Your order is ready at the pickup counter! Show code {ticket.ticketCode}.
+            <div className="mt-4 p-3.5 rounded-2xl bg-[#C8FF42] text-[#17132E] font-display font-extrabold text-sm shadow-dz-volt">
+              {t('Ding! Your food is ready.')} · {ticket.ticketCode}
             </div>
           )}
 
@@ -545,14 +545,19 @@ function VirtualPagerContent() {
         {/* Curbside / Drive-Thru Bay Arrival Check-in */}
         {restaurant.driveThruEnabled && !isCollected && data.bays?.length > 0 && (
           <section className="rounded-2xl border bg-card p-4 space-y-3">
-            <div className="flex flex-wrap items-center gap-2 font-semibold text-sm">
-              <Car className="w-4 h-4 text-primary" aria-hidden="true" />
-              <span>{t('Curbside & Drive-Thru')}</span>
-              {data.bay && (
-                <span className="ms-auto text-xs px-2.5 py-0.5 rounded-full bg-[#C8FF42] text-[#17132E] font-bold">
-                  Checked into {data.bay.code}
-                </span>
-              )}
+            <div className="space-y-1">
+              <div className="flex flex-wrap items-center gap-2 font-semibold text-sm">
+                <Car className="w-4 h-4 text-[#6236FF]" aria-hidden="true" />
+                <span>{t('Curbside & Drive-Thru')}</span>
+                {data.bay && (
+                  <span className="ms-auto text-xs px-2.5 py-0.5 rounded-full bg-[#C8FF42] text-[#17132E] font-mono font-bold">
+                    {data.bay.code}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-[#57507A]">
+                {t("Park easy. Scan your bay and we'll bring it out.")}
+              </p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
               <div>
@@ -664,7 +669,7 @@ function VirtualPagerContent() {
                     >
                       <Star
                         className={`w-6 h-6 ${
-                          star <= rating ? 'fill-amber-400 text-amber-500' : 'text-muted-foreground'
+                          star <= rating ? 'fill-[#6236FF] text-[#6236FF]' : 'text-muted-foreground'
                         }`}
                       />
                     </button>

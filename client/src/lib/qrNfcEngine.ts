@@ -225,13 +225,29 @@ export async function downloadDualQrNfcPlaqueSvg(opts: {
   <rect width="800" height="1040" rx="48" fill="#17132E"/>
   <rect x="28" y="28" width="744" height="984" rx="36" fill="#241E42" stroke="#6236FF" stroke-width="2" stroke-opacity="0.45"/>
 
-  <!-- Top Brand & Contactless NFC Header -->
-  <g transform="translate(64, 68)">
-    <rect width="260" height="52" rx="26" fill="#EFEAFF"/>
-    <text x="26" y="33" font-family="system-ui, -apple-system, sans-serif" font-size="18" font-weight="800" fill="#4B1FE0" letter-spacing="1.2">DINGZI · QR + NFC</text>
+  <!-- Official Volt Ringer Lockup + Contactless NFC Header -->
+  <g transform="translate(64, 62)">
+    <g transform="scale(0.24)">
+      <rect x="8" y="8" width="240" height="240" rx="58" fill="#6236FF"/>
+      <rect x="11" y="11" width="234" height="234" rx="55" fill="none" stroke="#FFFFFF" stroke-opacity="0.22" stroke-width="3"/>
+      <path d="M 152 68 A 56 56 0 0 1 189 126" fill="none" stroke="#C8FF42" stroke-width="13" stroke-linecap="round"/>
+      <path d="M 156 44 A 80 80 0 0 1 212 130" fill="none" stroke="#C8FF42" stroke-width="13" stroke-linecap="round"/>
+      <g transform="translate(114, 138) rotate(-25)">
+        <path d="M -22 44 A 22 22 0 0 0 22 44 Z" fill="#C8FF42"/>
+        <rect x="-18" y="-76" width="36" height="11" rx="5.5" fill="#FFFFFF"/>
+        <rect x="-6" y="-67" width="12" height="14" fill="#FFFFFF"/>
+        <path d="M -52 16 L -50 -10 A 50 50 0 0 1 50 -10 L 52 16 Z" fill="#FFFFFF"/>
+        <path d="M -56 23 L 56 23 L 68 38 Q 70 42 65 42 L -65 42 Q -70 42 -68 38 Z" fill="#FFFFFF"/>
+      </g>
+    </g>
+    <g transform="translate(74, 0)">
+      <text x="0" y="45" font-family="'Plus Jakarta Sans', 'Inter', system-ui, sans-serif" font-size="38" font-weight="800" fill="#FFFFFF">d&#305;ngz&#305;</text>
+      <circle cx="30" cy="17" r="4.2" fill="#C8FF42"/>
+      <circle cx="111" cy="17" r="4.2" fill="#C8FF42"/>
+    </g>
 
     <!-- Contactless NFC Waves Icon -->
-    <g transform="translate(604, 4)">
+    <g transform="translate(604, 8)">
       <rect width="68" height="44" rx="14" fill="#C8FF42"/>
       <path d="M24 29a9 9 0 0 1 0-14M32 33a15 15 0 0 1 0-22M40 37a21 21 0 0 1 0-30" fill="none" stroke="#17132E" stroke-width="3" stroke-linecap="round"/>
       <circle cx="18" cy="22" r="2.6" fill="#17132E"/>
@@ -239,22 +255,22 @@ export async function downloadDualQrNfcPlaqueSvg(opts: {
   </g>
 
   <!-- Venue & Plaque Title -->
-  <text x="400" y="182" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="34" font-weight="800" fill="#FFFFFF">${escapeXml(opts.venueName.slice(0, 38))}</text>
-  <text x="400" y="224" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="600" fill="#C8FF42">${escapeXml(opts.title.slice(0, 46))}</text>
+  <text x="400" y="182" text-anchor="middle" font-family="'Plus Jakarta Sans', 'Inter', system-ui, sans-serif" font-size="34" font-weight="800" fill="#FFFFFF">${escapeXml(opts.venueName.slice(0, 38))}</text>
+  <text x="400" y="224" text-anchor="middle" font-family="'Plus Jakarta Sans', 'Inter', system-ui, sans-serif" font-size="22" font-weight="600" fill="#C8FF42">${escapeXml(opts.title.slice(0, 46))}</text>
 
   <!-- Pure White Scannable QR Stage -->
-  <rect x="136" y="262" width="528" height="528" rx="36" fill="#FFFFFF"/>
+  <rect x="136" y="262" width="528" height="528" rx="36" fill="#FFFFFF" stroke="${accent}" stroke-width="4"/>
   <g transform="translate(160, 286)">
     ${strippedQr}
   </g>
 
-  <!-- Code Pill -->
-  <rect x="240" y="822" width="320" height="58" rx="29" fill="${accent}"/>
-  <text x="400" y="859" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="24" font-weight="800" fill="#FFFFFF" letter-spacing="1.5">${escapeXml(opts.code.slice(0, 22))}</text>
+  <!-- Volt Lime High-Visibility Code Pill (15.3:1 AAA with #17132E Midnight Indigo Ink) -->
+  <rect x="230" y="820" width="340" height="60" rx="30" fill="#C8FF42"/>
+  <text x="400" y="859" text-anchor="middle" font-family="'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace" font-size="24" font-weight="800" fill="#17132E" letter-spacing="1.2">${escapeXml(opts.code.slice(0, 22))}</text>
 
   <!-- Bilingual Scan / Tap Instructions -->
-  <text x="400" y="928" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="22" font-weight="700" fill="#FFFFFF">Scan QR Camera or Tap Phone (NFC)</text>
-  <text x="400" y="966" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="21" font-weight="600" fill="#E5E2F2">امسح الرمز بالكاميرا أو قرّب هاتفك</text>
+  <text x="400" y="928" text-anchor="middle" font-family="'Plus Jakarta Sans', 'Inter', system-ui, sans-serif" font-size="22" font-weight="700" fill="#FFFFFF">Scan QR Camera or Tap Phone (NFC)</text>
+  <text x="400" y="968" text-anchor="middle" font-family="'IBM Plex Sans Arabic', system-ui, sans-serif" font-size="21" font-weight="600" fill="#E5E2F2">امسح الرمز بالكاميرا أو قرّب هاتفك</text>
 </svg>`;
 
   const outBlob = new Blob([svg], { type: 'image/svg+xml;charset=utf-8' });

@@ -9,6 +9,9 @@ export default {
         lg: ".5625rem", /* 9px */
         md: ".375rem", /* 6px */
         sm: ".1875rem", /* 3px */
+        "dz-card": "20px",
+        "dz-sheet": "28px",
+        "dz-input": "14px",
       },
       colors: {
         // Flat / base colors (regular buttons)
@@ -83,22 +86,36 @@ export default {
         },
         dingzi: {
           violet: "#6236FF",
-          indigo: "#4B1FE0",
+          "violet-deep": "#4B1FE0",
+          "violet-wash": "#EFEAFF",
+          volt: "#C8FF42",
+          indigo: "#17132E",
+          "indigo-elevated": "#241E42",
+          "indigo-active": "#312959",
+          white: "#FFFFFF",
+          mist: "#F6F5FC",
+          hairline: "#E5E2F2",
+          muted: "#57507A",
+          overdue: "#FF4D6D",
+          // Existing codebase aliases
           lime: "#C8FF42",
           midnight: "#17132E",
           cosmic: "#241E42",
-          white: "#FFFFFF",
-          mist: "#F6F5FC",
           iris: "#EFEAFF",
           slate: "#57507A",
-          hairline: "#E5E2F2",
         },
       },
+      boxShadow: {
+        "dz-card": "0 8px 24px -6px rgba(23, 19, 46, 0.08)",
+        "dz-violet": "0 10px 26px -6px rgba(98, 54, 255, 0.38)",
+        "dz-volt": "0 12px 32px -6px rgba(200, 255, 66, 0.50)",
+      },
       fontFamily: {
-        sans: ["Inter", "var(--font-sans)"],
-        display: ["Poppins", "sans-serif"],
+        sans: ["Plus Jakarta Sans", "Inter", "var(--font-sans)"],
+        display: ["Plus Jakarta Sans", "Inter", "system-ui", "sans-serif"],
+        arabic: ["IBM Plex Sans Arabic", "Noto Sans Arabic", "system-ui", "sans-serif"],
         serif: ["var(--font-serif)"],
-        mono: ["var(--font-mono)"],
+        mono: ["JetBrains Mono", "var(--font-mono)"],
       },
       keyframes: {
         "accordion-down": {
@@ -109,10 +126,18 @@ export default {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        "bell-swing": {
+          "0%": { transform: "rotate(0deg)" },
+          "25%": { transform: "rotate(-16deg)" },
+          "50%": { transform: "rotate(12deg)" },
+          "75%": { transform: "rotate(-8deg)" },
+          "100%": { transform: "rotate(0deg)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "bell-swing": "bell-swing 0.64s cubic-bezier(0.22, 1, 0.36, 1)",
       },
     },
   },

@@ -187,7 +187,7 @@ try {
   const manifestRes = await api('GET', '/manifest.webmanifest');
   assert.equal(manifestRes.status, 200);
   assert.equal(manifestRes.data.display, 'standalone');
-  assert.equal(manifestRes.data.short_name, 'Dingzi');
+  assert.equal(manifestRes.data.short_name, 'dingzi');
   assert.equal(manifestRes.data.theme_color, '#6236FF');
   assert.equal(manifestRes.data.background_color, '#17132E');
   assert.ok(manifestRes.headers.get('content-security-policy')?.includes("worker-src 'self'"));
@@ -199,9 +199,17 @@ try {
   assert.ok(String(swRes.data).includes("self.addEventListener('push'"));
   assert.ok(String(swRes.data).includes('requireInteraction: true'));
 
-  for (const iconPath of ['/icon-192.svg', '/icon-512.svg', '/apple-touch-icon.svg']) {
+  for (const iconPath of [
+    '/icon-192.svg',
+    '/icon-512.svg',
+    '/apple-touch-icon.svg',
+    '/brand/dingzi-favicon-192.png',
+    '/brand/dingzi-app-icon-512.png',
+    '/brand/dingzi-icon-color.svg',
+    '/brand/dingzi-icon-monochrome-thermal.svg',
+  ]) {
     const iconRes = await api('GET', iconPath);
-    assert.equal(iconRes.status, 200, `Missing PWA icon ${iconPath}`);
+    assert.equal(iconRes.status, 200, `Missing PWA/brand asset ${iconPath}`);
   }
 
   const vapidRes = await api('GET', '/api/public/push/vapid-key');

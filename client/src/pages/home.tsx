@@ -114,7 +114,7 @@ function HomeDirectoryContent() {
         className="sticky top-0 z-30 border-b border-[#E5E2F2] bg-white/92 backdrop-blur"
       >
         <div className="mx-auto max-w-6xl flex items-center justify-between gap-2.5 px-4 sm:px-6 py-3 sm:py-4">
-          <Link href="/" className="flex items-center gap-2.5 min-w-0 shrink cursor-pointer" aria-label="Dingzi Home">
+          <Link href="/" className="flex items-center gap-2.5 min-w-0 shrink cursor-pointer" aria-label="dingzi home">
             <DingziWordmark tone="light" />
           </Link>
           <div className="flex items-center gap-2 shrink-0">
@@ -138,13 +138,19 @@ function HomeDirectoryContent() {
         {/* Hero + Instant Virtual Pager Lookup */}
         <section className="grid lg:grid-cols-12 gap-5 sm:gap-6 items-center">
           <div className="lg:col-span-7 space-y-3.5 sm:space-y-4">
-            <h1 className="text-3xl min-[400px]:text-4xl sm:text-6xl font-display font-extrabold leading-[1.1] tracking-tight text-balance text-[#17132E]">
+            <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#EFEAFF] text-[#4B1FE0] text-xs font-bold">
+              {t('Menus, tables, and pickup — made dingzi.')}
+            </span>
+            <h1
+              style={{ letterSpacing: dir === 'rtl' ? '0' : '-0.025em' }}
+              className="text-3xl min-[400px]:text-4xl sm:text-6xl font-display font-extrabold leading-[1.12] text-balance text-[#17132E]"
+            >
               {t('Scan the table.')}
               <br />
               <span className="text-[#6236FF]">{t('Skip the crowd.')}</span>
             </h1>
             <p className="text-[#57507A] text-sm sm:text-lg leading-relaxed max-w-xl">
-              Browse live English &amp; Arabic menus, order ahead or pay at the venue, track your virtual pager with lock-screen phone ringing, book a table, or check into a curbside bay.
+              {t("Sit easy. We'll ding your phone when it's hot.")} Browse live English &amp; Arabic menus, reserve tables, or check into a curbside pickup bay right in your browser.
             </p>
           </div>
 
@@ -350,7 +356,7 @@ function HomeDirectoryContent() {
         style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))' }}
         className="mx-auto max-w-6xl border-t border-[#E5E2F2] px-4 sm:px-6 pt-6 text-sm text-[#57507A] flex flex-wrap items-center justify-between gap-4"
       >
-        <span>Dingzi · Multi-Tenant Hospitality Operating Platform</span>
+        <span>{t('Menus, tables, and pickup — made dingzi.')}</span>
         {!publicOnly && (
           <Link href="/login" className="min-h-11 inline-flex items-center text-[#4B1FE0] font-semibold hover:underline cursor-pointer">
             Staff &amp; Super-Admin Sign In

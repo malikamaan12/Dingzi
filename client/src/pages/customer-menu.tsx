@@ -26,6 +26,7 @@ import {
 import GuestHospitalityBar from '@/components/hospitality/GuestHospitalityBar';
 import { ActiveGuestPassesBar } from '@/components/hospitality/ActiveGuestPassesBar';
 import { PwaInstallBanner } from '@/components/mobile/PwaInstallBanner';
+import { DingziMark } from '@/components/staff-brand';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { cafeDate, cafeThemeStyle } from '@/lib/cafeTheme';
 import { liveCafeStyle, menuTone } from '@/lib/menuPalette';
@@ -708,7 +709,10 @@ function CustomerMenuContent() {
         <footer className="guest-footer pb-28">
           <span>
             <bdi>{label(restaurant.name)}</bdi>
-            <small>Powered by Dingzi · {t('A little pause, a good moment.')}</small>
+            <small className="inline-flex items-center justify-center gap-1.5 opacity-65">
+              <DingziMark size={15} variant="thermal" />
+              <span>{t('Powered by dingzi')} · {t('A little pause, a good moment.')}</span>
+            </small>
           </span>
         </footer>
       </div>

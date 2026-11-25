@@ -2,8 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
-/* LIGHT MODE — Dingzi Official Brand Palette */
+/* LIGHT MODE — dingzi Official Brand Palette (v1.0) */
+/* Strict Brand Guardrail: Zero Gold, Zero #000000 Black */
 :root {
+  --dz-electric-violet: #6236FF;
+  --dz-volt-lime: #C8FF42;
+  --dz-midnight-indigo: #17132E;
+  --dz-pure-white: #FFFFFF;
+  --dz-bg-canvas: #FFFFFF;
+  --dz-bg-subtle: #F6F5FC;
+  --dz-bg-tint: #EFEAFF;
+  --dz-border-hairline: #E5E2F2;
+  --dz-ink-primary: #17132E;
+  --dz-ink-secondary: #2E2752;
+  --dz-ink-muted: #57507A;
+  --dz-action-bg: #6236FF;
+  --dz-action-bg-hover: #4B1FE0;
+  --dz-action-fg: #FFFFFF;
+  --dz-link-inline: #4B1FE0;
+  --dz-ready-bg: #C8FF42;
+  --dz-ready-fg: #17132E;
+  --dz-overdue-coral: #FF4D6D;
+  --dz-font-display: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+  --dz-font-sans: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
+  --dz-font-arabic: 'IBM Plex Sans Arabic', 'Noto Sans Arabic', system-ui, sans-serif;
+  --dz-font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --dz-radius-card: 20px;
+  --dz-radius-sheet: 28px;
+  --dz-radius-pill: 9999px;
+  --dz-radius-input: 14px;
+  --dz-shadow-card: 0 8px 24px -6px rgba(23, 19, 46, 0.08);
+  --dz-shadow-violet: 0 10px 26px -6px rgba(98, 54, 255, 0.38);
+  --dz-shadow-volt: 0 12px 32px -6px rgba(200, 255, 66, 0.50);
+
   --dingzi-electric-violet: #6236FF;
   --dingzi-hyper-indigo: #4B1FE0;
   --dingzi-volt-lime: #C8FF42;
@@ -54,9 +85,9 @@
   --chart-3: 77 100% 42%;
   --chart-4: 249 42% 24%;
   --chart-5: 250 21% 40%;
-  --font-sans: Inter, DM Sans, Open Sans, sans-serif;
+  --font-sans: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
   --font-serif: Georgia, serif;
-  --font-mono: Menlo, monospace;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
   --radius: .5rem;
   --shadow-2xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
   --shadow-xs: 0px 2px 0px 0px hsl(0 0% 0% / 0.00);
@@ -219,6 +250,24 @@
 
   .font-mono {
     font-variant-numeric: tabular-nums;
+  }
+
+  /* Official Arabic (RTL) typography rule: IBM Plex Sans Arabic, zero tracking, generous line-height so diacritics never clip */
+  [dir="rtl"],
+  :lang(ar) {
+    font-family: var(--dz-font-arabic);
+    letter-spacing: 0 !important;
+    line-height: 1.7;
+  }
+
+  [data-surface="prep-dark"] {
+    --dz-bg-canvas: #17132E;
+    --dz-bg-subtle: #241E42;
+    --dz-bg-tint: #312959;
+    --dz-border-hairline: #3B3269;
+    --dz-ink-primary: #FFFFFF;
+    --dz-ink-secondary: #E6E3F5;
+    --dz-ink-muted: #B8B2D8;
   }
 
   /* Prevent iOS Safari / mobile WebKit automatic viewport zoom on form focus (< 16px). */

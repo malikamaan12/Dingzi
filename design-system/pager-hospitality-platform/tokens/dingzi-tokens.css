@@ -1,0 +1,53 @@
+/* dingzi Official Brand & UI Design Tokens (v1.0) */
+/* Strict Brand Guardrail: Zero Gold, Zero #000000 Black */
+
+:root {
+  /* Core 4 Brand Colors */
+  --dz-electric-violet: #6236FF;
+  --dz-volt-lime: #C8FF42;
+  --dz-midnight-indigo: #17132E;
+  --dz-pure-white: #FFFFFF;
+
+  /* Extended UI State & Surface Ramp (Light Mode Default) */
+  --dz-bg-canvas: #FFFFFF;
+  --dz-bg-subtle: #F6F5FC;
+  --dz-bg-tint: #EFEAFF;
+  --dz-border-hairline: #E5E2F2;
+  --dz-ink-primary: #17132E;
+  --dz-ink-secondary: #2E2752;
+  --dz-ink-muted: #57507A;
+
+  /* Interactive & Signal Tokens */
+  --dz-action-bg: #6236FF;
+  --dz-action-bg-hover: #4B1FE0;
+  --dz-action-fg: #FFFFFF;
+  --dz-link-inline: #4B1FE0;
+  --dz-ready-bg: #C8FF42;
+  --dz-ready-fg: #17132E; /* 15.3:1 AAA contrast */
+  --dz-overdue-coral: #FF4D6D;
+
+  /* Typography */
+  --dz-font-display: 'Plus Jakarta Sans', 'Bricolage Grotesque', system-ui, sans-serif;
+  --dz-font-sans: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
+  --dz-font-arabic: 'IBM Plex Sans Arabic', 'Noto Sans Arabic', system-ui, sans-serif;
+  --dz-font-mono: 'JetBrains Mono', 'Google Sans Code', ui-monospace, monospace;
+
+  /* Shape & Elevation */
+  --dz-radius-card: 20px;
+  --dz-radius-sheet: 28px;
+  --dz-radius-pill: 9999px;
+  --dz-radius-input: 14px;
+  --dz-shadow-card: 0 8px 24px -6px rgba(23, 19, 46, 0.08);
+  --dz-shadow-violet: 0 10px 26px -6px rgba(98, 54, 255, 0.38);
+  --dz-shadow-volt: 0 12px 32px -6px rgba(200, 255, 66, 0.50);
+}
+
+[data-surface="prep-dark"] {
+  --dz-bg-canvas: #17132E;
+  --dz-bg-subtle: #241E42;
+  --dz-bg-tint: #312959;
+  --dz-border-hairline: #3B3269;
+  --dz-ink-primary: #FFFFFF;
+  --dz-ink-secondary: #E6E3F5;
+  --dz-ink-muted: #B8B2D8;
+}

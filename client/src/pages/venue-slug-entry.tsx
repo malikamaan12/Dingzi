@@ -32,7 +32,7 @@ function EntryShell({
             <Link href="/">
               <Button className="w-full min-h-11 rounded-2xl cursor-pointer gap-2">
                 <ArrowLeft className="w-4 h-4" aria-hidden="true" />
-                <span>Browse Dingzi Venues</span>
+                <span>Browse dingzi Venues</span>
               </Button>
             </Link>
           </>
@@ -289,7 +289,7 @@ function SmartTagEntryContent() {
         </main>
 
         <footer className="max-w-md w-full mx-auto text-center text-xs text-white/60">
-          Dingzi · Contactless NFC &amp; QR Hospitality Pass
+          <span className="lowercase font-display font-bold text-white/80" dir="ltr" lang="en">dingzi</span> · Contactless NFC &amp; QR Hospitality Pass
         </footer>
       </div>
     );

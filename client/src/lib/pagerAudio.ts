@@ -63,38 +63,62 @@ export async function unlockGuestAlerts(): Promise<{
   };
 }
 
-export function playPagerReadyAlert(title = 'Order Ready!', body = 'Please head to the pickup counter.') {
+export function playPagerReadyAlert(
+  title = 'Ding! Your food is ready.',
+  body = 'Please head to the pickup counter.',
+) {
   const ctx = ensureAudioContext();
   if (ctx) {
     try {
-      // Three-note warm hospitality marimba/chime chord (C5 -> E5 -> G5 -> C6)
-      const notes = [523.25, 659.25, 783.99, 1046.5];
-      notes.forEach((freq, idx) => {
-        const start = ctx.currentTime + idx * 0.14;
-        const osc = ctx.createOscillator();
+      // Official dingzi Sonic Signature (Brand Guidelines v1.0, Section 6):
+      // Rising perfect-fifth marimba-bell chime: G5 (783.99 Hz, 140ms) -> D6 (1174.66 Hz, 240ms) = 380ms total
+      const phrase: Array<{ freq: number; offsetSec: number; durationSec: number }> = [
+        { freq: 783.99, offsetSec: 0, durationSec: 0.14 },
+        { freq: 1174.66, offsetSec: 0.14, durationSec: 0.24 },
+      ];
+      phrase.forEach(({ freq, offsetSec, durationSec }) => {
+        const start = ctx.currentTime + offsetSec;
+        const fund = ctx.createOscillator();
+        const overtone = ctx.createOscillator();
         const gain = ctx.createGain();
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(freq, start);
+        const overtoneGain = ctx.createGain();
+
+        fund.type = 'triangle';
+        fund.frequency.setValueAtTime(freq, start);
+        overtone.type = 'sine';
+        overtone.frequency.setValueAtTime(freq * 2, start);
+
         gain.gain.setValueAtTime(0.0001, start);
-        gain.gain.exponentialRampToValueAtTime(0.32, start + 0.03);
-        gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.55);
-        osc.connect(gain);
+        gain.gain.exponentialRampToValueAtTime(0.36, start + 0.014);
+        gain.gain.exponentialRampToValueAtTime(0.0001, start + durationSec + 0.12);
+
+        overtoneGain.gain.setValueAtTime(0.0001, start);
+        overtoneGain.gain.exponentialRampToValueAtTime(0.14, start + 0.01);
+        overtoneGain.gain.exponentialRampToValueAtTime(0.0001, start + durationSec);
+
+        fund.connect(gain);
+        overtone.connect(overtoneGain);
         gain.connect(ctx.destination);
-        osc.start(start);
-        osc.stop(start + 0.58);
+        overtoneGain.connect(ctx.destination);
+
+        fund.start(start);
+        overtone.start(start);
+        fund.stop(start + durationSec + 0.14);
+        overtone.stop(start + durationSec + 0.02);
       });
     } catch {}
   }
 
   if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
     try {
-      navigator.vibrate([280, 110, 280, 110, 460]);
+      // Official dingzi Haptic Ready Pattern: [180, 80, 240] ms
+      navigator.vibrate([180, 80, 240]);
     } catch {}
   }
 
   if (typeof Notification !== 'undefined' && Notification.permission === 'granted' && document.hidden) {
     try {
-      new Notification(title, { body });
+      new Notification(title, { body, icon: '/brand/dingzi-favicon-192.png' });
     } catch {}
   }
 }

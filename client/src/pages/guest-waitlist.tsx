@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useRoute, Link } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
-import { Bell, BellOff, BellRing, Check, Coffee, ShieldCheck, Users, XCircle } from 'lucide-react';
+import { Bell, BellOff, BellRing, Check, ShieldCheck, Users, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { cafeThemeStyle } from '@/lib/cafeTheme';
@@ -15,6 +15,7 @@ import {
 import { subscribeGuestLockScreenPush } from '@/lib/mobileBridge';
 import { dismissGuestPass, saveGuestPass } from '@/lib/guestSession';
 import { PwaInstallBanner } from '@/components/mobile/PwaInstallBanner';
+import { DingziMark } from '@/components/staff-brand';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
 
 export default function GuestWaitlistPage() {
@@ -103,9 +104,11 @@ function GuestWaitlistContent() {
       <div className="max-w-md mx-auto py-4 space-y-4">
         <header className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <Coffee className="w-6 h-6 text-primary" aria-hidden="true" />
+            <DingziMark size={38} />
             <div>
-              <p className="text-xs text-muted-foreground uppercase font-semibold">{t('Walk-In Waitlist')}</p>
+              <p className="text-xs text-muted-foreground font-semibold">
+                <span className="lowercase font-display font-extrabold text-[#6236FF]" dir="ltr" lang="en">dingzi</span> · {t('Walk-In Waitlist')}
+              </p>
               <h1 className="font-bold">{label(restaurant.name)}</h1>
             </div>
           </div>
@@ -154,9 +157,14 @@ function GuestWaitlistContent() {
           </p>
 
           {entry.status === 'waiting' && (
-            <p className="text-xs text-muted-foreground bg-muted rounded-xl py-2 px-3">
-              Parties ahead of you: <strong>{data.partiesAhead}</strong>
-            </p>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-[#57507A]">
+                {t('Skip the crowd. Your table will ding you.')}
+              </p>
+              <p className="text-xs text-muted-foreground bg-muted rounded-xl py-2 px-3 font-mono">
+                {t('Parties ahead of you')}: <strong>{data.partiesAhead}</strong>
+              </p>
+            </div>
           )}
 
           {isReady && (

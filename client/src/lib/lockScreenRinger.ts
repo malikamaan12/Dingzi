@@ -63,29 +63,28 @@ function getSilentWavUrl(): string {
 
 function getAlarmWavUrl(): string {
   if (alarmWavUrl) return alarmWavUrl;
-  // 2.4-second energetic hospitality bell-chime loop (C5 -> E5 -> G5 -> C6 -> G5 -> C6 + rest)
+  // Official dingzi Sonic Signature loop: rising perfect-fifth marimba-bell chime
+  // G5 (783.99 Hz, 140ms) -> D6 (1174.66 Hz, 240ms) = 380ms phrase, played twice per 2.2s cycle
   const sampleRate = 22050;
-  const totalSamples = Math.floor(sampleRate * 2.4);
+  const totalSamples = Math.floor(sampleRate * 2.2);
   const samples = new Int16Array(totalSamples);
   const notes = [
-    { freq: 523.25, start: 0.0, dur: 0.22 },
-    { freq: 659.25, start: 0.18, dur: 0.22 },
-    { freq: 783.99, start: 0.36, dur: 0.24 },
-    { freq: 1046.5, start: 0.56, dur: 0.42 },
-    { freq: 783.99, start: 1.08, dur: 0.2 },
-    { freq: 1046.5, start: 1.28, dur: 0.55 },
+    { freq: 783.99, start: 0.0, dur: 0.18 },
+    { freq: 1174.66, start: 0.14, dur: 0.34 },
+    { freq: 783.99, start: 0.76, dur: 0.18 },
+    { freq: 1174.66, start: 0.90, dur: 0.42 },
   ];
   for (const n of notes) {
     const startIdx = Math.floor(n.start * sampleRate);
     const len = Math.floor(n.dur * sampleRate);
     for (let j = 0; j < len && startIdx + j < totalSamples; j++) {
       const t = j / sampleRate;
-      const env = Math.min(1, j / (0.01 * sampleRate)) * Math.exp(-3.2 * (t / n.dur));
+      const env = Math.min(1, j / (0.008 * sampleRate)) * Math.exp(-3.4 * (t / n.dur));
       const wave =
-        0.65 * Math.sin(2 * Math.PI * n.freq * t) +
-        0.25 * Math.sin(2 * Math.PI * n.freq * 2 * t) +
-        0.1 * Math.sin(2 * Math.PI * n.freq * 3 * t);
-      const val = Math.max(-1, Math.min(1, samples[startIdx + j] / 32767 + wave * env * 0.78));
+        0.68 * Math.sin(2 * Math.PI * n.freq * t) +
+        0.24 * Math.sin(2 * Math.PI * n.freq * 2 * t) +
+        0.08 * Math.sin(2 * Math.PI * n.freq * 4 * t);
+      const val = Math.max(-1, Math.min(1, samples[startIdx + j] / 32767 + wave * env * 0.8));
       samples[startIdx + j] = Math.round(val * 32767);
     }
   }
@@ -110,8 +109,12 @@ function updateMediaSession(title: string, artist: string, onAck?: () => void) {
     navigator.mediaSession.metadata = new MediaMetadata({
       title,
       artist,
-      album: 'Dingzi Live Queue',
-      artwork: [{ src: '/icon-192.svg', sizes: '192x192', type: 'image/svg+xml' }],
+      album: 'dingzi Live Queue',
+      artwork: [
+        { src: '/brand/dingzi-favicon-192.png', sizes: '192x192', type: 'image/png' },
+        { src: '/brand/dingzi-app-icon-512.png', sizes: '512x512', type: 'image/png' },
+        { src: '/icon-192.svg', sizes: '192x192', type: 'image/svg+xml' },
+      ],
     });
     if (onAck) {
       navigator.mediaSession.setActionHandler('pause', () => onAck());
@@ -173,10 +176,10 @@ export function startContinuousRinger(meta: { cafeName: string; ticketCode: stri
   vibrateInterval = window.setInterval(() => {
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       try {
-        navigator.vibrate([450, 150, 450, 150, 650]);
+        navigator.vibrate([180, 80, 240]);
       } catch {}
     }
-  }, 2400);
+  }, 2200);
 
   if (synthFallbackInterval) window.clearInterval(synthFallbackInterval);
   synthFallbackInterval = window.setInterval(() => {

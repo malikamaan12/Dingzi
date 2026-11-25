@@ -21,8 +21,8 @@ export default function PermanentMenuQR({ restaurant }: { restaurant: { id: stri
     // Menu/profile edits do not regenerate this deterministic restaurant identity.
     const qr = new QRCodeStyling({ width: 600, height: 600, data: menuUrl, margin: 48,
       qrOptions: { mode: 'Byte', errorCorrectionLevel: 'H' },
-      dotsOptions: { type: 'square', color: '#141414' }, backgroundOptions: { color: '#ffffff' },
-      cornersSquareOptions: { type: 'square', color: '#141414' }, cornersDotOptions: { type: 'square', color: '#141414' },
+      dotsOptions: { type: 'rounded', color: '#17132E' }, backgroundOptions: { color: '#FFFFFF' },
+      cornersSquareOptions: { type: 'extra-rounded', color: '#6236FF' }, cornersDotOptions: { type: 'dot', color: '#4B1FE0' },
     });
     const element = container.current;
     element.replaceChildren(); qr.append(element); code.current = qr; setReady(true); setCopied(false);

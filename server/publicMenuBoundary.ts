@@ -20,6 +20,7 @@ const pwaStatic = new Set([
   '/icon-512.svg',
   '/apple-touch-icon.svg',
 ]);
+const brandStatic = /^\/brand\/[a-z0-9._-]+\.(?:svg|png)$/i;
 
 export function publicMenuRequestAllowed(request: Request): boolean {
   const path = new URL(request.url).pathname;
@@ -29,6 +30,7 @@ export function publicMenuRequestAllowed(request: Request): boolean {
       path === '/index.html' ||
       path === '/favicon.svg' ||
       pwaStatic.has(path) ||
+      brandStatic.test(path) ||
       path.startsWith('/assets/') ||
       guestPage.test(path) ||
       photo.test(path) ||

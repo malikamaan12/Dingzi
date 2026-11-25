@@ -1,7 +1,20 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <rect width="64" height="64" rx="16" fill="#17132E"/>
-  <rect x="6" y="6" width="52" height="52" rx="13" fill="#6236FF"/>
-  <path d="M23 19h9.5c8.008 0 14 5.596 14 13s-5.992 13-14 13H23V19zm7.2 6.2v13.6h2.1c4.42 0 7.3-2.69 7.3-6.8s-2.88-6.8-7.3-6.8h-2.1z" fill="#FFFFFF"/>
-  <circle cx="46.5" cy="17.5" r="5" fill="#C8FF42"/>
-  <path d="M48 9.5a11 11 0 0 1 6.5 6.5" fill="none" stroke="#C8FF42" stroke-width="2.6" stroke-linecap="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="512" height="512">
+  <!-- Squircle Base -->
+  <rect x="8" y="8" width="240" height="240" rx="58" fill="#6236FF"/>
+  <rect x="11" y="11" width="234" height="234" rx="55" fill="none" stroke="#FFFFFF" stroke-opacity="0.22" stroke-width="3"/>
+  <!-- Concentric Volt Lime Sound Arcs (Pill Caps) -->
+  <path d="M 152 68 A 56 56 0 0 1 189 126" fill="none" stroke="#C8FF42" stroke-width="13" stroke-linecap="round"/>
+  <path d="M 156 44 A 80 80 0 0 1 212 130" fill="none" stroke="#C8FF42" stroke-width="13" stroke-linecap="round"/>
+  <!-- Tilted Ringing Service Bell (-25 deg around center 116, 138) -->
+  <g transform="translate(114, 138) rotate(-25)">
+    <!-- Volt Lime Clapper Sphere -->
+    <path d="M -22 44 A 22 22 0 0 0 22 44 Z" fill="#C8FF42"/>
+    <!-- T-Top Ringer Button -->
+    <rect x="-18" y="-76" width="36" height="11" rx="5.5" fill="#FFFFFF"/>
+    <rect x="-6" y="-67" width="12" height="14" fill="#FFFFFF"/>
+    <!-- Main Bell Dome -->
+    <path d="M -52 16 L -50 -10 A 50 50 0 0 1 50 -10 L 52 16 Z" fill="#FFFFFF"/>
+    <!-- Separated Flared Brim -->
+    <path d="M -56 23 L 56 23 L 68 38 Q 70 42 65 42 L -65 42 Q -70 42 -68 38 Z" fill="#FFFFFF"/>
+  </g>
 </svg>

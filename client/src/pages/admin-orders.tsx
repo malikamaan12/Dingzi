@@ -22,6 +22,7 @@ import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useManagerMenu } from '@/lib/managerMenu';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
 import { useToast } from '@/hooks/use-toast';
+import { DingziMark } from '@/components/staff-brand';
 import type { GuestOrder, PagerTicket } from '@shared/schema';
 
 export default function AdminOrdersPage() {
@@ -139,7 +140,7 @@ export default function AdminOrdersPage() {
   function downloadReceiptTxt(order: GuestOrder) {
     const ticket = ticketsByOrderId.get(order.id);
     const lines = [
-      `${cafe?.name || 'Dingzi Hospitality'}`,
+      `${cafe?.name || 'dingzi Hospitality'}`,
       cafe?.address ? `${cafe.address}` : '',
       '----------------------------------------',
       `Order #:   ${order.orderNumber}`,
@@ -160,7 +161,7 @@ export default function AdminOrdersPage() {
       ),
       '----------------------------------------',
       `TOTAL:     ${order.total} ${order.currency}`,
-      'Powered by Dingzi',
+      'Powered by dingzi',
     ].filter(Boolean);
 
     const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
@@ -407,6 +408,15 @@ export default function AdminOrdersPage() {
               </DialogHeader>
 
               <div className="rounded-2xl border bg-muted/30 p-4 space-y-3 text-sm font-mono">
+                <div className="flex items-center justify-between border-b pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <DingziMark size={24} variant="thermal" />
+                    <span className="font-sans font-extrabold lowercase tracking-tight text-sm" dir="ltr" lang="en">
+                      dingzi
+                    </span>
+                  </div>
+                  <span className="text-[11px] text-muted-foreground">58mm / 80mm POS</span>
+                </div>
                 <div className="flex justify-between text-xs">
                   <span>Guest: {receiptOrder.customerName || 'Walk-In'}</span>
                   <span>{receiptOrder.channel.replace('_', ' ')}</span>
@@ -438,6 +448,7 @@ export default function AdminOrdersPage() {
                   <span>TOTAL</span>
                   <span>{receiptOrder.total} {receiptOrder.currency}</span>
                 </div>
+                <p className="text-[11px] text-center text-muted-foreground pt-1">Powered by dingzi</p>
               </div>
 
               <div className="grid grid-cols-2 gap-2">

@@ -114,7 +114,7 @@ try {
   await request(publicInstance,'POST','/api/login',{ email:'manager@test.cafe', password },'',404);
   await request(publicInstance,'POST','/api/login',{ email:'manager@test.cafe', password },cookie,404);
   for (const method of ['POST','PUT','PATCH','DELETE','OPTIONS']) await request(publicInstance,method,'/api/restaurant/public/'+cafe,{},cookie,404);
-  for (const path of ['/','/menu/'+cafe,'/table/'+cafe,'/bay/'+cafe,'/favicon.svg','/manifest.webmanifest','/sw.js','/icon-192.svg','/icon-512.svg','/apple-touch-icon.svg','/assets/menu.js']) await request(publicInstance,'GET',path);
+  for (const path of ['/','/menu/'+cafe,'/table/'+cafe,'/bay/'+cafe,'/favicon.svg','/manifest.webmanifest','/sw.js','/icon-192.svg','/icon-512.svg','/apple-touch-icon.svg','/brand/dingzi-icon-color.svg','/brand/dingzi-favicon-192.png','/assets/menu.js']) await request(publicInstance,'GET',path);
   await request(publicInstance,'HEAD','/menu/'+cafe);
   const pubVapid = await request(publicInstance,'GET','/api/public/push/vapid-key',undefined,cookie);
   assert.equal(pubVapid.cookie,'');
