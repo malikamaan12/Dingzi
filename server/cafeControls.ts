@@ -1,7 +1,7 @@
 import { type Express, type RequestHandler } from 'express';
 import { storage } from './storage';
 import { db } from './db';
-import { categories, restaurants, menuItems, menuItemPriceVariants, diningZones, diningTables, serviceBays, aggregatorLinks, sessions, users, insertMenuItemSchema, insertPriceVariantSchema, cafeProfileSchema, passwordSchema } from '@shared/schema';
+import { categories, restaurants, menuItems, menuItemPriceVariants, diningZones, diningTables, serviceBays, aggregatorLinks, smartTags, sessions, users, insertMenuItemSchema, insertPriceVariantSchema, cafeProfileSchema, passwordSchema } from '@shared/schema';
 import { eq, and, ne, sql } from 'drizzle-orm';
 import { isAuthenticated } from './localAuth';
 import bcrypt from './passwords';
@@ -94,10 +94,13 @@ export function mountCafeControls(app: Express) {
   mountPricingControls(app);
   app.post('/api/restaurant', isAuthenticated, async (req: any, res, next) => {
     try {
+      const managed = await getManagedCafe(req);
       const { userId, expectedUpdatedAt, ...profile } = req.body;
       const data = cafeProfileSchema.parse(profile);
       const result = await db.transaction(async tx => {
-        const [current] = await tx.select().from(restaurants).where(eq(restaurants.userId, userId)).for('update');
+        const [current] = managed
+          ? await tx.select().from(restaurants).where(eq(restaurants.id, managed.id)).for('update')
+          : await tx.select().from(restaurants).where(eq(restaurants.userId, userId)).for('update');
         if (current && expectedUpdatedAt && current.updatedAt?.getTime() !== new Date(expectedUpdatedAt).getTime()) throw Object.assign(new Error('This café profile changed after you opened it. Reload before saving.'), { status: 409 });
         const [cafe] = current ? await tx.update(restaurants).set({ ...data, version: (current.version || 1) + 1, updatedAt: new Date() }).where(eq(restaurants.id, current.id)).returning() : await tx.insert(restaurants).values({ ...data, userId }).returning();
         return cafe;
@@ -182,7 +185,7 @@ export function mountCafeControls(app: Express) {
     try {
       const cafe = await getManagedCafe(req);
       if (!cafe) return res.sendStatus(404);
-      const [cats, items, variants, zones, tables, bays, aggregators] = await Promise.all([
+      const [cats, items, variants, zones, tables, bays, aggregators, tags] = await Promise.all([
         storage.getCategoriesByRestaurantId(cafe.id),
         storage.getMenuItemsByRestaurantId(cafe.id),
         storage.getPriceVariantsByRestaurantId(cafe.id),
@@ -190,9 +193,10 @@ export function mountCafeControls(app: Express) {
         db.select().from(diningTables).where(eq(diningTables.restaurantId, cafe.id)),
         db.select().from(serviceBays).where(eq(serviceBays.restaurantId, cafe.id)),
         db.select().from(aggregatorLinks).where(eq(aggregatorLinks.restaurantId, cafe.id)),
+        db.select().from(smartTags).where(eq(smartTags.restaurantId, cafe.id)),
       ]);
       res.attachment('dingzi-branch-backup.json').json({
-        version: 1,
+        version: 2,
         exportedAt: new Date().toISOString(),
         restaurant: cafe,
         categories: cats,
@@ -202,6 +206,7 @@ export function mountCafeControls(app: Express) {
         diningTables: tables,
         serviceBays: bays,
         aggregatorLinks: aggregators,
+        smartTags: tags.map(({ activeTicketId: _transient, ...rest }) => rest),
       });
     } catch(e) { next(e); }
   });

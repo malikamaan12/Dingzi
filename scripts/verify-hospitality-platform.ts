@@ -464,6 +464,23 @@ try {
   assert.equal(switchedToB.data.cafeContext.id, cafeB);
   assert.equal(switchedToB.data.staffRole, 'tenant_owner');
 
+  // Verify Tenant Owner saving /api/restaurant while switched to Cafe B updates Cafe B (never Cafe A) and /api/hospitality/dashboard reflects Cafe B
+  const updatedCafeB = await api('POST', '/api/restaurant', {
+    name: 'Pearl Drive-Thru Roasters',
+    cuisineType: 'Specialty Drive-Thru Espresso',
+    brandAccentHex: '#6236FF',
+  }, cookieA);
+  assert.equal(updatedCafeB.status, 200);
+  assert.equal(updatedCafeB.data.id, cafeB);
+  assert.equal(updatedCafeB.data.cuisineType, 'Specialty Drive-Thru Espresso');
+  const dashB = await api('GET', '/api/hospitality/dashboard', undefined, cookieA);
+  assert.equal(dashB.status, 200);
+  assert.ok(dashB.data.liveOps.orders.totalCount >= 2);
+  assert.ok(Array.isArray(dashB.data.readiness.checklist));
+  const analyticsB = await api('GET', '/api/hospitality/analytics', undefined, cookieA);
+  assert.equal(analyticsB.status, 200);
+  assert.ok(analyticsB.data.ordersByChannel.counter_pickup.count >= 2);
+
   // Shared Menu Library hospitality parity (allergenTags & prepTimeMins copied across branches)
   const pubLib = await api('POST', '/api/menu-library/publish', {
     restaurantId: cafeB,

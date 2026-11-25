@@ -555,23 +555,23 @@ export default function AdminDeliveryAndCommercePage() {
                     disabled={idx === 0}
                     aria-label={`Move ${agg.displayName} up`}
                     onClick={() => void moveAggregator(idx, -1)}
-                    className="p-1.5 rounded-lg border disabled:opacity-35 cursor-pointer"
+                    className="w-11 h-11 rounded-xl border hover:bg-muted grid place-items-center disabled:opacity-35 cursor-pointer"
                   >
-                    <ArrowUp className="w-3.5 h-3.5" />
+                    <ArrowUp className="w-4 h-4" />
                   </button>
                   <button
                     type="button"
                     disabled={idx === aggregators.length - 1}
                     aria-label={`Move ${agg.displayName} down`}
                     onClick={() => void moveAggregator(idx, 1)}
-                    className="p-1.5 rounded-lg border disabled:opacity-35 cursor-pointer"
+                    className="w-11 h-11 rounded-xl border hover:bg-muted grid place-items-center disabled:opacity-35 cursor-pointer"
                   >
-                    <ArrowDown className="w-3.5 h-3.5" />
+                    <ArrowDown className="w-4 h-4" />
                   </button>
                   <button
                     type="button"
                     onClick={() => deleteAggregator.mutate(agg.id)}
-                    className="p-1.5 text-muted-foreground hover:text-destructive cursor-pointer"
+                    className="w-11 h-11 rounded-xl text-muted-foreground hover:text-destructive hover:bg-destructive/10 grid place-items-center cursor-pointer"
                     aria-label={`Delete ${agg.displayName}`}
                   >
                     <Trash2 className="w-4 h-4" />

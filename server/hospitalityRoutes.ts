@@ -2931,17 +2931,267 @@ export function mountHospitalityRoutes(app: Express) {
     }
   });
 
-  // Branch SLA, Congestion & Aggregator Analytics
+  // Live Restaurant Operations Command Center Snapshot (/admin)
+  app.get('/api/hospitality/dashboard', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+
+      const [
+        cats,
+        items,
+        tickets,
+        orders,
+        zones,
+        tables,
+        reservations,
+        waitlist,
+        bays,
+        tags,
+        aggregators,
+      ] = await Promise.all([
+        storage.getCategoriesByRestaurantId(cafe.id),
+        storage.getMenuItemsByRestaurantId(cafe.id),
+        db
+          .select()
+          .from(pagerTickets)
+          .where(eq(pagerTickets.restaurantId, cafe.id))
+          .orderBy(asc(pagerTickets.queuedAt))
+          .limit(250),
+        db
+          .select()
+          .from(guestOrders)
+          .where(eq(guestOrders.restaurantId, cafe.id))
+          .orderBy(desc(guestOrders.createdAt))
+          .limit(250),
+        db.select().from(diningZones).where(eq(diningZones.restaurantId, cafe.id)),
+        db.select().from(diningTables).where(eq(diningTables.restaurantId, cafe.id)),
+        db
+          .select()
+          .from(tableReservations)
+          .where(
+            and(
+              eq(tableReservations.restaurantId, cafe.id),
+              inArray(tableReservations.status, ['confirmed', 'seated']),
+            ),
+          )
+          .orderBy(asc(tableReservations.startAt))
+          .limit(50),
+        db
+          .select()
+          .from(waitlistEntries)
+          .where(
+            and(
+              eq(waitlistEntries.restaurantId, cafe.id),
+              inArray(waitlistEntries.status, ['waiting', 'ready']),
+            ),
+          )
+          .orderBy(asc(waitlistEntries.joinedAt))
+          .limit(50),
+        db.select().from(serviceBays).where(eq(serviceBays.restaurantId, cafe.id)),
+        db.select().from(smartTags).where(eq(smartTags.restaurantId, cafe.id)),
+        db.select().from(aggregatorLinks).where(eq(aggregatorLinks.restaurantId, cafe.id)),
+      ]);
+
+      const nowMs = Date.now();
+      const todayIso = branchLocalDate(cafe.timezone);
+      const ordersById = new Map(orders.map(o => [o.id, o]));
+      const baysById = new Map(bays.map(b => [b.id, b]));
+      const tablesById = new Map(tables.map(t => [t.id, t]));
+
+      const activeTickets = tickets.filter(t => ['waiting', 'preparing', 'ready'].includes(t.status));
+      const activeTicketIds = new Set(activeTickets.map(t => t.id));
+      const overdueCount = activeTickets.filter(
+        t => nowMs - new Date(t.queuedAt).getTime() >= 15 * 60_000,
+      ).length;
+
+      const todayOrders = orders.filter(o => {
+        try {
+          return (
+            new Intl.DateTimeFormat('en-CA', {
+              timeZone: cafe.timezone || 'Asia/Qatar',
+              year: 'numeric',
+              month: '2-digit',
+              day: '2-digit',
+            }).format(new Date(o.createdAt)) === todayIso
+          );
+        } catch {
+          return new Date(o.createdAt).toISOString().slice(0, 10) === todayIso;
+        }
+      });
+
+      const todayRevenue = todayOrders
+        .filter(o => o.paymentStatus === 'paid' || o.paymentStatus === 'pay_at_venue')
+        .reduce((sum, o) => sum + Number(o.total), 0)
+        .toFixed(2);
+      const unpaidVenueCount = orders.filter(o => o.paymentStatus === 'pay_at_venue').length;
+
+      const arrivedVehicles = activeTickets
+        .filter(t => t.bayId || t.licensePlate)
+        .map(t => ({
+          id: t.id,
+          ticketCode: t.ticketCode,
+          status: t.status,
+          bayCode: t.bayId ? baysById.get(t.bayId)?.code || null : null,
+          vehicleColor: t.vehicleColor,
+          vehicleType: t.vehicleType,
+          licensePlate: t.licensePlate,
+          etaStatus: t.etaStatus,
+          arrivedAt: t.arrivedAt,
+        }));
+
+      const reusableCoasters = tags.filter(t => t.targetType === 'reusable_pager' && t.isActive);
+      const activeCoasters = reusableCoasters.filter(
+        t => t.activeTicketId && activeTicketIds.has(t.activeTicketId),
+      ).length;
+
+      const checklist = [
+        {
+          id: 'profile',
+          label: 'Brand identity, logo & hours configured',
+          done: Boolean(cafe.logoUrl && (cafe.openingHours || cafe.openTime)),
+          href: '/admin/restaurant',
+        },
+        {
+          id: 'slug',
+          label: 'Branded short link (/v/:slug) published',
+          done: Boolean(cafe.slug),
+          href: '/admin/restaurant',
+        },
+        {
+          id: 'menu',
+          label: 'Menu categories & available items published',
+          done: cats.length > 0 && items.some(i => i.isAvailable),
+          href: '/admin/menu',
+        },
+        {
+          id: 'floor',
+          label: 'Dining zones & permanent table QRs configured',
+          done: zones.length > 0 && tables.length > 0,
+          href: '/admin/tables',
+        },
+        {
+          id: 'curbside',
+          label: 'Curbside bays or drive-thru lanes configured',
+          done: !cafe.driveThruEnabled || bays.length > 0,
+          href: '/admin/drive-thru',
+        },
+        {
+          id: 'qr_nfc',
+          label: 'QR & NFC smart tags or reusable coasters ready',
+          done: tags.length > 0,
+          href: '/admin/qr-code',
+        },
+      ];
+      const completedSteps = checklist.filter(c => c.done).length;
+
+      res.json({
+        liveOps: {
+          pagers: {
+            activeTotal: activeTickets.length,
+            waiting: activeTickets.filter(t => t.status === 'waiting').length,
+            preparing: activeTickets.filter(t => t.status === 'preparing').length,
+            ready: activeTickets.filter(t => t.status === 'ready').length,
+            overdue: overdueCount,
+            topActive: activeTickets.slice(0, 5).map(t => {
+              const linkedOrder = t.orderId ? ordersById.get(t.orderId) : null;
+              const lines = linkedOrder?.lineItems || [];
+              return {
+                id: t.id,
+                ticketCode: t.ticketCode,
+                status: t.status,
+                customerName: t.customerName,
+                queuedAt: t.queuedAt,
+                orderNumber: linkedOrder?.orderNumber || null,
+                preparedCount: lines.filter(l => Boolean(l.prepared)).length,
+                totalLines: lines.length,
+              };
+            }),
+          },
+          orders: {
+            todayCount: todayOrders.length,
+            totalCount: orders.length,
+            todayRevenue,
+            unpaidVenueCount,
+            currency: cafe.currency,
+          },
+          floor: {
+            zonesCount: zones.length,
+            tablesCount: tables.length,
+            upcomingReservationsCount: reservations.length,
+            waitingPartiesCount: waitlist.length,
+            nextFloorItems: [
+              ...waitlist.slice(0, 3).map(w => ({
+                kind: 'waitlist' as const,
+                id: w.id,
+                code: w.ticketCode,
+                guestName: w.guestName,
+                partySize: w.partySize,
+                status: w.status,
+                timeLabel: 'Walk-in waiting',
+              })),
+              ...reservations.slice(0, 3).map(r => ({
+                kind: 'reservation' as const,
+                id: r.id,
+                code: tablesById.get(r.tableId)?.tableCode || 'Table',
+                guestName: r.guestName,
+                partySize: r.partySize,
+                status: r.status,
+                timeLabel: new Date(r.startAt).toLocaleString('en-GB', {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }),
+              })),
+            ].slice(0, 5),
+          },
+          curbside: {
+            driveThruEnabled: cafe.driveThruEnabled,
+            baysCount: bays.length,
+            arrivedCount: arrivedVehicles.length,
+            arrivedVehicles: arrivedVehicles.slice(0, 4),
+          },
+          qrNfc: {
+            totalSmartTags: tags.length,
+            reusableCoasters: reusableCoasters.length,
+            activeCoasters,
+            totalQrScans: tags.reduce((s, t) => s + (t.qrScans || 0), 0),
+            totalNfcTaps: tags.reduce((s, t) => s + (t.nfcTaps || 0), 0),
+          },
+          catalog: {
+            categoriesCount: cats.length,
+            totalItems: items.length,
+            visibleItems: items.filter(i => i.isAvailable).length,
+            soldOutItems: items.filter(i => !i.isAvailable).length,
+            todaySpecials: items.filter(i => i.isAvailable && i.specialDate === todayIso).length,
+            aggregatorsCount: aggregators.filter(a => a.isActive).length,
+          },
+        },
+        readiness: {
+          completedSteps,
+          totalSteps: checklist.length,
+          completionPct: Math.round((completedSteps / checklist.length) * 100),
+          checklist,
+        },
+      });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Branch SLA, Congestion, Channel & QR/NFC Analytics
   app.get('/api/hospitality/analytics', isAuthenticated, async (req: any, res, next) => {
     try {
       const cafe = await getManagedCafe(req);
       if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
-      const [tickets, orders, reservations, waitlist, clicks, allItems] = await Promise.all([
+      const [tickets, orders, reservations, waitlist, clicks, tags, allItems] = await Promise.all([
         db.select().from(pagerTickets).where(eq(pagerTickets.restaurantId, cafe.id)),
         db.select().from(guestOrders).where(eq(guestOrders.restaurantId, cafe.id)),
         db.select().from(tableReservations).where(eq(tableReservations.restaurantId, cafe.id)),
         db.select().from(waitlistEntries).where(eq(waitlistEntries.restaurantId, cafe.id)),
         db.select().from(aggregatorClicks).where(eq(aggregatorClicks.restaurantId, cafe.id)),
+        db.select().from(smartTags).where(eq(smartTags.restaurantId, cafe.id)),
         storage.getMenuItemsByRestaurantId(cafe.id),
       ]);
 
@@ -2996,6 +3246,30 @@ export function mountHospitalityRoutes(app: Express) {
         ? Number((ratings.reduce((a, b) => a + b, 0) / ratings.length).toFixed(2))
         : null;
 
+      const ordersByChannel: Record<string, { count: number; revenue: number }> = {};
+      for (const o of orders) {
+        const bucket = ordersByChannel[o.channel] || { count: 0, revenue: 0 };
+        bucket.count += 1;
+        if (o.paymentStatus === 'paid' || o.paymentStatus === 'pay_at_venue') {
+          bucket.revenue += Number(o.total);
+        }
+        ordersByChannel[o.channel] = bucket;
+      }
+
+      const totalQrScans = tags.reduce((s, t) => s + (t.qrScans || 0), 0);
+      const totalNfcTaps = tags.reduce((s, t) => s + (t.nfcTaps || 0), 0);
+      const topSmartTags = [...tags]
+        .sort((a, b) => (b.qrScans + b.nfcTaps) - (a.qrScans + a.nfcTaps))
+        .slice(0, 6)
+        .map(t => ({
+          id: t.id,
+          tagCode: t.tagCode,
+          label: t.label,
+          targetType: t.targetType,
+          qrScans: t.qrScans,
+          nfcTaps: t.nfcTaps,
+        }));
+
       res.json({
         summary: {
           totalTickets: tickets.length,
@@ -3013,7 +3287,14 @@ export function mountHospitalityRoutes(app: Express) {
           reservationsCount: reservations.filter(r => r.status !== 'cancelled').length,
           waitlistCount: waitlist.length,
           aggregatorClicksTotal: clicks.length,
+          totalQrScans,
+          totalNfcTaps,
+          smartTagsCount: tags.length,
         },
+        ordersByChannel: Object.fromEntries(
+          Object.entries(ordersByChannel).map(([k, v]) => [k, { count: v.count, revenue: v.revenue.toFixed(2) }]),
+        ),
+        topSmartTags,
         clicksByPlatform,
         topClickedItems,
         hourlyBuckets,

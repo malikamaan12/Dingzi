@@ -5,6 +5,7 @@ import {
   CalendarDays,
   Car,
   History,
+  LayoutDashboard,
   LibraryBig,
   Receipt,
   Smartphone,
@@ -44,11 +45,11 @@ export function MobileStaffBottomNav() {
             { label: 'App & Push', url: '/admin/mobile-app', icon: Smartphone },
           ]
         : [
+            { label: 'Overview', url: '/admin', icon: LayoutDashboard },
             { label: 'Pagers', url: '/admin/pagers', icon: BellRing },
             { label: 'Orders', url: '/admin/orders', icon: Receipt },
             { label: 'Tables', url: '/admin/tables', icon: CalendarDays },
             { label: 'Menu', url: '/admin/menu', icon: UtensilsCrossed },
-            { label: 'App & Push', url: '/admin/mobile-app', icon: Smartphone },
           ];
 
   return (
