@@ -14,12 +14,15 @@ import {
   Copy,
   CreditCard,
   ExternalLink,
+  Flame,
   FolderOpen,
+  Network,
   Palette,
   QrCode,
   Receipt,
   Settings,
   Sparkles,
+  Store,
   Truck,
   UserCog,
   UtensilsCrossed,
@@ -27,6 +30,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useAuth } from '@/hooks/useAuth';
 import { useManagerMenu } from '@/lib/managerMenu';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
 import { queryClient } from '@/lib/queryClient';
@@ -126,6 +130,7 @@ const MODE_LABELS: Record<string, string> = {
 
 export default function AdminDashboard() {
   const { toast } = useToast();
+  const { user } = useAuth();
   const { data: menuData } = useManagerMenu();
   const cafe = menuData?.restaurant;
   const [copiedUrl, setCopiedUrl] = useState(false);
@@ -381,6 +386,57 @@ export default function AdminDashboard() {
               </a>
             </div>
           )}
+        </div>
+      </section>
+
+      {/* Role & Station Dashboards Quick Switcher */}
+      <section
+        aria-label="Role-facing dashboards"
+        data-testid="bar-role-dashboards"
+        className="rounded-2xl border border-[#E5E2F2] dark:border-border bg-card px-4 py-3 flex flex-wrap items-center justify-between gap-3"
+      >
+        <div className="flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+          <span className="px-2.5 py-1 rounded-lg bg-[#EFEAFF] text-[#4B1FE0] font-bold">Station Views</span>
+          <span>Preview or launch dedicated role consoles for this venue:</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {(user?.staffRole === 'tenant_owner' ||
+            user?.role === 'super_admin' ||
+            (user?.accessibleBranches?.length || 0) > 1) && (
+            <Link href="/admin/portfolio">
+              <Button
+                type="button"
+                variant="outline"
+                data-testid="button-switch-portfolio"
+                className="min-h-11 rounded-xl text-xs font-semibold cursor-pointer gap-1.5"
+              >
+                <Network className="w-3.5 h-3.5 text-[#6236FF]" />
+                <span>Owner Portfolio</span>
+              </Button>
+            </Link>
+          )}
+          <Link href="/admin/front-desk">
+            <Button
+              type="button"
+              variant="outline"
+              data-testid="button-switch-front-desk"
+              className="min-h-11 rounded-xl text-xs font-semibold cursor-pointer gap-1.5"
+            >
+              <Store className="w-3.5 h-3.5 text-[#6236FF]" />
+              <span>Host &amp; Cashier Desk</span>
+            </Button>
+          </Link>
+          <Link href="/admin/station">
+            <Button
+              type="button"
+              variant="outline"
+              data-testid="button-switch-prep-station"
+              className="min-h-11 rounded-xl text-xs font-semibold cursor-pointer gap-1.5"
+            >
+              <Flame className="w-3.5 h-3.5 text-[#6236FF]" />
+              <span>Order Prep Station</span>
+            </Button>
+          </Link>
         </div>
       </section>
 

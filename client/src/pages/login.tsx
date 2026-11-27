@@ -8,6 +8,7 @@ import { queryClient } from '@/lib/queryClient';
 import { notifySessionChanged } from '@/lib/sessionSync';
 import { StaffBrand } from '@/components/staff-brand';
 import { StaffThemeToggle } from '@/components/staff-theme';
+import { defaultStaffHomePath } from '@/lib/roleHome';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -21,8 +22,10 @@ export default function Login() {
       const response = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({email,password}), credentials:'include' });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || 'Login failed');
+      const profileRes = await fetch('/api/auth/user', { credentials: 'include' });
+      const profile = profileRes.ok ? await profileRes.json() : data.user;
       setPassword(''); queryClient.clear(); notifySessionChanged();
-      window.location.href = data.user?.role === 'super_admin' ? '/super-admin' : '/admin';
+      window.location.href = defaultStaffHomePath(profile);
     } catch(error) {
       toast({variant:'destructive',title:'Could not sign in',description:error instanceof Error ? error.message : 'Please try again.'});
     } finally { setIsLoading(false); }

@@ -1,7 +1,7 @@
 ---
 name: dingzi
 description: Menus, tables, and pickup — made dingzi.
-colors: { electric-violet: "#6236FF", hyper-indigo: "#4B1FE0", volt-lime: "#C8FF42", midnight-indigo: "#17132E", cosmic-slate: "#241E42", pure-white: "#FFFFFF", lilac-mist: "#F6F5FC", iris-wash: "#EFEAFF", violet-slate: "#57507A", mist-border: "#E5E2F2" }
+colors: { electric-violet: "#6236FF", hyper-indigo: "#4B1FE0", volt-lime: "#C8FF42", midnight-indigo: "#17132E", cosmic-slate: "#241E42", indigo-active: "#312959", pure-white: "#FFFFFF", lilac-mist: "#F6F5FC", iris-wash: "#EFEAFF", violet-slate: "#57507A", mist-border: "#E5E2F2", overdue-coral: "#FF4D6D" }
 typography:
   display: { fontFamily: Plus Jakarta Sans, fontSize: 3.75rem, fontWeight: 800 }
   headline: { fontFamily: Plus Jakarta Sans, fontSize: 1.875rem, fontWeight: 700 }

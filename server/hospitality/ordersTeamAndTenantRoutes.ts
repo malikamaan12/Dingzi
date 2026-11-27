@@ -11,7 +11,7 @@ import { withTenantRlsTransaction } from '../rlsContext';
 import bcrypt from '../passwords';
 import { encryptGatewaySecret, maskGatewayValue, signGatewayPayload } from '../payments/gateways';
 import { customizationTotal } from '@shared/menuCustomization';
-import { aggregatorClicks, branchPaymentConfigs, emailSchema, guestOrders, pagerTickets, passwordSchema, restaurants, sessions, staffAssignments, staffRoles, tableReservations, tenants, users, type OrderLineItem } from '@shared/schema';
+import { aggregatorClicks, branchPaymentConfigs, categories, emailSchema, guestOrders, menuItems, pagerTickets, passwordSchema, restaurants, sessions, smartTags, staffAssignments, staffRoles, tableReservations, tenants, users, waitlistEntries, type OrderLineItem } from '@shared/schema';
 import { branchLocalDate, nextDailyPagerCode } from './helpers';
 
 export function mountOrdersTeamAndTenantRoutes(app: Express) {
@@ -490,23 +490,40 @@ export function mountOrdersTeamAndTenantRoutes(app: Express) {
     }
   });
 
-  // Scoped Multi-Branch Comparison Analytics for Tenant Owners (PRD §3)
+  // Scoped Multi-Branch Comparison & Live Portfolio Operations for Tenant Owners
   app.get('/api/hospitality/tenant-analytics', isAuthenticated, async (req: any, res, next) => {
     try {
-      const accessible = await getAccessibleBranches(req);
+      const [accessible, activeCafe] = await Promise.all([getAccessibleBranches(req), getManagedCafe(req)]);
       const branchIds = accessible.map(b => b.id);
-      if (!branchIds.length) return res.json({ branches: [] });
+      if (!branchIds.length) return res.json({ totals: null, branches: [] });
 
-      const [cafes, tickets, orders, reservations, clicks] = await Promise.all([
+      const [cafes, tickets, orders, reservations, clicks, tags, waitlist, items] = await Promise.all([
         db.select().from(restaurants).where(inArray(restaurants.id, branchIds)).orderBy(asc(restaurants.name)),
         db.select().from(pagerTickets).where(inArray(pagerTickets.restaurantId, branchIds)),
         db.select().from(guestOrders).where(inArray(guestOrders.restaurantId, branchIds)),
         db.select().from(tableReservations).where(inArray(tableReservations.restaurantId, branchIds)),
         db.select().from(aggregatorClicks).where(inArray(aggregatorClicks.restaurantId, branchIds)),
+        db.select().from(smartTags).where(inArray(smartTags.restaurantId, branchIds)),
+        db.select().from(waitlistEntries).where(inArray(waitlistEntries.restaurantId, branchIds)),
+        db
+          .select({
+            restaurantId: categories.restaurantId,
+            isAvailable: menuItems.isAvailable,
+          })
+          .from(menuItems)
+          .innerJoin(categories, eq(menuItems.categoryId, categories.id))
+          .where(inArray(categories.restaurantId, branchIds)),
       ]);
 
       const branches = cafes.map(cafe => {
         const branchTickets = tickets.filter(t => t.restaurantId === cafe.id);
+        const waitingCount = branchTickets.filter(t => t.status === 'waiting').length;
+        const preparingCount = branchTickets.filter(t => t.status === 'preparing').length;
+        const readyCount = branchTickets.filter(t => t.status === 'ready').length;
+        const activeTickets = waitingCount + preparingCount + readyCount;
+        const arrivedBaysCount = branchTickets.filter(
+          t => ['waiting', 'preparing', 'ready'].includes(t.status) && t.etaStatus === 'arrived',
+        ).length;
         const readyTickets = branchTickets.filter(t => t.readyAt && t.queuedAt);
         const avgPrepMins = readyTickets.length
           ? Number(
@@ -530,12 +547,29 @@ export function mountOrdersTeamAndTenantRoutes(app: Express) {
           .toFixed(2);
         const branchRes = reservations.filter(r => r.restaurantId === cafe.id && r.status !== 'cancelled');
         const branchClicks = clicks.filter(c => c.restaurantId === cafe.id);
+        const branchTags = tags.filter(t => t.restaurantId === cafe.id);
+        const qrScans = branchTags.reduce((s, t) => s + (t.qrScans || 0), 0);
+        const nfcTaps = branchTags.reduce((s, t) => s + (t.nfcTaps || 0), 0);
+        const waitlistWaitingCount = waitlist.filter(
+          w => w.restaurantId === cafe.id && ['waiting', 'ready'].includes(w.status),
+        ).length;
+        const branchItems = items.filter(i => i.restaurantId === cafe.id);
+
         return {
           id: cafe.id,
           name: cafe.name,
           slug: cafe.slug,
+          status: cafe.status,
+          theme: cafe.theme,
           orderingMode: cafe.orderingMode,
           currency: cafe.currency,
+          isCurrentBranch: cafe.id === activeCafe?.id,
+          activeTickets,
+          waitingCount,
+          preparingCount,
+          readyCount,
+          arrivedBaysCount,
+          waitlistWaitingCount,
           totalTickets: branchTickets.length,
           avgPrepMins,
           peakHour: branchTickets.length > 0 ? `${String(peakHour).padStart(2, '0')}:00` : '—',
@@ -543,10 +577,31 @@ export function mountOrdersTeamAndTenantRoutes(app: Express) {
           revenue,
           reservations: branchRes.length,
           aggregatorClicks: branchClicks.length,
+          qrScans,
+          nfcTaps,
+          visibleMenuItems: branchItems.filter(i => i.isAvailable).length,
+          soldOutItems: branchItems.filter(i => !i.isAvailable).length,
         };
       });
 
-      res.json({ branches });
+      const prepBranches = branches.filter(b => b.avgPrepMins > 0);
+      const totals = {
+        branchesCount: branches.length,
+        activeTicketsNow: branches.reduce((s, b) => s + b.activeTickets, 0),
+        arrivedCurbsideNow: branches.reduce((s, b) => s + b.arrivedBaysCount, 0),
+        waitingPartiesNow: branches.reduce((s, b) => s + b.waitlistWaitingCount, 0),
+        totalTickets: branches.reduce((s, b) => s + b.totalTickets, 0),
+        totalOrders: branches.reduce((s, b) => s + b.totalOrders, 0),
+        combinedRevenue: branches.reduce((s, b) => s + Number(b.revenue), 0).toFixed(2),
+        currency: branches[0]?.currency || 'QAR',
+        totalQrScans: branches.reduce((s, b) => s + b.qrScans, 0),
+        totalNfcTaps: branches.reduce((s, b) => s + b.nfcTaps, 0),
+        avgPrepMins: prepBranches.length
+          ? Number((prepBranches.reduce((s, b) => s + b.avgPrepMins, 0) / prepBranches.length).toFixed(1))
+          : 0,
+      };
+
+      res.json({ totals, branches });
     } catch (e) {
       next(e);
     }

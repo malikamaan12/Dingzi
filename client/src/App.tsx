@@ -31,6 +31,9 @@ const Home = lazy(() => import('@/pages/home'));
 const Login = lazy(() => import('@/pages/login'));
 const Register = lazy(() => import('@/pages/register'));
 const AdminDashboard = lazy(() => import('@/pages/admin-dashboard'));
+const AdminPortfolio = lazy(() => import('@/pages/admin-portfolio'));
+const AdminFrontDesk = lazy(() => import('@/pages/admin-front-desk'));
+const AdminStation = lazy(() => import('@/pages/admin-station'));
 const AdminRestaurant = lazy(() => import('@/pages/admin-restaurant'));
 const AdminCategories = lazy(() => import('@/pages/admin-categories'));
 const AdminMenu = lazy(() => import('@/pages/admin-menu'));
@@ -38,6 +41,7 @@ const MenuLibrary = lazy(() => import('@/pages/menu-library'));
 const PlatformAccounts = lazy(() => import('@/pages/platform-accounts'));
 const AccessHistory = lazy(() => import('@/pages/access-history'));
 import { returnToPlatform } from '@/lib/cafeAccess';
+import { defaultStaffHomePath } from '@/lib/roleHome';
 import { useToast } from '@/hooks/use-toast';
 const AdminQRCode = lazy(() => import('@/pages/admin-qrcode'));
 const AdminPagers = lazy(() => import('@/pages/admin-pagers'));
@@ -250,25 +254,52 @@ function StaffRouter() {
   if (isSuperAdmin && !user.cafeContext && location.startsWith('/admin') && location !== '/admin/library') return <Redirect to="/super-admin"/>;
   if (!['admin','super_admin'].includes(user?.role || '')) return <Redirect to="/login"/>;
 
+  const roleHome = defaultStaffHomePath(user);
+
   return (
     <div className="w-full">
       <Switch>
         <Route path="/menu/:id" component={CustomerMenu} />
-        <Route path="/login"><Redirect to={isSuperAdmin ? '/super-admin' : '/admin'}/></Route>
-        <Route path="/register"><Redirect to={isSuperAdmin ? '/super-admin/restaurants/new' : '/admin'}/></Route>
+        <Route path="/login"><Redirect to={roleHome}/></Route>
+        <Route path="/register"><Redirect to={isSuperAdmin ? '/super-admin/restaurants/new' : roleHome}/></Route>
         <Route path="/super-admin/restaurants/new"><AdminLayout><Register/></AdminLayout></Route>
         
         <Route path="/">
-          <Redirect to={isSuperAdmin ? '/super-admin' : '/admin'}/>
+          <Redirect to={roleHome}/>
         </Route>
         <Route path="/admin">
-          {user?.staffRole === 'prep_barista' || user?.staffRole === 'host_cashier' ? (
-            <Redirect to="/admin/pagers" />
+          {user?.staffRole === 'prep_barista' ? (
+            <Redirect to="/admin/station" />
+          ) : user?.staffRole === 'host_cashier' ? (
+            <Redirect to="/admin/front-desk" />
           ) : (
             <AdminLayout>
               <AdminDashboard />
             </AdminLayout>
           )}
+        </Route>
+        <Route path="/admin/portfolio">
+          {user?.staffRole === 'prep_barista' || user?.staffRole === 'host_cashier' ? (
+            <Redirect to={roleHome} />
+          ) : (
+            <AdminLayout>
+              <AdminPortfolio />
+            </AdminLayout>
+          )}
+        </Route>
+        <Route path="/admin/front-desk">
+          {user?.staffRole === 'prep_barista' ? (
+            <Redirect to="/admin/station" />
+          ) : (
+            <AdminLayout>
+              <AdminFrontDesk />
+            </AdminLayout>
+          )}
+        </Route>
+        <Route path="/admin/station">
+          <AdminLayout>
+            <AdminStation />
+          </AdminLayout>
         </Route>
         <Route path="/admin/restaurant">
           <AdminLayout>

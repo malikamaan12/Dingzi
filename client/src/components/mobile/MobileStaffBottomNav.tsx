@@ -4,11 +4,14 @@ import {
   Building2,
   CalendarDays,
   Car,
+  Flame,
   History,
   LayoutDashboard,
   LibraryBig,
+  Network,
   Receipt,
   Smartphone,
+  Store,
   Users,
   UtensilsCrossed,
 } from 'lucide-react';
@@ -22,6 +25,9 @@ export function MobileStaffBottomNav() {
   const role: EffectiveStaffRole =
     user?.staffRole || (user?.role === 'super_admin' ? 'super_admin' : 'branch_manager');
 
+  const hasMultiBranchPortfolio =
+    role === 'tenant_owner' && (user?.accessibleBranches?.length || 0) > 1;
+
   const mobileTabs = isPlatformSuperAdmin
     ? [
         { label: 'Venues', url: '/super-admin', icon: Building2 },
@@ -31,6 +37,7 @@ export function MobileStaffBottomNav() {
       ]
     : role === 'prep_barista'
       ? [
+          { label: 'Station', url: '/admin/station', icon: Flame },
           { label: 'Pagers', url: '/admin/pagers', icon: BellRing },
           { label: 'Curbside', url: '/admin/drive-thru', icon: Car },
           { label: 'Orders', url: '/admin/orders', icon: Receipt },
@@ -38,19 +45,27 @@ export function MobileStaffBottomNav() {
         ]
       : role === 'host_cashier'
         ? [
+            { label: 'Front Desk', url: '/admin/front-desk', icon: Store },
             { label: 'Pagers', url: '/admin/pagers', icon: BellRing },
             { label: 'Tables', url: '/admin/tables', icon: CalendarDays },
             { label: 'Orders', url: '/admin/orders', icon: Receipt },
             { label: 'Curbside', url: '/admin/drive-thru', icon: Car },
-            { label: 'App & Push', url: '/admin/mobile-app', icon: Smartphone },
           ]
-        : [
-            { label: 'Overview', url: '/admin', icon: LayoutDashboard },
-            { label: 'Pagers', url: '/admin/pagers', icon: BellRing },
-            { label: 'Orders', url: '/admin/orders', icon: Receipt },
-            { label: 'Tables', url: '/admin/tables', icon: CalendarDays },
-            { label: 'Menu', url: '/admin/menu', icon: UtensilsCrossed },
-          ];
+        : hasMultiBranchPortfolio
+          ? [
+              { label: 'Portfolio', url: '/admin/portfolio', icon: Network },
+              { label: 'Branch', url: '/admin', icon: LayoutDashboard },
+              { label: 'Pagers', url: '/admin/pagers', icon: BellRing },
+              { label: 'Orders', url: '/admin/orders', icon: Receipt },
+              { label: 'Menu', url: '/admin/menu', icon: UtensilsCrossed },
+            ]
+          : [
+              { label: 'Overview', url: '/admin', icon: LayoutDashboard },
+              { label: 'Pagers', url: '/admin/pagers', icon: BellRing },
+              { label: 'Orders', url: '/admin/orders', icon: Receipt },
+              { label: 'Tables', url: '/admin/tables', icon: CalendarDays },
+              { label: 'Menu', url: '/admin/menu', icon: UtensilsCrossed },
+            ];
 
   return (
     <nav

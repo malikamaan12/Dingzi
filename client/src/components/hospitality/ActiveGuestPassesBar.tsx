@@ -1,6 +1,6 @@
 import { Link } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowUpRight, BellRing, CalendarCheck2, Clock, Users, X } from 'lucide-react';
+import { ArrowUpRight, BellRing, CalendarCheck2, Clock, Sparkles, UtensilsCrossed, Users, X } from 'lucide-react';
 import { dismissGuestPass, useSavedGuestPasses, type SavedGuestPass } from '@/lib/guestSession';
 import { useMenuLanguage } from '@/lib/menuLanguage';
 
@@ -48,7 +48,7 @@ function SinglePassChip({ pass, showVenueName }: { pass: SavedGuestPass; showVen
   const statusLabel =
     pass.kind === 'pager'
       ? isReady
-        ? t('Ready for Pickup!')
+        ? t('Ding! Your food is ready.')
         : status === 'preparing'
           ? t('Preparing Now')
           : t('Waiting in Queue')
@@ -58,19 +58,33 @@ function SinglePassChip({ pass, showVenueName }: { pass: SavedGuestPass; showVen
           : t('In Waitlist')
         : t('Table Reserved');
 
+  const queueAhead =
+    pass.kind === 'pager'
+      ? typeof payload?.queueAhead === 'number'
+        ? payload.queueAhead
+        : null
+      : pass.kind === 'waitlist'
+        ? typeof payload?.partiesAhead === 'number'
+          ? payload.partiesAhead
+          : null
+        : null;
+
+  const orderLines = Array.isArray(payload?.order?.items) ? payload.order.items : [];
+  const preparedLines = orderLines.filter((l: any) => l?.prepared).length;
+
   return (
     <div
       role="status"
       aria-live="polite"
-      className={`rounded-2xl border px-3.5 py-2.5 shadow-sm flex items-center justify-between gap-2.5 transition-colors ${
+      className={`rounded-2xl border px-3.5 py-3 shadow-sm flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5 transition-colors ${
         isReady
           ? 'bg-[#C8FF42] text-[#17132E] border-[#17132E]'
           : 'bg-[#17132E] text-white border-[#241E42]'
       }`}
     >
-      <Link href={href} className="flex items-center gap-2.5 min-w-0 flex-1 cursor-pointer">
+      <Link href={href} className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer">
         <span
-          className={`w-8 h-8 rounded-xl grid place-items-center shrink-0 ${
+          className={`w-10 h-10 rounded-xl grid place-items-center shrink-0 ${
             isReady ? 'bg-[#17132E] text-[#C8FF42]' : 'bg-[#6236FF] text-white'
           }`}
         >
@@ -82,54 +96,95 @@ function SinglePassChip({ pass, showVenueName }: { pass: SavedGuestPass; showVen
             <CalendarCheck2 className="w-4 h-4" />
           )}
         </span>
-        <div className="min-w-0 text-xs">
-          <div className="flex items-center gap-1.5 font-bold truncate">
-            <span className="font-mono">{pass.code}</span>
+        <div className="min-w-0 text-xs space-y-0.5">
+          <div className="flex flex-wrap items-center gap-1.5 font-bold">
+            <span className="font-mono text-sm">{pass.code}</span>
             <span>·</span>
             <span>{statusLabel}</span>
           </div>
-          {showVenueName && (
-            <span className={`block truncate text-[11px] ${isReady ? 'text-[#17132E]/80' : 'text-white/70'}`}>
-              {label(pass.restaurantName)}
-            </span>
-          )}
+          <div className={`flex flex-wrap items-center gap-2 text-[11px] ${isReady ? 'text-[#17132E]/85' : 'text-white/75'}`}>
+            {showVenueName && <span className="font-semibold truncate">{label(pass.restaurantName)}</span>}
+            {!isReady && queueAhead !== null && queueAhead > 0 && (
+              <span className="font-mono">
+                {t('Queue ahead')}: {queueAhead}
+              </span>
+            )}
+            {orderLines.length > 0 && (
+              <span className="font-mono">
+                {t('{done}/{total} prepared', { done: preparedLines, total: orderLines.length })}
+              </span>
+            )}
+          </div>
         </div>
-        <span
-          className={`ms-auto inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-extrabold shrink-0 ${
+      </Link>
+
+      <div className="flex items-center gap-1.5 ms-auto shrink-0">
+        {showVenueName && pass.restaurantId && (
+          <Link
+            href={`/menu/${pass.restaurantId}`}
+            className={`min-h-11 inline-flex items-center gap-1 px-3 rounded-xl text-[11px] font-bold border transition-colors cursor-pointer ${
+              isReady
+                ? 'border-[#17132E]/25 text-[#17132E] hover:bg-[#17132E]/10'
+                : 'border-[#312959] bg-[#241E42] text-white hover:bg-[#312959]'
+            }`}
+          >
+            <UtensilsCrossed className="w-3.5 h-3.5" />
+            <span>{t('Menu')}</span>
+          </Link>
+        )}
+        <Link
+          href={href}
+          className={`min-h-11 inline-flex items-center gap-1 px-3 rounded-xl text-[11px] font-extrabold shrink-0 cursor-pointer ${
             isReady ? 'bg-[#17132E] text-white' : 'bg-[#C8FF42] text-[#17132E]'
           }`}
         >
           <span>{t('Open')}</span>
           <ArrowUpRight className="w-3.5 h-3.5" />
-        </span>
-      </Link>
-      <button
-        type="button"
-        aria-label={t('Dismiss live pass')}
-        onClick={() => dismissGuestPass(pass.kind, pass.trackingToken)}
-        className={`w-11 h-11 -my-1.5 -me-1.5 rounded-xl grid place-items-center shrink-0 cursor-pointer ${
-          isReady ? 'hover:bg-[#17132E]/10 text-[#17132E]' : 'hover:bg-white/10 text-white/70'
-        }`}
-      >
-        <X className="w-4 h-4" />
-      </button>
+        </Link>
+        <button
+          type="button"
+          aria-label={t('Dismiss live pass')}
+          onClick={() => dismissGuestPass(pass.kind, pass.trackingToken)}
+          className={`w-11 h-11 rounded-xl grid place-items-center shrink-0 cursor-pointer ${
+            isReady ? 'hover:bg-[#17132E]/10 text-[#17132E]' : 'hover:bg-white/10 text-white/70'
+          }`}
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   );
 }
 
 export function ActiveGuestPassesBar({ restaurantId }: { restaurantId?: string }) {
+  const { t } = useMenuLanguage();
   const passes = useSavedGuestPasses(restaurantId);
   if (!passes.length) return null;
 
   return (
-    <div className="space-y-2 my-2" data-testid="active-guest-passes-bar">
-      {passes.slice(0, 3).map(pass => (
+    <section
+      aria-label={t('My Live Passes')}
+      className="space-y-2 my-2"
+      data-testid="active-guest-passes-bar"
+    >
+      {!restaurantId && (
+        <div className="flex items-center justify-between px-1">
+          <span className="inline-flex items-center gap-1.5 text-xs font-extrabold text-[#4B1FE0]">
+            <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
+            <span>{t('My Live Passes')}</span>
+          </span>
+          <span className="text-[11px] font-mono text-[#57507A]">
+            {passes.length} {t('active')}
+          </span>
+        </div>
+      )}
+      {passes.slice(0, 4).map(pass => (
         <SinglePassChip
           key={`${pass.kind}:${pass.trackingToken}`}
           pass={pass}
           showVenueName={!restaurantId}
         />
       ))}
-    </div>
+    </section>
   );
 }

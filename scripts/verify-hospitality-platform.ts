@@ -458,6 +458,15 @@ try {
   const tenantAnalytics = await api('GET', '/api/hospitality/tenant-analytics', undefined, cookieA);
   assert.equal(tenantAnalytics.status, 200);
   assert.equal(tenantAnalytics.data.branches.length, 2);
+  assert.equal(tenantAnalytics.data.totals.branchesCount, 2);
+  assert.equal(typeof tenantAnalytics.data.totals.activeTicketsNow, 'number');
+  assert.equal(typeof tenantAnalytics.data.branches[0].waitingCount, 'number');
+
+  const superPortfolio = await api('GET', '/api/super-admin/portfolio-analytics', undefined, superCookie);
+  assert.equal(superPortfolio.status, 200);
+  assert.ok(superPortfolio.data.totals.totalRestaurants >= 2);
+  assert.ok(superPortfolio.data.totals.tenantGroupsCount >= 1);
+  assert.equal(typeof superPortfolio.data.branches[0].qrScans, 'number');
 
   const switchedToB = await api('POST', '/api/hospitality/switch-branch', { restaurantId: cafeB }, cookieA);
   assert.equal(switchedToB.status, 200);

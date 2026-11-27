@@ -162,6 +162,8 @@ const messages: Readonly<Record<string, string>> = {
   'Keep this screen open — it connects automatically the moment the barista links your order, or explore the menu below.': 'أبقِ هذه الشاشة مفتوحة — ستتصل بطلبك تلقائياً فور ربطها من الكاشير، أو تصفح القائمة أدناه.',
   '{done}/{total} prepared': '{done}/{total} جاهز',
   'Ding! Your food is ready.': 'دِنغ! طلبك جاهز.',
+  'My Live Passes': 'بطاقاتي الحية النشطة',
+  'active': 'نشطة',
   'Menus, tables, and pickup — made dingzi.': 'المنيو والطاولات والاستلام.. بكل سهولة مع دِنغزي.',
   "Sit easy. We'll ding your phone when it's hot.": 'استرح مكانك، بننبهك أول ما يجهز طلبك.',
   "Park easy. Scan your bay and we'll bring it out.": 'صُفّ بسهولة، امسح رمز الموقف وبنجيب طلبك لسيارتك.',

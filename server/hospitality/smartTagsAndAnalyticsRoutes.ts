@@ -7,7 +7,7 @@ import { storage } from '../storage';
 import { isAuthenticated, isSuperAdmin } from '../localAuth';
 import { getManagedCafe } from '../accessControl';
 import { publishRealtimeEvent } from '../realtimeHub';
-import { aggregatorClicks, aggregatorLinks, diningTables, diningZones, guestOrders, pagerTickets, serviceBays, smartTagHardwareKinds, smartTags, smartTagTargetTypes, tableReservations, waitlistEntries } from '@shared/schema';
+import { aggregatorClicks, aggregatorLinks, diningTables, diningZones, guestOrders, pagerTickets, serviceBays, smartTagHardwareKinds, smartTags, smartTagTargetTypes, tableReservations, tenants, waitlistEntries } from '@shared/schema';
 import { branchLocalDate } from './helpers';
 
 export function mountSmartTagsAndAnalyticsRoutes(app: Express) {
@@ -692,19 +692,24 @@ export function mountSmartTagsAndAnalyticsRoutes(app: Express) {
     }
   });
 
-  // Super Admin / Tenant Owner Multi-Branch Comparison Analytics
+  // Super Admin Platform Network & Multi-Branch Comparison Analytics
   app.get('/api/super-admin/portfolio-analytics', isSuperAdmin, async (_req, res, next) => {
     try {
-      const [cafes, tickets, orders, reservations, clicks] = await Promise.all([
+      const [cafes, tickets, orders, reservations, clicks, tags, waitlist, allTenants, allUsers] = await Promise.all([
         storage.getAllRestaurants(),
         db.select().from(pagerTickets),
         db.select().from(guestOrders),
         db.select().from(tableReservations),
         db.select().from(aggregatorClicks),
+        db.select().from(smartTags),
+        db.select().from(waitlistEntries),
+        db.select().from(tenants),
+        storage.getAllUsers(),
       ]);
 
       const branches = cafes.map(cafe => {
         const branchTickets = tickets.filter(t => t.restaurantId === cafe.id);
+        const activeTickets = branchTickets.filter(t => ['waiting', 'preparing', 'ready'].includes(t.status)).length;
         const readyTickets = branchTickets.filter(t => t.readyAt && t.queuedAt);
         const avgPrepMins = readyTickets.length
           ? Number(
@@ -717,23 +722,58 @@ export function mountSmartTagsAndAnalyticsRoutes(app: Express) {
             )
           : 0;
         const branchOrders = orders.filter(o => o.restaurantId === cafe.id);
+        const revenue = branchOrders
+          .filter(o => o.paymentStatus === 'paid' || o.paymentStatus === 'pay_at_venue')
+          .reduce((sum, o) => sum + Number(o.total), 0)
+          .toFixed(2);
         const branchRes = reservations.filter(r => r.restaurantId === cafe.id && r.status !== 'cancelled');
         const branchClicks = clicks.filter(c => c.restaurantId === cafe.id);
+        const branchTags = tags.filter(t => t.restaurantId === cafe.id);
+        const qrScans = branchTags.reduce((s, t) => s + (t.qrScans || 0), 0);
+        const nfcTaps = branchTags.reduce((s, t) => s + (t.nfcTaps || 0), 0);
+        const waitlistWaiting = waitlist.filter(w => w.restaurantId === cafe.id && ['waiting', 'ready'].includes(w.status)).length;
+
         return {
           id: cafe.id,
           name: cafe.name,
           slug: cafe.slug,
+          status: cafe.status,
+          hidden: cafe.hidden,
+          tenantId: cafe.tenantId,
           orderingMode: cafe.orderingMode,
           currency: cafe.currency,
+          activeTickets,
           totalTickets: branchTickets.length,
           avgPrepMins,
           totalOrders: branchOrders.length,
+          revenue,
           reservations: branchRes.length,
+          waitlistWaiting,
           aggregatorClicks: branchClicks.length,
+          smartTagsCount: branchTags.length,
+          qrScans,
+          nfcTaps,
         };
       });
 
-      res.json({ branches });
+      const totals = {
+        totalRestaurants: cafes.length,
+        livePublicMenus: cafes.filter(c => c.status === 'active' && !c.hidden).length,
+        pausedRestaurants: cafes.filter(c => c.status !== 'active').length,
+        tenantGroupsCount: allTenants.length,
+        totalUsers: allUsers.length,
+        activeTicketsNow: branches.reduce((s, b) => s + b.activeTickets, 0),
+        totalTickets: tickets.length,
+        totalOrders: orders.length,
+        settledRevenueTotal: branches.reduce((s, b) => s + Number(b.revenue), 0).toFixed(2),
+        reservationsCount: branches.reduce((s, b) => s + b.reservations, 0),
+        waitlistWaitingNow: branches.reduce((s, b) => s + b.waitlistWaiting, 0),
+        smartTagsCount: tags.length,
+        totalQrScans: branches.reduce((s, b) => s + b.qrScans, 0),
+        totalNfcTaps: branches.reduce((s, b) => s + b.nfcTaps, 0),
+      };
+
+      res.json({ totals, branches });
     } catch (e) {
       next(e);
     }

@@ -17,6 +17,8 @@ import {
   Smartphone,
   Receipt,
   UserCog,
+  Flame,
+  Network,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -55,10 +57,32 @@ const adminMenuItems: {
   testId?: string;
 }[] = [
   {
+    title: "Portfolio Overview",
+    url: "/admin/portfolio",
+    icon: Network,
+    roles: ['super_admin', 'tenant_owner'],
+    testId: "link-portfolio-dashboard",
+  },
+  {
     title: "Dashboard",
     url: "/admin",
     icon: LayoutDashboard,
     roles: MANAGER_ROLES,
+    testId: "link-dashboard",
+  },
+  {
+    title: "Host & Cashier Desk",
+    url: "/admin/front-desk",
+    icon: Store,
+    roles: ['super_admin', 'tenant_owner', 'branch_manager', 'host_cashier'],
+    testId: "link-front-desk",
+  },
+  {
+    title: "Order Prep Station",
+    url: "/admin/station",
+    icon: Flame,
+    roles: ALL_ROLE_ACCESS,
+    testId: "link-prep-station",
   },
   {
     title: "Live Pagers & Queue",
@@ -183,7 +207,13 @@ export function AppSidebar({ user }: AppSidebarProps) {
   const isSuperAdmin = user?.role === "super_admin";
   const effectiveRole: EffectiveStaffRole =
     user?.staffRole || (isSuperAdmin ? 'super_admin' : 'branch_manager');
-  const filteredAdminItems = adminMenuItems.filter(item => item.roles.includes(effectiveRole));
+  const hasMultiBranchAccess = (user?.accessibleBranches?.length || 0) > 1;
+  const filteredAdminItems = adminMenuItems.filter(item => {
+    if (item.url === '/admin/portfolio') {
+      return effectiveRole === 'tenant_owner' || effectiveRole === 'super_admin' || hasMultiBranchAccess;
+    }
+    return item.roles.includes(effectiveRole);
+  });
   const menuItems = isSuperAdmin ? superAdminMenuItems : filteredAdminItems;
   const sidebarTitle = STAFF_ROLE_LABELS[effectiveRole] || "Café Manager";
 
