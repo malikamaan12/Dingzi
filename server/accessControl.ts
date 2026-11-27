@@ -13,10 +13,16 @@ import {
   type AuthUser,
   type EffectiveStaffRole,
   type Restaurant,
+  type StaffAssignment,
   type StaffRole,
   type Tenant,
   type User,
 } from '@shared/schema';
+import {
+  resolveStaffCapabilities,
+  staffActionAllowed,
+  type ResolvedStaffCapabilities,
+} from '@shared/rbac';
 import { deferRequestTask } from './workerContext';
 
 declare module 'express-session' {
@@ -26,20 +32,24 @@ declare module 'express-session' {
   }
 }
 
+export type TenantSummary = Pick<Tenant, 'id' | 'name' | 'slug' | 'status' | 'maxBranches'>;
+
 export type CafeRequest = Request & {
   user: User;
   managedCafe?: Restaurant;
   managedCafeResolved?: boolean;
   effectiveStaffRole?: EffectiveStaffRole;
+  effectiveCapabilities?: ResolvedStaffCapabilities;
   accessibleBranches?: AccessibleBranchSummary[];
-  tenantContext?: Pick<Tenant, 'id' | 'name' | 'slug'> | null;
+  tenantContext?: TenantSummary | null;
 };
 
 interface ResolvedAccess {
   cafe: Restaurant | undefined;
   staffRole: EffectiveStaffRole;
+  capabilities: ResolvedStaffCapabilities;
   accessibleBranches: AccessibleBranchSummary[];
-  tenantContext: Pick<Tenant, 'id' | 'name' | 'slug'> | null;
+  tenantContext: TenantSummary | null;
 }
 
 const ROLE_PRIORITY: Record<StaffRole, number> = {
@@ -50,10 +60,11 @@ const ROLE_PRIORITY: Record<StaffRole, number> = {
 };
 
 async function resolveUserAccess(req: any): Promise<ResolvedAccess> {
-  if (req.managedCafeResolved && req.effectiveStaffRole) {
+  if (req.managedCafeResolved && req.effectiveStaffRole && req.effectiveCapabilities) {
     return {
       cafe: req.managedCafe,
       staffRole: req.effectiveStaffRole,
+      capabilities: req.effectiveCapabilities,
       accessibleBranches: req.accessibleBranches || [],
       tenantContext: req.tenantContext || null,
     };
@@ -62,29 +73,38 @@ async function resolveUserAccess(req: any): Promise<ResolvedAccess> {
   const actor: User = req.user;
   if (actor.role === 'super_admin') {
     const cafe = req.session?.cafeId ? await storage.getRestaurantById(req.session.cafeId) : undefined;
-    let tenantContext: Pick<Tenant, 'id' | 'name' | 'slug'> | null = null;
+    let tenantContext: TenantSummary | null = null;
     if (cafe?.tenantId) {
       const [t] = await db
-        .select({ id: tenants.id, name: tenants.name, slug: tenants.slug })
+        .select({
+          id: tenants.id,
+          name: tenants.name,
+          slug: tenants.slug,
+          status: tenants.status,
+          maxBranches: tenants.maxBranches,
+        })
         .from(tenants)
         .where(eq(tenants.id, cafe.tenantId));
       tenantContext = t || null;
     }
+    const capabilities = resolveStaffCapabilities('super_admin');
     req.managedCafe = cafe;
     req.managedCafeResolved = true;
     req.effectiveStaffRole = 'super_admin';
+    req.effectiveCapabilities = capabilities;
     req.accessibleBranches = cafe ? [{ id: cafe.id, name: cafe.name, slug: cafe.slug, tenantId: cafe.tenantId }] : [];
     req.tenantContext = tenantContext;
     return {
       cafe,
       staffRole: 'super_admin',
+      capabilities,
       accessibleBranches: req.accessibleBranches,
       tenantContext,
     };
   }
 
-  const [ownedCafe, assignments, ownedTenants] = await Promise.all([
-    storage.getRestaurantByUserId(actor.id),
+  const [ownedCafes, assignments, ownedTenants] = await Promise.all([
+    db.select().from(restaurants).where(eq(restaurants.userId, actor.id)).orderBy(asc(restaurants.name)),
     db
       .select()
       .from(staffAssignments)
@@ -94,10 +114,12 @@ async function resolveUserAccess(req: any): Promise<ResolvedAccess> {
 
   const tenantIds = new Set<string>(ownedTenants.map(t => t.id));
   for (const a of assignments) {
-    if (a.tenantId && a.staffRole === 'tenant_owner') tenantIds.add(a.tenantId);
+    if (a.tenantId && !a.restaurantId) tenantIds.add(a.tenantId);
   }
-  if (ownedCafe?.tenantId && (ownedTenants.length > 0 || assignments.some(a => a.staffRole === 'tenant_owner'))) {
-    tenantIds.add(ownedCafe.tenantId);
+  for (const oc of ownedCafes) {
+    if (oc.tenantId && (ownedTenants.length > 0 || assignments.some(a => a.staffRole === 'tenant_owner'))) {
+      tenantIds.add(oc.tenantId);
+    }
   }
 
   const assignedRestaurantIds = assignments
@@ -119,45 +141,66 @@ async function resolveUserAccess(req: any): Promise<ResolvedAccess> {
       : [];
 
   const branchMap = new Map<string, Restaurant>();
-  if (ownedCafe) branchMap.set(ownedCafe.id, ownedCafe);
+  for (const oc of ownedCafes) branchMap.set(oc.id, oc);
   for (const b of extraBranches) branchMap.set(b.id, b);
 
   const requestedCafeId = req.session?.cafeId;
   const activeCafe =
     (requestedCafeId && branchMap.get(requestedCafeId)) ||
-    ownedCafe ||
+    ownedCafes[0] ||
     Array.from(branchMap.values())[0];
 
   let staffRole: StaffRole = 'branch_manager';
+  let matchedAssignment: StaffAssignment | undefined;
+
   if (activeCafe) {
-    const matchingRoles: StaffRole[] = [];
-    if (activeCafe.userId === actor.id) matchingRoles.push('branch_manager');
-    if (activeCafe.tenantId && tenantIds.has(activeCafe.tenantId)) matchingRoles.push('tenant_owner');
+    const candidates: { role: StaffRole; assignment?: StaffAssignment }[] = [];
+    if (activeCafe.userId === actor.id) {
+      const isTenantOwner = Boolean(
+        activeCafe.tenantId && ownedTenants.some(t => t.id === activeCafe.tenantId),
+      );
+      candidates.push({ role: isTenantOwner ? 'tenant_owner' : 'branch_manager' });
+    }
+    if (activeCafe.tenantId && ownedTenants.some(t => t.id === activeCafe.tenantId)) {
+      candidates.push({ role: 'tenant_owner' });
+    }
     for (const a of assignments) {
-      if (a.restaurantId === activeCafe.id || (a.tenantId && a.tenantId === activeCafe.tenantId)) {
-        matchingRoles.push(a.staffRole as StaffRole);
+      if (a.restaurantId === activeCafe.id || (!a.restaurantId && a.tenantId && a.tenantId === activeCafe.tenantId)) {
+        candidates.push({ role: a.staffRole as StaffRole, assignment: a });
       }
     }
-    if (matchingRoles.length > 0) {
-      matchingRoles.sort((x, y) => ROLE_PRIORITY[y] - ROLE_PRIORITY[x]);
-      staffRole = matchingRoles[0];
+    if (candidates.length > 0) {
+      candidates.sort((x, y) => ROLE_PRIORITY[y.role] - ROLE_PRIORITY[x.role]);
+      staffRole = candidates[0].role;
+      matchedAssignment = candidates[0].assignment;
     }
-  } else if (tenantIds.size > 0) {
+  } else if (ownedTenants.length > 0 || assignments.some(a => a.staffRole === 'tenant_owner')) {
     staffRole = 'tenant_owner';
   } else if (assignments.length > 0) {
-    staffRole = assignments[0].staffRole as StaffRole;
+    const sorted = [...assignments].sort(
+      (x, y) => ROLE_PRIORITY[y.staffRole as StaffRole] - ROLE_PRIORITY[x.staffRole as StaffRole],
+    );
+    staffRole = sorted[0].staffRole as StaffRole;
+    matchedAssignment = sorted[0];
   }
 
-  let tenantContext: Pick<Tenant, 'id' | 'name' | 'slug'> | null = null;
-  const activeTenantId = activeCafe?.tenantId || Array.from(tenantIds)[0] || null;
+  let tenantContext: TenantSummary | null = null;
+  const activeTenantId = activeCafe?.tenantId || actor.tenantId || Array.from(tenantIds)[0] || null;
   if (activeTenantId) {
     const [t] = await db
-      .select({ id: tenants.id, name: tenants.name, slug: tenants.slug })
+      .select({
+        id: tenants.id,
+        name: tenants.name,
+        slug: tenants.slug,
+        status: tenants.status,
+        maxBranches: tenants.maxBranches,
+      })
       .from(tenants)
       .where(eq(tenants.id, activeTenantId));
     tenantContext = t || null;
   }
 
+  const capabilities = resolveStaffCapabilities(staffRole, matchedAssignment?.capabilities);
   const accessibleBranches: AccessibleBranchSummary[] = Array.from(branchMap.values()).map(b => ({
     id: b.id,
     name: b.name,
@@ -168,12 +211,14 @@ async function resolveUserAccess(req: any): Promise<ResolvedAccess> {
   req.managedCafe = activeCafe;
   req.managedCafeResolved = true;
   req.effectiveStaffRole = staffRole;
+  req.effectiveCapabilities = capabilities;
   req.accessibleBranches = accessibleBranches;
   req.tenantContext = tenantContext;
 
   return {
     cafe: activeCafe,
     staffRole,
+    capabilities,
     accessibleBranches,
     tenantContext,
   };
@@ -187,6 +232,10 @@ export async function getEffectiveStaffRole(req: any): Promise<EffectiveStaffRol
   return (await resolveUserAccess(req)).staffRole;
 }
 
+export async function getEffectiveCapabilities(req: any): Promise<ResolvedStaffCapabilities> {
+  return (await resolveUserAccess(req)).capabilities;
+}
+
 export async function getAccessibleBranches(req: any): Promise<AccessibleBranchSummary[]> {
   return (await resolveUserAccess(req)).accessibleBranches;
 }
@@ -197,7 +246,7 @@ export async function mediaOwner(req: any): Promise<string> {
 
 export async function authUser(req: any): Promise<AuthUser> {
   const { password, ...user } = req.user;
-  const { cafe, staffRole, accessibleBranches, tenantContext } = await resolveUserAccess(req);
+  const { cafe, staffRole, capabilities, accessibleBranches, tenantContext } = await resolveUserAccess(req);
   const owner = cafe
     ? cafe.userId === req.user.id
       ? req.user
@@ -206,6 +255,7 @@ export async function authUser(req: any): Promise<AuthUser> {
   return {
     ...user,
     staffRole,
+    capabilities,
     tenantContext,
     accessibleBranches,
     cafeContext: cafe
@@ -226,65 +276,6 @@ export async function authUser(req: any): Promise<AuthUser> {
   };
 }
 
-/**
- * Enforces the PRD §3 User Roles & Permissions Matrix for scoped sub-roles
- * (`prep_barista` and `host_cashier`) while `super_admin`, `tenant_owner`, and
- * `branch_manager` retain full branch management permissions.
- */
-function staffRoleAllowsRequest(staffRole: EffectiveStaffRole, method: string, path: string): boolean {
-  if (staffRole === 'super_admin' || staffRole === 'tenant_owner' || staffRole === 'branch_manager') {
-    return true;
-  }
-
-  const isRead = method === 'GET' || method === 'HEAD';
-
-  // Read-only context endpoints needed by both Barista prep tablets and Host/Cashier terminals
-  if (
-    isRead &&
-    (/^\/api\/(?:restaurant|manager-menu|categories|menu-items)$/.test(path) ||
-      /^\/api\/hospitality\/(?:stream|pagers|bays|orders|push\/status)$/.test(path))
-  ) {
-    return true;
-  }
-  if (/^\/api\/hospitality\/push\/(?:subscribe|test)$/.test(path)) {
-    return true;
-  }
-
-  if (staffRole === 'prep_barista') {
-    // Barista / Prep / Runner: advance prep states, check off line items, snooze items/modifiers, view bays & orders
-    if (
-      method === 'POST' &&
-      (/^\/api\/hospitality\/pagers\/[^/]+\/transition$/.test(path) ||
-        /^\/api\/hospitality\/pagers\/[^/]+\/line-items\/\d+\/toggle$/.test(path) ||
-        /^\/api\/hospitality\/items\/[^/]+\/snooze$/.test(path) ||
-        /^\/api\/hospitality\/items\/[^/]+\/modifiers\/[^/]+\/snooze$/.test(path))
-    ) {
-      return true;
-    }
-    return false;
-  }
-
-  if (staffRole === 'host_cashier') {
-    // Host / Cashier: issue pagers, confirm pay-at-venue, check off items, manage floor reservations & waitlist, create/update POS orders
-    if (isRead && path === '/api/hospitality/floor') return true;
-    if (
-      method === 'POST' &&
-      (path === '/api/hospitality/pagers/issue' ||
-        /^\/api\/hospitality\/pagers\/[^/]+\/transition$/.test(path) ||
-        /^\/api\/hospitality\/pagers\/[^/]+\/line-items\/\d+\/toggle$/.test(path) ||
-        /^\/api\/hospitality\/reservations\/[^/]+\/status$/.test(path) ||
-        /^\/api\/hospitality\/waitlist\/[^/]+\/action$/.test(path) ||
-        path === '/api/hospitality/orders' ||
-        /^\/api\/hospitality\/orders\/[^/]+\/payment-status$/.test(path))
-    ) {
-      return true;
-    }
-    return false;
-  }
-
-  return false;
-}
-
 const publicGet =
   /^\/api\/(?:cafes$|(?:menu|restaurant|categories|menu-items)\/public\/[^/]+$|price-variants\/public\/(?:[^/]+|restaurant\/[^/]+)$|public\/)/;
 const publicPost = /^\/api\/(?:public\/|webhooks\/payments\/)/;
@@ -293,7 +284,7 @@ const cafePath =
 const sharedPath = /^\/api\/(?:auth\/user|account\/password|menu-library)(?:\/|$)/;
 
 export function mountAccessControl(app: Express) {
-  // Every private API passes through one live role check. Public menu & guest hospitality endpoints are explicit.
+  // Every private API passes through one live role + capability check. Public menu & guest hospitality endpoints are explicit.
   app.use(async (req: any, res, next) => {
     if (!req.path.startsWith('/api/')) return next();
     if (['GET', 'HEAD'].includes(req.method) && publicGet.test(req.path)) return next();
@@ -324,6 +315,7 @@ export function mountAccessControl(app: Express) {
                   actorId: actor.id,
                   actorEmail: actor.email,
                   actorRole: req.effectiveStaffRole || actor.role,
+                  tenantId: affected?.tenantId || req.tenantContext?.id || actor.tenantId || null,
                   cafeId,
                   cafeName: affected?.name || null,
                   action: `${req.method} ${requestPath}`,
@@ -337,21 +329,23 @@ export function mountAccessControl(app: Express) {
           if (actor.role !== 'super_admin') return res.status(403).json({ message: 'Super admin access required' });
           return next();
         }
+        const { cafe, staffRole, capabilities, tenantContext } = await resolveUserAccess(req);
+        if (actor.role !== 'super_admin' && tenantContext?.status === 'suspended') {
+          return res.status(403).json({ message: 'This tenant organization is currently suspended.' });
+        }
         if (sharedPath.test(requestPath)) {
           if (requestPath.startsWith('/api/menu-library')) {
-            const staffRole = await getEffectiveStaffRole(req);
             if (staffRole === 'prep_barista' || staffRole === 'host_cashier') {
-              return res.status(403).json({ message: 'Menu library requires Branch Manager or Tenant Owner access.' });
+              return res.status(403).json({ message: 'Menu library requires Branch Manager or Tenant Admin access.' });
             }
           }
           return next();
         }
         if (!cafePath.test(requestPath)) return res.status(404).json({ message: 'API route not found' });
-        const { cafe, staffRole } = await resolveUserAccess(req);
         if (actor.role === 'super_admin' && !cafe) {
           return res.status(409).json({ message: 'Open a café workspace from the platform dashboard first' });
         }
-        if (requestPath !== '/api/hospitality/switch-branch') {
+        if (requestPath !== '/api/hospitality/switch-branch' && requestPath !== '/api/hospitality/branches') {
           const expected = req.get('X-Cafe-Context');
           if (
             (expected && expected !== cafe?.id) ||
@@ -360,7 +354,7 @@ export function mountAccessControl(app: Express) {
             return res.status(409).json({ message: 'The café workspace changed. Reload before saving.' });
           }
         }
-        if (!staffRoleAllowsRequest(staffRole, req.method, requestPath)) {
+        if (!staffActionAllowed(staffRole, capabilities, req.method, requestPath, req.body)) {
           return res.status(403).json({
             message: `Your role (${staffRole.replace('_', ' ')}) does not have permission for this action.`,
           });
@@ -396,7 +390,6 @@ export function mountAccessControl(app: Express) {
       const previousId = req.session.cafeId;
       delete req.session.cafeId;
       await new Promise<void>((resolve, reject) => req.session.save((err: Error) => (err ? reject(err) : resolve())));
-      // Retain the affected café for the exit audit, then return the platform context.
       req.managedCafe = previousId ? await storage.getRestaurantById(previousId) : undefined;
       res.json({ success: true });
     } catch (e) {

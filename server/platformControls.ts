@@ -7,7 +7,7 @@ import { storage } from './storage';
 import { isSuperAdmin } from './localAuth';
 import { ObjectStorageService, signedUploadURL } from './localObjects';
 import { rateLimit } from './httpSecurity';
-import { categories, menuItems, restaurants, sessions, users, insertCategorySchema, insertMenuItemSchema, cafeProfileSchema, passwordSchema, emailSchema } from '@shared/schema';
+import { categories, menuItems, restaurants, sessions, staffAssignments, tenants, users, insertCategorySchema, insertMenuItemSchema, cafeProfileSchema, passwordSchema, emailSchema } from '@shared/schema';
 
 const profileSchema = cafeProfileSchema.partial().extend({
   name: z.string().trim().min(1).max(150).optional(), theme: z.enum(['dingzi','e3','forest','terracotta','ocean','plum']).optional(),
@@ -36,13 +36,33 @@ export function mountPlatformControls(app: Express) {
       const input = z.object({ email: emailSchema, password: passwordSchema, firstName: z.string().trim().min(1).max(100),
         lastName: z.string().trim().min(1).max(100), role: z.enum(['admin','super_admin']),
         restaurantName: z.string().trim().min(1).max(150).optional(),
+        maxBranches: z.number().int().min(1).max(200).optional(),
       }).strict().refine(v => v.role === 'super_admin' ? !v.restaurantName : !!v.restaurantName,
         'Café managers need a restaurant name; super admins do not.').parse(req.body);
       const password = await bcrypt.hash(input.password, 12);
       const result = await db.transaction(async tx => {
-        const [created] = await tx.insert(users).values({ email: input.email, password, firstName: input.firstName, lastName: input.lastName, role: input.role }).returning();
+        let [created] = await tx.insert(users).values({ email: input.email, password, firstName: input.firstName, lastName: input.lastName, role: input.role }).returning();
         let cafe;
-        if (input.role === 'admin') [cafe] = await tx.insert(restaurants).values({ userId: created.id, name: input.restaurantName! }).returning();
+        if (input.role === 'admin') {
+          const [tenant] = await tx
+            .insert(tenants)
+            .values({
+              name: input.restaurantName!,
+              ownerUserId: created.id,
+              status: 'active',
+              maxBranches: input.maxBranches ?? 1,
+            })
+            .returning();
+          [created] = await tx.update(users).set({ tenantId: tenant.id }).where(eq(users.id, created.id)).returning();
+          [cafe] = await tx.insert(restaurants).values({ userId: created.id, tenantId: tenant.id, name: input.restaurantName! }).returning();
+          await tx.insert(staffAssignments).values({
+            userId: created.id,
+            tenantId: tenant.id,
+            pinTenantId: tenant.id,
+            staffRole: 'tenant_owner',
+            isActive: true,
+          });
+        }
         const { password: hidden, ...user } = created;
         return { user, cafe };
       });
@@ -151,10 +171,13 @@ export function mountPlatformControls(app: Express) {
       if (!cafe) return res.status(404).json({ message: 'Café not found' });
       await db.transaction(async tx => {
         await tx.delete(restaurants).where(eq(restaurants.id, cafe.id));
-        // A café deletion must never delete a platform administrator account.
-        const [owner] = await tx.select().from(users).where(eq(users.id, cafe.userId));
-        if (owner?.role === 'admin') await tx.delete(sessions).where(sql`${sessions.sess}->>'userId' = ${cafe.userId}`);
-        await tx.delete(users).where(and(eq(users.id, cafe.userId), eq(users.role, 'admin')));
+        const remaining = await tx.select({ id: restaurants.id }).from(restaurants).where(eq(restaurants.userId, cafe.userId)).limit(1);
+        if (remaining.length === 0) {
+          // A café deletion must never delete a platform administrator account or an owner who still owns other branches.
+          const [owner] = await tx.select().from(users).where(eq(users.id, cafe.userId));
+          if (owner?.role === 'admin') await tx.delete(sessions).where(sql`${sessions.sess}->>'userId' = ${cafe.userId}`);
+          await tx.delete(users).where(and(eq(users.id, cafe.userId), eq(users.role, 'admin')));
+        }
       });
       res.json({ success: true });
     } catch (e) { next(e); }

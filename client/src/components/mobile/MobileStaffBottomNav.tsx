@@ -45,9 +45,11 @@ export function MobileStaffBottomNav() {
         ]
       : role === 'host_cashier'
         ? [
-            { label: 'Front Desk', url: '/admin/front-desk', icon: Store },
+            { label: 'Reception', url: '/admin/front-desk', icon: Store },
             { label: 'Pagers', url: '/admin/pagers', icon: BellRing },
-            { label: 'Tables', url: '/admin/tables', icon: CalendarDays },
+            ...(user?.capabilities?.canManageTables !== false
+              ? [{ label: 'Tables', url: '/admin/tables', icon: CalendarDays }]
+              : []),
             { label: 'Orders', url: '/admin/orders', icon: Receipt },
             { label: 'Curbside', url: '/admin/drive-thru', icon: Car },
           ]

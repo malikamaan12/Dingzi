@@ -52,10 +52,11 @@ export function mountStaffPagerAndFloorRoutes(app: Express) {
       if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
       const body = z
         .object({
-          mode: z.enum(['auto_number', 'pos_invoice']),
+          mode: z.enum(['auto_number', 'pos_invoice']).default('auto_number'),
           invoiceNumber: z.string().trim().max(40).optional(),
-          customerName: z.string().trim().max(120).optional(),
-          notes: z.string().trim().max(300).optional(),
+          customerName: z.string().trim().max(120).nullable().optional(),
+          channel: z.enum(['counter_pickup', 'dine_in', 'curbside', 'drive_thru']).optional(),
+          notes: z.string().trim().max(300).nullable().optional(),
           estimatedPrepMins: z.number().int().min(1).max(120).default(8),
           bayId: z.string().uuid().optional().nullable(),
           smartTagId: z.string().uuid().optional().nullable(),
@@ -667,6 +668,131 @@ export function mountStaffPagerAndFloorRoutes(app: Express) {
       }
 
       res.json({ entry: updated });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Staff Desk Walk-In Waitlist Entry (works even if public guest waitlist is closed)
+  app.post('/api/hospitality/waitlist', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const body = z
+        .object({
+          guestName: z.string().trim().min(1).max(100),
+          guestPhone: z.string().trim().max(40).nullable().optional(),
+          partySize: z.number().int().min(1).max(30),
+          zoneId: z.string().uuid().nullable().optional(),
+          notes: z.string().trim().max(300).nullable().optional(),
+        })
+        .strict()
+        .parse(req.body);
+
+      const entry = await db.transaction(async tx => {
+        const countRows = await tx
+          .select({ n: sql<number>`count(*)` })
+          .from(waitlistEntries)
+          .where(eq(waitlistEntries.restaurantId, cafe.id));
+        const seq = (Number(countRows[0]?.n || 0) % 999) + 1;
+        const code = `W-${String(seq).padStart(3, '0')}`;
+        const [created] = await tx
+          .insert(waitlistEntries)
+          .values({
+            restaurantId: cafe.id,
+            zoneId: body.zoneId || null,
+            ticketCode: code,
+            guestName: body.guestName,
+            guestPhone: body.guestPhone || null,
+            partySize: body.partySize,
+            status: 'waiting',
+            notes: body.notes || null,
+          })
+          .returning();
+        return created;
+      });
+
+      publishRealtimeEvent([`branch:${cafe.id}`, `waitlist:${entry.trackingToken}`], {
+        type: 'waitlist.updated',
+        branchId: cafe.id,
+        data: { entry },
+      });
+      res.status(201).json({ entry });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  // Staff Desk Phone / Walk-In Table Reservation
+  app.post('/api/hospitality/reservations', isAuthenticated, async (req: any, res, next) => {
+    try {
+      const cafe = await getManagedCafe(req);
+      if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const body = z
+        .object({
+          guestName: z.string().trim().min(1).max(100),
+          guestPhone: z.string().trim().max(40).nullable().optional(),
+          partySize: z.number().int().min(1).max(30),
+          startAt: z.string().datetime({ offset: true }).or(z.string().min(10)),
+          durationMins: z.number().int().min(15).max(360).optional(),
+          tableId: z.string().uuid().nullable().optional(),
+          zoneId: z.string().uuid().nullable().optional(),
+          notes: z.string().trim().max(400).nullable().optional(),
+        })
+        .strict()
+        .parse(req.body);
+
+      const start = new Date(body.startAt);
+      if (Number.isNaN(start.getTime())) {
+        return res.status(400).json({ message: 'Invalid reservation start time' });
+      }
+      const duration = body.durationMins || cafe.defaultTurnDurationMins || 90;
+      const end = new Date(start.getTime() + duration * 60_000);
+
+      let chosenTableId = body.tableId || null;
+      if (!chosenTableId) {
+        const candidateTables = await db
+          .select()
+          .from(diningTables)
+          .where(
+            and(
+              eq(diningTables.restaurantId, cafe.id),
+              eq(diningTables.isActive, true),
+              ...(body.zoneId ? [eq(diningTables.zoneId, body.zoneId)] : []),
+            ),
+          )
+          .orderBy(asc(diningTables.maxCovers));
+        const fit = candidateTables.find(t => t.maxCovers >= body.partySize) || candidateTables[0];
+        if (!fit) {
+          return res.status(409).json({ message: 'Add at least one active dining table before booking.' });
+        }
+        chosenTableId = fit.id;
+      }
+
+      const [reservation] = await db
+        .insert(tableReservations)
+        .values({
+          restaurantId: cafe.id,
+          tableId: chosenTableId,
+          zoneId: body.zoneId || null,
+          guestName: body.guestName,
+          guestPhone: body.guestPhone || '',
+          partySize: body.partySize,
+          startAt: start,
+          endAt: end,
+          status: 'confirmed',
+          depositStatus: 'waived',
+          depositAmount: '0',
+          notes: body.notes || null,
+        })
+        .returning();
+
+      publishRealtimeEvent([`branch:${cafe.id}`], {
+        type: 'reservation.updated',
+        branchId: cafe.id,
+        data: { reservation },
+      });
+      res.status(201).json({ reservation });
     } catch (e) {
       next(e);
     }

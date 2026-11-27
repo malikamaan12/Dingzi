@@ -99,6 +99,13 @@
       "when": 1795724400000,
       "tag": "0013_order_prep_checkoffs_and_recall",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1795810800000,
+      "tag": "0014_multitenant_rbac",
+      "breakpoints": true
     }
   ]
 }

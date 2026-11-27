@@ -1,14 +1,15 @@
 import { Express, RequestHandler } from "express";
 import session from "express-session";
 import { db } from "./db";
-import { sessions } from "@shared/schema";
-import { eq, lt } from "drizzle-orm";
+import { accessAudit, loginSchema, pinLoginSchema, restaurants, sessions, staffAssignments, tenants, users } from "@shared/schema";
+import { and, eq, lt, or, sql } from "drizzle-orm";
 import bcrypt from "./passwords";
 import { storage } from "./storage";
-import { loginSchema } from "@shared/schema";
 import { fromZodError } from "zod-validation-error";
 import { rateLimit } from './httpSecurity';
 import { safeError } from './securityHeaders';
+import { computeStationPinLookup } from './pinSecurity';
+import { z } from 'zod';
 
 export function sessionCookieName() {
   return process.env.COOKIE_SECURE === 'true' ? '__Host-cafe.sid' : 'connect.sid';
@@ -79,6 +80,13 @@ export async function setupAuth(app: Express) {
         return res.status(401).json({ message: "Invalid email or password" });
       }
 
+      if (user.role !== 'super_admin' && user.tenantId) {
+        const [tenant] = await db.select({ status: tenants.status }).from(tenants).where(eq(tenants.id, user.tenantId));
+        if (tenant?.status === 'suspended') {
+          return res.status(403).json({ message: "This tenant organization is currently suspended." });
+        }
+      }
+
       // Set session
       await new Promise<void>((resolve, reject) => req.session.regenerate(err => err ? reject(err) : resolve()));
       (req.session as any).userId = user.id;
@@ -93,6 +101,110 @@ export async function setupAuth(app: Express) {
       });
     } catch (error) {
       console.error("Login error:", safeError(error));
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // 6-Digit Station PIN Login for Reception & Prep Terminals (scoped to venue slug or ID)
+  const pinIpLimit = rateLimit(40, 15 * 60 * 1000, req => 'pin-ip:' + (req.ip || 'unknown'));
+  const pinVenueLimit = rateLimit(
+    10,
+    15 * 60 * 1000,
+    req => 'pin-venue:' + String(req.body?.venueCode || '').trim().toLowerCase().slice(0, 120),
+    true,
+  );
+  app.post("/api/login/pin", pinIpLimit, pinVenueLimit, async (req, res) => {
+    try {
+      const parsed = pinLoginSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: fromZodError(parsed.error).message });
+      }
+
+      const codeNormalized = parsed.data.venueCode.trim().toLowerCase();
+      const isUuid = z.string().uuid().safeParse(codeNormalized).success;
+      const [cafe] = await db
+        .select()
+        .from(restaurants)
+        .where(
+          isUuid
+            ? or(eq(restaurants.id, codeNormalized), sql`lower(${restaurants.slug}) = ${codeNormalized}`)
+            : or(
+                sql`lower(${restaurants.slug}) = ${codeNormalized}`,
+                sql`lower(btrim(${restaurants.name})) = ${codeNormalized}`,
+              ),
+        )
+        .limit(1);
+
+      if (!cafe || !cafe.tenantId) {
+        return res.status(401).json({ message: "Invalid venue code or station PIN" });
+      }
+
+      const [tenant] = await db.select().from(tenants).where(eq(tenants.id, cafe.tenantId));
+      if (!tenant || tenant.status === 'suspended') {
+        return res.status(403).json({ message: "This tenant organization is currently suspended." });
+      }
+
+      const lookupHash = computeStationPinLookup(cafe.tenantId, parsed.data.pin);
+      const [match] = await db
+        .select({ assignment: staffAssignments, user: users })
+        .from(staffAssignments)
+        .innerJoin(users, eq(staffAssignments.userId, users.id))
+        .where(
+          and(
+            eq(staffAssignments.isActive, true),
+            eq(staffAssignments.pinTenantId, cafe.tenantId),
+            eq(staffAssignments.pinLookupHash, lookupHash),
+            sql`EXISTS (
+              SELECT 1 FROM "staff_assignments" sa2
+              WHERE sa2."user_id" = ${users.id}
+                AND sa2."is_active" = true
+                AND (
+                  sa2."restaurant_id" = ${cafe.id}
+                  OR (sa2."restaurant_id" IS NULL AND sa2."tenant_id" = ${cafe.tenantId})
+                )
+            )`,
+          ),
+        )
+        .limit(1);
+
+      if (
+        !match ||
+        !match.assignment.pinHash ||
+        match.user.accountStatus !== 'active' ||
+        !['admin', 'super_admin'].includes(match.user.role)
+      ) {
+        return res.status(401).json({ message: "Invalid venue code or station PIN" });
+      }
+
+      const validPin = await bcrypt.compare(parsed.data.pin, match.assignment.pinHash);
+      if (!validPin) {
+        return res.status(401).json({ message: "Invalid venue code or station PIN" });
+      }
+
+      await new Promise<void>((resolve, reject) => req.session.regenerate(err => (err ? reject(err) : resolve())));
+      (req.session as any).userId = match.user.id;
+      (req.session as any).cafeId = cafe.id;
+      await new Promise<void>((resolve, reject) => req.session.save(err => (err ? reject(err) : resolve())));
+
+      await db.insert(accessAudit).values({
+        actorId: match.user.id,
+        actorEmail: match.user.email,
+        actorRole: match.assignment.staffRole,
+        tenantId: cafe.tenantId,
+        cafeId: cafe.id,
+        cafeName: cafe.name,
+        action: 'POST /api/login/pin',
+        status: 200,
+      });
+
+      const { password: _, ...sanitizedUser } = match.user;
+      res.json({
+        success: true,
+        user: sanitizedUser,
+        branchId: cafe.id,
+      });
+    } catch (error) {
+      console.error("PIN login error:", safeError(error));
       res.status(500).json({ message: "Internal server error" });
     }
   });

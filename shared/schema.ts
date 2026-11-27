@@ -14,6 +14,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import type { ResolvedStaffCapabilities, StaffCapabilityOverrides } from "./rbac";
 
 // Database-backed staff sessions.
 export const sessions = pgTable(
@@ -35,11 +36,13 @@ export const users = pgTable("users", {
   lastName: varchar("last_name"),
   profileImageUrl: varchar("profile_image_url"),
   role: varchar("role").notNull().default("admin"), // "admin" or "super_admin"
+  tenantId: varchar("tenant_id"),
   accountStatus: varchar("account_status").notNull().default("active"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, table => [
   uniqueIndex('users_email_case_unique').on(sql`lower(${table.email})`),
+  index('IDX_users_tenant').on(table.tenantId),
   check('users_management_role', sql`${table.role} in ('admin','super_admin')`),
   check('users_account_status', sql`${table.accountStatus} in ('active','frozen','deleted')`),
 ]);
@@ -76,7 +79,13 @@ export const loginSchema = z.object({
   password: z.string().min(1).max(72).refine(v => new TextEncoder().encode(v).length <= 72, 'Password is too long'),
 }).strict();
 
+export const pinLoginSchema = z.object({
+  venueCode: z.string().trim().min(1, 'Enter your venue slug or ID').max(120),
+  pin: z.string().trim().regex(/^\d{6}$/, 'Enter your 6-digit station PIN'),
+}).strict();
+
 export type LoginCredentials = z.infer<typeof loginSchema>;
+export type PinLoginCredentials = z.infer<typeof pinLoginSchema>;
 
 export const orderingModes = ['browse_and_pager', 'cart_pay_at_venue', 'full_online_checkout'] as const;
 export type OrderingMode = (typeof orderingModes)[number];
@@ -92,8 +101,14 @@ export const tenants = pgTable("tenants", {
   name: text("name").notNull(),
   slug: varchar("slug", { length: 120 }).unique(),
   ownerUserId: varchar("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+  status: varchar("status", { length: 24 }).notNull().default("active"),
+  maxBranches: integer("max_branches").notNull().default(1),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, table => [
+  check("tenants_status_check", sql`${table.status} in ('active', 'suspended')`),
+  check("tenants_max_branches_check", sql`${table.maxBranches} >= 1 and ${table.maxBranches} <= 200`),
+]);
 export type Tenant = typeof tenants.$inferSelect;
 
 // Restaurants / Branches table
@@ -147,7 +162,8 @@ export const restaurants = pgTable("restaurants", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, table => [
-  uniqueIndex('restaurants_one_owner').on(table.userId),
+  index('IDX_restaurants_user').on(table.userId),
+  index('IDX_restaurants_tenant').on(table.tenantId),
   check('restaurants_status', sql`${table.status} in ('active','suspended','pending')`),
 ]);
 
@@ -235,9 +251,14 @@ export const staffAssignments = pgTable("staff_assignments", {
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   restaurantId: varchar("restaurant_id").references(() => restaurants.id, { onDelete: "cascade" }),
   tenantId: varchar("tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
+  pinTenantId: varchar("pin_tenant_id").references(() => tenants.id, { onDelete: "cascade" }),
   staffRole: varchar("staff_role", { length: 32 }).notNull().default("branch_manager"),
+  capabilities: jsonb("capabilities").$type<StaffCapabilityOverrides>().notNull().default(sql`'{}'::jsonb`),
+  pinHash: text("pin_hash"),
+  pinLookupHash: varchar("pin_lookup_hash", { length: 64 }),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 }, table => [
   check("staff_assignments_role_check", sql`${table.staffRole} in ('tenant_owner', 'branch_manager', 'host_cashier', 'prep_barista')`),
 ]);
@@ -267,7 +288,8 @@ export interface AccessibleBranchSummary {
 export type AuthUser = Omit<User, 'password'> & {
   cafeContext: CafeAccessContext | null;
   staffRole?: EffectiveStaffRole;
-  tenantContext?: Pick<Tenant, 'id' | 'name' | 'slug'> | null;
+  capabilities?: ResolvedStaffCapabilities;
+  tenantContext?: Pick<Tenant, 'id' | 'name' | 'slug' | 'status' | 'maxBranches'> | null;
   accessibleBranches?: AccessibleBranchSummary[];
 };
 
@@ -276,12 +298,16 @@ export const accessAudit = pgTable('access_audit', {
   actorId: varchar('actor_id').notNull(),
   actorEmail: text('actor_email').notNull(),
   actorRole: varchar('actor_role').notNull(),
+  tenantId: varchar('tenant_id'),
   cafeId: varchar('cafe_id'),
   cafeName: text('cafe_name'),
   action: text('action').notNull(),
   status: integer('status').notNull(),
   createdAt: timestamp('created_at').notNull().defaultNow(),
-}, table => [index('access_audit_recent').on(table.createdAt)]);
+}, table => [
+  index('access_audit_recent').on(table.createdAt),
+  index('IDX_access_audit_tenant_created').on(table.tenantId, table.createdAt),
+]);
 export type AccessAudit = typeof accessAudit.$inferSelect;
 
 // Categories table

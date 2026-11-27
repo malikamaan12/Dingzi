@@ -4,6 +4,8 @@ import { mountPublicPagerAndTableRoutes } from './hospitality/publicPagerAndTabl
 import { mountStaffPagerAndFloorRoutes } from './hospitality/staffPagerAndFloorRoutes';
 import { mountSmartTagsAndAnalyticsRoutes } from './hospitality/smartTagsAndAnalyticsRoutes';
 import { mountOrdersTeamAndTenantRoutes } from './hospitality/ordersTeamAndTenantRoutes';
+import { mountTeamAndRbacRoutes } from './hospitality/teamAndRbacRoutes';
+import { mountTenantBranchesAndPortfolioRoutes } from './hospitality/tenantBranchesAndPortfolioRoutes';
 
 export function mountHospitalityRoutes(app: Express) {
   mountPublicGuestOrdersRoutes(app);
@@ -11,4 +13,6 @@ export function mountHospitalityRoutes(app: Express) {
   mountStaffPagerAndFloorRoutes(app);
   mountSmartTagsAndAnalyticsRoutes(app);
   mountOrdersTeamAndTenantRoutes(app);
+  mountTeamAndRbacRoutes(app);
+  mountTenantBranchesAndPortfolioRoutes(app);
 }

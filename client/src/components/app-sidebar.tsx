@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import type { AuthUser, EffectiveStaffRole } from "@shared/schema";
+import { formatEffectiveRoleTitle } from "@shared/rbac";
 import { logout } from '@/lib/logout';
 import { useToast } from '@/hooks/use-toast';
 import { useEffect, useState } from 'react';
@@ -212,10 +213,13 @@ export function AppSidebar({ user }: AppSidebarProps) {
     if (item.url === '/admin/portfolio') {
       return effectiveRole === 'tenant_owner' || effectiveRole === 'super_admin' || hasMultiBranchAccess;
     }
+    if (item.url === '/admin/tables' && effectiveRole === 'host_cashier' && user?.capabilities?.canManageTables === false) {
+      return false;
+    }
     return item.roles.includes(effectiveRole);
   });
   const menuItems = isSuperAdmin ? superAdminMenuItems : filteredAdminItems;
-  const sidebarTitle = STAFF_ROLE_LABELS[effectiveRole] || "Café Manager";
+  const sidebarTitle = formatEffectiveRoleTitle(effectiveRole, user?.capabilities) || STAFF_ROLE_LABELS[effectiveRole];
 
   return (
     <Sidebar className="staff-sidebar">

@@ -133,7 +133,7 @@ async function handleRequest(request: Request, env: WorkerEnvironment, ctx: Exec
                 OR EXISTS (
                   SELECT 1 FROM staff_assignments sa
                   WHERE sa.user_id = u.id AND sa.is_active = true
-                    AND (sa.restaurant_id = $2 OR (r.tenant_id IS NOT NULL AND sa.tenant_id = r.tenant_id))
+                    AND (sa.restaurant_id = $2 OR (sa.restaurant_id IS NULL AND r.tenant_id IS NOT NULL AND sa.tenant_id = r.tenant_id))
                 )
                 OR EXISTS (
                   SELECT 1 FROM tenants t

@@ -1,5 +1,6 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
+import { eq } from "drizzle-orm";
 import { storage } from "./storage";
 import { setupAuth, isAuthenticated, isSuperAdmin } from "./localAuth";
 import {
@@ -13,7 +14,7 @@ import { mountAccessControl, getManagedCafe, mediaOwner, authUser } from './acce
 import { mountPlatformControls } from './platformControls';
 import { mountHospitalityRoutes } from './hospitalityRoutes';
 import { mountPushRoutes } from './pushRoutes';
-import { insertCategorySchema, registrationSchema, users, restaurants } from "@shared/schema";
+import { insertCategorySchema, registrationSchema, staffAssignments, tenants, users, restaurants } from "@shared/schema";
 import { db } from './db';
 import { rateLimit } from './httpSecurity';
 import { fromZodError } from "zod-validation-error";
@@ -33,16 +34,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   mountHospitalityRoutes(app);
   mountPushRoutes(app);
 
-  // Only the platform owner can provision a restaurant and its manager.
+  // Only the platform owner can provision a tenant/restaurant and its manager.
+  const superAdminProvisionSchema = registrationSchema.extend({
+    tenantName: z.string().trim().min(1).max(150).optional(),
+    tenantId: z.string().uuid().optional(),
+    maxBranches: z.number().int().min(1).max(200).optional(),
+  });
   app.post('/api/super-admin/restaurants', isSuperAdmin, rateLimit(10, 60 * 60 * 1000, req => req.ip || 'unknown'), async (req, res) => {
     try {
-      const validationResult = registrationSchema.safeParse(req.body);
+      const validationResult = superAdminProvisionSchema.safeParse(req.body);
       if (!validationResult.success) {
         const validationError = fromZodError(validationResult.error);
         return res.status(400).json({ message: validationError.message });
       }
 
-      const { email, password, firstName, lastName, restaurantName } = validationResult.data;
+      const { email, password, firstName, lastName, restaurantName, tenantName, tenantId, maxBranches } = validationResult.data;
 
       // Check if user already exists
       const existingUser = await storage.getUserByEmail(email);
@@ -50,16 +56,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(409).json({ message: "Email already registered" });
       }
 
-      // Create restaurant admin user
+      // Create tenant + tenant admin user + initial branch atomically
       const hashedPassword = await bcrypt.hash(password, 12);
       const created = await db.transaction(async tx => {
         const [user] = await tx.insert(users).values({ email, password: hashedPassword, firstName, lastName, role: 'admin' }).returning();
-        const [cafe] = await tx.insert(restaurants).values({ userId: user.id, name: restaurantName }).returning();
-        return { user, cafe };
+        let activeTenantId = tenantId || null;
+        if (!activeTenantId) {
+          const [tenant] = await tx
+            .insert(tenants)
+            .values({
+              name: tenantName || restaurantName,
+              ownerUserId: user.id,
+              status: 'active',
+              maxBranches: maxBranches ?? 1,
+            })
+            .returning();
+          activeTenantId = tenant.id;
+        }
+        await tx.update(users).set({ tenantId: activeTenantId }).where(eq(users.id, user.id));
+        const [cafe] = await tx
+          .insert(restaurants)
+          .values({ userId: user.id, tenantId: activeTenantId, name: restaurantName })
+          .returning();
+        await tx.insert(staffAssignments).values({
+          userId: user.id,
+          tenantId: tenantId ? null : activeTenantId,
+          restaurantId: tenantId ? cafe.id : null,
+          pinTenantId: activeTenantId,
+          staffRole: tenantId ? 'branch_manager' : 'tenant_owner',
+          isActive: true,
+        });
+        return { user, cafe, tenantId: activeTenantId };
       });
 
       (req as any).platformCafe = created.cafe;
-      res.status(201).json({ message: 'Restaurant and manager created.', id: created.cafe.id, email: created.user.email });
+      res.status(201).json({ message: 'Restaurant and manager created.', id: created.cafe.id, tenantId: created.tenantId, email: created.user.email });
     } catch (error: any) {
       if (error.code === '23505' || error.cause?.code === '23505') return res.status(409).json({ message: 'Email already registered' });
       console.error("Error registering restaurant:", { type: error.name, code: error.code || error.cause?.code });
@@ -107,12 +138,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Get all users (Super Admin only)
+  // Get all users with resolved tenant & staff role metadata (Super Admin only)
   app.get("/api/super-admin/users", isSuperAdmin, async (_req, res) => {
     try {
-      const users = await storage.getAllUsers();
-      // Sanitize passwords
-      const sanitizedUsers = users.map(({ password, ...user }) => user);
+      const [allUsers, allAssignments, allTenants, allRestaurants] = await Promise.all([
+        storage.getAllUsers(),
+        db.select().from(staffAssignments).where(eq(staffAssignments.isActive, true)),
+        db.select().from(tenants),
+        storage.getAllRestaurants(),
+      ]);
+      const tenantById = new Map(allTenants.map(t => [t.id, t]));
+      const ownedTenantByUser = new Map(allTenants.filter(t => t.ownerUserId).map(t => [t.ownerUserId!, t]));
+      const roleOrder: Record<string, number> = {
+        tenant_owner: 4,
+        branch_manager: 3,
+        host_cashier: 2,
+        prep_barista: 1,
+      };
+
+      const sanitizedUsers = allUsers.map(({ password, ...user }) => {
+        if (user.role === 'super_admin') {
+          return { ...user, primaryStaffRole: 'super_admin', tenantName: null, assignedBranchCount: allRestaurants.length };
+        }
+        const userAssigns = allAssignments.filter(a => a.userId === user.id);
+        const ownedTenant = ownedTenantByUser.get(user.id);
+        const ownedBranchCount = allRestaurants.filter(r => r.userId === user.id).length;
+        const sortedRoles = userAssigns
+          .map(a => a.staffRole)
+          .sort((a, b) => (roleOrder[b] || 0) - (roleOrder[a] || 0));
+        const primaryStaffRole = ownedTenant
+          ? 'tenant_owner'
+          : sortedRoles[0] || (ownedBranchCount > 0 ? 'tenant_owner' : 'branch_manager');
+        const resolvedTenant =
+          (user.tenantId && tenantById.get(user.tenantId)) ||
+          ownedTenant ||
+          (userAssigns[0]?.tenantId ? tenantById.get(userAssigns[0].tenantId) : undefined);
+        const tenantBranchCount = resolvedTenant
+          ? allRestaurants.filter(r => r.tenantId === resolvedTenant.id).length
+          : 0;
+        const assignedBranchCount =
+          primaryStaffRole === 'tenant_owner' || userAssigns.some(a => a.tenantId && !a.restaurantId)
+            ? Math.max(tenantBranchCount, ownedBranchCount)
+            : new Set([
+                ...allRestaurants.filter(r => r.userId === user.id).map(r => r.id),
+                ...userAssigns.map(a => a.restaurantId).filter(Boolean),
+              ]).size;
+
+        return {
+          ...user,
+          primaryStaffRole,
+          tenantName: resolvedTenant?.name || null,
+          assignedBranchCount,
+        };
+      });
       res.json(sanitizedUsers);
     } catch (error) {
       console.error("Error fetching users:", safeError(error));
