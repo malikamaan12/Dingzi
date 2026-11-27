@@ -1,0 +1,249 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-27T05:53:58.679Z",
+  "title": "Design System: dingzi",
+  "extensions": {
+    "colorMeta": {
+      "electric-violet": {
+        "role": "primary",
+        "displayName": "Electric Violet",
+        "canonical": "#6236FF",
+        "tonalRamp": [
+          "#170B45",
+          "#29147A",
+          "#3B1DB0",
+          "#4B1FE0",
+          "#6236FF",
+          "#8F70FF",
+          "#C4B3FF",
+          "#EFEAFF"
+        ]
+      },
+      "hyper-indigo": {
+        "role": "primary",
+        "displayName": "Hyper Indigo",
+        "canonical": "#4B1FE0",
+        "tonalRamp": [
+          "#14083D",
+          "#230E6B",
+          "#35169E",
+          "#4B1FE0",
+          "#6842EB",
+          "#957AF2",
+          "#C7B8F9",
+          "#EFEAFF"
+        ]
+      },
+      "volt-lime": {
+        "role": "secondary",
+        "displayName": "Volt Lime",
+        "canonical": "#C8FF42",
+        "tonalRamp": [
+          "#243300",
+          "#3E5900",
+          "#608A00",
+          "#86BF00",
+          "#A9EB1A",
+          "#C8FF42",
+          "#DEFF8A",
+          "#F3FFD6"
+        ]
+      },
+      "midnight-indigo": {
+        "role": "neutral",
+        "displayName": "Midnight Indigo",
+        "canonical": "#17132E",
+        "tonalRamp": [
+          "#0E0B1D",
+          "#17132E",
+          "#241E42",
+          "#312959",
+          "#443A75",
+          "#6E649E",
+          "#B8B2D8",
+          "#F6F5FC"
+        ]
+      },
+      "cosmic-slate": {
+        "role": "neutral",
+        "displayName": "Cosmic Slate",
+        "canonical": "#241E42",
+        "tonalRamp": [
+          "#120F24",
+          "#1B1633",
+          "#241E42",
+          "#312959",
+          "#463B7A",
+          "#6F64A3",
+          "#BDB7DC",
+          "#F6F5FC"
+        ]
+      },
+      "lilac-mist": {
+        "role": "neutral",
+        "displayName": "Lilac Mist",
+        "canonical": "#F6F5FC",
+        "tonalRamp": [
+          "#17132E",
+          "#2E2752",
+          "#57507A",
+          "#8A83AD",
+          "#C2BDD9",
+          "#E5E2F2",
+          "#F6F5FC",
+          "#FFFFFF"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display Hero",
+        "purpose": "Landing headlines and full-screen ready callouts."
+      },
+      "pager-code": {
+        "displayName": "Pager Ticket Code",
+        "purpose": "Tabular monospace queue codes (A-042) and timers."
+      },
+      "headline": {
+        "displayName": "Section Headline",
+        "purpose": "Console module titles and venue headers."
+      },
+      "body": {
+        "displayName": "Body Copy",
+        "purpose": "Menu descriptions, modifiers, and operational instructions."
+      },
+      "arabic-body": {
+        "displayName": "Arabic RTL Copy",
+        "purpose": "Zero-tracking, 1.7 line-height Arabic interface copy."
+      },
+      "label": {
+        "displayName": "UI Label",
+        "purpose": "Status pills, form labels, and compact metadata."
+      }
+    },
+    "shadows": [
+      {
+        "name": "dz-card",
+        "value": "0 8px 24px -6px rgba(23, 19, 46, 0.08)",
+        "purpose": "Elevated light-mode cards and lookup forms."
+      },
+      {
+        "name": "dz-violet",
+        "value": "0 10px 26px -6px rgba(98, 54, 255, 0.38)",
+        "purpose": "Primary Electric Violet CTA lift."
+      },
+      {
+        "name": "dz-volt",
+        "value": "0 12px 32px -6px rgba(200, 255, 66, 0.50)",
+        "purpose": "Active Order-Ready pager banner glow."
+      }
+    ],
+    "motion": [
+      {
+        "name": "spring-snappy",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Tactile 160ms-320ms control and sheet transitions."
+      },
+      {
+        "name": "bell-swing",
+        "value": "rotate(-16deg) -> rotate(12deg) -> rotate(-8deg) -> rotate(0deg)",
+        "purpose": "One-shot Volt Ringer chime animation (disabled under prefers-reduced-motion)."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "xs",
+        "value": "380px"
+      },
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      },
+      {
+        "name": "xl",
+        "value": "1280px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Action Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "44px+ tactile primary action button in Electric Violet with Hyper Indigo hover and focus ring.",
+      "html": "<button class=\"ds-btn-primary\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9\"/><path d=\"M10.3 21a1.94 1.94 0 0 0 3.4 0\"/></svg><span>Buzz Guest Ready</span></button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 12px 20px; border-radius: 16px; border: 1px solid #4B1FE0; background: var(--dz-action-bg, #6236FF); color: #FFFFFF; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 14px; font-weight: 700; cursor: pointer; box-shadow: 0 10px 26px -6px rgba(98, 54, 255, 0.32); transition: background 0.16s ease, transform 0.16s ease; } .ds-btn-primary:hover { background: var(--dz-action-bg-hover, #4B1FE0); } .ds-btn-primary:active { transform: scale(0.98); } .ds-btn-primary:focus-visible { outline: 2px solid #4B1FE0; outline-offset: 2px; }"
+    },
+    {
+      "name": "Volt Lime Order-Ready Banner",
+      "kind": "custom",
+      "refersTo": "banner-ready",
+      "description": "15.3:1 AAA Volt Lime pickup alert banner with Midnight Indigo typography and acknowledge CTA.",
+      "html": "<div class=\"ds-ready-banner\" role=\"alert\"><div class=\"ds-ready-top\"><strong>Ding! Your food is ready. (A-042)</strong><span>Head to the pickup counter</span></div><button class=\"ds-ready-ack\">Stop Ringing · On My Way</button></div>",
+      "css": ".ds-ready-banner { background: var(--dz-ready-bg, #C8FF42); color: var(--dz-ready-fg, #17132E); border: 2px solid #17132E; border-radius: 20px; padding: 20px; display: grid; gap: 12px; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; box-shadow: 0 12px 32px -6px rgba(200, 255, 66, 0.50); } .ds-ready-top strong { display: block; font-size: 18px; font-weight: 800; letter-spacing: -0.02em; } .ds-ready-top span { font-size: 12px; font-weight: 600; opacity: 0.85; } .ds-ready-ack { min-height: 46px; border-radius: 14px; border: none; background: #17132E; color: #FFFFFF; font-weight: 700; font-size: 14px; cursor: pointer; transition: background 0.16s ease; } .ds-ready-ack:hover { background: #241E42; } .ds-ready-ack:focus-visible { outline: 2px solid #4B1FE0; outline-offset: 2px; }"
+    },
+    {
+      "name": "Search & Pager Code Input",
+      "kind": "input",
+      "description": "Mobile-safe 16px+ input on Lilac Mist with 2px Hyper Indigo focus ring.",
+      "html": "<input class=\"ds-input\" type=\"text\" placeholder=\"Enter receipt or pager # (A-001)\" />",
+      "css": ".ds-input { min-height: 44px; width: 100%; max-width: 300px; padding: 10px 14px; border-radius: 14px; border: 1px solid var(--dz-border-hairline, #E5E2F2); background: var(--dz-bg-subtle, #F6F5FC); color: var(--dz-ink-primary, #17132E); font-family: 'JetBrains Mono', monospace; font-size: 16px; transition: border-color 0.16s ease, box-shadow 0.16s ease; } .ds-input::placeholder { color: #57507A; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 14px; } .ds-input:hover { border-color: #6236FF; } .ds-input:focus-visible { outline: none; border-color: #4B1FE0; box-shadow: 0 0 0 2px rgba(75, 31, 224, 0.25); }"
+    },
+    {
+      "name": "Capability Filter Chip",
+      "kind": "chip",
+      "description": "44px pill chip in Iris Wash with Hyper Indigo text for selected venue/queue filters.",
+      "html": "<button class=\"ds-chip\" aria-pressed=\"true\">Curbside Bay</button>",
+      "css": ".ds-chip { min-height: 44px; padding: 8px 16px; border-radius: 9999px; border: 1px solid #C4B3FF; background: var(--dz-bg-tint, #EFEAFF); color: var(--dz-link-inline, #4B1FE0); font-family: 'Plus Jakarta Sans', system-ui, sans-serif; font-size: 12px; font-weight: 700; cursor: pointer; transition: background 0.16s ease, color 0.16s ease; } .ds-chip:hover { background: #6236FF; color: #FFFFFF; border-color: #6236FF; } .ds-chip:focus-visible { outline: 2px solid #4B1FE0; outline-offset: 2px; }"
+    },
+    {
+      "name": "Dark Order Prep Ticket Card",
+      "kind": "card",
+      "description": "Cosmic Slate prep card with tabular monospace ticket code and Volt Lime bay badge.",
+      "html": "<article class=\"ds-prep-card\"><div class=\"ds-prep-head\"><span class=\"ds-code\">A-018</span><span class=\"ds-bay\">BAY 02</span></div><p class=\"ds-items\">2x Iced Spanish Latte · 1/2 Prepared</p></article>",
+      "css": ".ds-prep-card { background: #241E42; color: #FFFFFF; border: 1px solid #3B3269; border-radius: 20px; padding: 18px; max-width: 320px; font-family: 'Plus Jakarta Sans', system-ui, sans-serif; transition: border-color 0.16s ease; } .ds-prep-card:hover { border-color: #6236FF; } .ds-prep-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; } .ds-code { font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; } .ds-bay { background: #C8FF42; color: #17132E; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 800; padding: 3px 10px; border-radius: 9999px; } .ds-items { margin: 0; font-size: 14px; color: #E6E3F5; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Volt Ringer",
+    "overview": "dingzi pairs upbeat consumer-tech clarity with tactile café hospitality. Daylight guest screens stay bright, airy, and glare-resistant on Lilac Mist and Pure White, while counter Order Prep tablets anchor on Midnight Indigo and Cosmic Slate to eliminate eye strain during long shifts. Every transition builds toward one unmistakable sensory payoff: the Volt Lime ready flash and rising fifth chime.",
+    "keyCharacteristics": [
+      "60–25–10–5 proportion balance across canvas, ink, Electric Violet actions, and Volt Lime ready states.",
+      "Strict lowercase dingzi wordmark paired with the 25-degree tilted Volt Ringer squircle.",
+      "Native bilingual symmetry (LTR English + RTL Arabic) with tabular monospace queue codes."
+    ],
+    "rules": [
+      {
+        "name": "The Zero-Gold, Zero-Black Rule",
+        "body": "Never introduce metallic gold, brass, warm amber, or pure #000000 tuxedo black on any screen, QR plaque, or receipt.",
+        "section": "colors"
+      },
+      {
+        "name": "The Volt Surface Rule",
+        "body": "Volt Lime is strictly a surface fill or dark-surface accent; always pair #C8FF42 fills with #17132E ink and never render Volt Lime text on white.",
+        "section": "colors"
+      },
+      {
+        "name": "The Lowercase Wordmark Rule",
+        "body": "Always set dingzi in all-lowercase (-0.03em tracking) and دِنغزي in Arabic.",
+        "section": "typography"
+      }
+    ],
+    "dos": [
+      "Do keep tenant menu themes (plum, ocean, terracotta, custom hex) 100% intact on /v/:slug and /menu/:id with only a 0.65-opacity monochrome Powered by dingzi footer stamp.",
+      "Do pair every order, table, and coaster state with icon + text label + color and tabular-nums monospace codes."
+    ],
+    "donts": [
+      "Don't capitalize dingzi, unbox or recolor the 25-degree Volt Ringer bell, or use gradient text (background-clip: text).",
+      "Don't use emojis as UI icons, animate-bounce, or interactive targets smaller than 44x44px."
+    ]
+  }
+}

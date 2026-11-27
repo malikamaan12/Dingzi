@@ -12,8 +12,11 @@
   "minify": true,
   "alias": {
     "./db": "./server/workerDatabase.ts",
+    "../db": "./server/workerDatabase.ts",
     "./passwords": "./server/workerPasswords.ts",
+    "../passwords": "./server/workerPasswords.ts",
     "./mediaStore": "./server/workerMediaStore.ts",
+    "../mediaStore": "./server/workerMediaStore.ts",
     "iconv-lite": "./node_modules/iconv-lite/lib/index.js"
   },
   "vars": {

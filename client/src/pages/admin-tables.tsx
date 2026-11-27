@@ -439,7 +439,7 @@ export default function AdminTablesPage() {
                 <div>
                   <div className="flex items-center gap-1.5">
                     <strong className="font-mono text-sm">{t.tableCode}</strong>
-                    {t.isCombinable && <Badge variant="outline" className="text-[10px]">Combinable</Badge>}
+                    {t.isCombinable && <Badge variant="outline" className="text-xs">Combinable</Badge>}
                   </div>
                   <span className="text-muted-foreground block mt-0.5">
                     {zoneById.get(t.zoneId)?.name || 'Zone'} · {t.minCovers}–{t.maxCovers} seats

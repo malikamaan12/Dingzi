@@ -180,7 +180,7 @@ export default function AdminDriveThruPage() {
                   <div className="flex items-center gap-3 rounded-xl border p-3 bg-muted/40">
                     <span
                       className="w-8 h-8 rounded-full border-2 border-slate-400 shrink-0"
-                      style={{ backgroundColor: VEHICLE_SWATCH[v.vehicleColor] || '#94A3B8' }}
+                      style={{ backgroundColor: VEHICLE_SWATCH[v.vehicleColor] || '#57507A' }}
                       aria-hidden="true"
                     />
                     <div className="min-w-0 flex-1">

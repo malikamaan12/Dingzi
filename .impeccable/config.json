@@ -1,0 +1,63 @@
+{
+  "hook": {
+    "enabled": true,
+    "limits": {
+      "maxFindings": 5,
+      "maxChars": 8000
+    }
+  },
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "design-system-font-size",
+        "value": "*",
+        "files": [
+          "client/src/**/*.css"
+        ],
+        "createdAt": "2026-11-27T05:33:10.078Z",
+        "reason": "Bespoke multi-tenant cafe menu themes and wheel geometry use fluid sub-step CSS scales"
+      },
+      {
+        "rule": "design-system-radius",
+        "value": "*",
+        "files": [
+          "client/src/**/*.css"
+        ],
+        "createdAt": "2026-11-27T05:40:42.775Z",
+        "reason": "Multi-tenant cafe menu stylesheets and wheel geometry define bespoke per-theme radii"
+      },
+      {
+        "rule": "design-system-color",
+        "value": "*",
+        "files": [
+          "client/src/**/*.css"
+        ],
+        "createdAt": "2026-11-27T05:40:42.831Z",
+        "reason": "Multi-Tenant White-Label Rule: client cafes keep 100% of their own menu theme palettes (plum, ocean, terracotta, glass)"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          "client/src/**/*.css"
+        ],
+        "createdAt": "2026-11-27T05:40:42.887Z",
+        "reason": "Guest menu fallback art plate uses native emoji glyph font stack only for missing item photos"
+      },
+      {
+        "rule": "overused-font",
+        "value": "plus jakarta sans",
+        "createdAt": "2026-11-27T05:42:11.917Z",
+        "reason": "User confirmed Plus Jakarta Sans in official dingzi-Brand-Guidelines.pdf v1.0"
+      },
+      {
+        "rule": "overused-font",
+        "value": "inter",
+        "createdAt": "2026-11-27T05:42:11.976Z",
+        "reason": "User confirmed Inter in official dingzi-Brand-Guidelines.pdf v1.0"
+      }
+    ]
+  }
+}

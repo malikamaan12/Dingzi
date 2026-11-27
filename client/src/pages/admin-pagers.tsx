@@ -689,7 +689,7 @@ export default function AdminPagersPage() {
                                       </div>
                                     </div>
                                     <span
-                                      className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-md shrink-0 mt-0.5 ${
+                                      className={`text-xs font-bold uppercase px-2 py-0.5 rounded-md shrink-0 mt-0.5 ${
                                         isDone
                                           ? 'bg-[#6236FF] text-white'
                                           : 'bg-muted text-muted-foreground'
@@ -923,7 +923,7 @@ export default function AdminPagersPage() {
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <strong className="font-mono text-sm">{t.ticketCode}</strong>
-                    <Badge variant="outline" className="uppercase text-[10px]">
+                    <Badge variant="outline" className="uppercase text-xs">
                       {t.status.replace('_', '-')}
                     </Badge>
                     {t.rating ? <span className="font-semibold text-amber-600">★{t.rating}</span> : null}

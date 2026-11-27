@@ -190,27 +190,27 @@ export default function AdminTeamPage() {
                   </div>
                   <div className="grid grid-cols-3 gap-2 text-xs">
                     <div className="rounded-xl bg-muted/40 p-2.5">
-                      <span className="text-[10px] text-muted-foreground block">Pagers</span>
+                      <span className="text-xs text-muted-foreground block">Pagers</span>
                       <strong className="font-mono text-sm">{b.totalTickets}</strong>
                     </div>
                     <div className="rounded-xl bg-muted/40 p-2.5">
-                      <span className="text-[10px] text-muted-foreground block">Avg Prep</span>
+                      <span className="text-xs text-muted-foreground block">Avg Prep</span>
                       <strong className="font-mono text-sm">{b.avgPrepMins}m</strong>
                     </div>
                     <div className="rounded-xl bg-muted/40 p-2.5">
-                      <span className="text-[10px] text-muted-foreground block">Peak Hour</span>
+                      <span className="text-xs text-muted-foreground block">Peak Hour</span>
                       <strong className="font-mono text-sm">{b.peakHour}</strong>
                     </div>
                     <div className="rounded-xl bg-muted/40 p-2.5">
-                      <span className="text-[10px] text-muted-foreground block">Orders</span>
+                      <span className="text-xs text-muted-foreground block">Orders</span>
                       <strong className="font-mono text-sm">{b.totalOrders}</strong>
                     </div>
                     <div className="rounded-xl bg-muted/40 p-2.5">
-                      <span className="text-[10px] text-muted-foreground block">Revenue</span>
+                      <span className="text-xs text-muted-foreground block">Revenue</span>
                       <strong className="font-mono text-xs truncate block">{b.revenue} {b.currency}</strong>
                     </div>
                     <div className="rounded-xl bg-muted/40 p-2.5">
-                      <span className="text-[10px] text-muted-foreground block">Bookings</span>
+                      <span className="text-xs text-muted-foreground block">Bookings</span>
                       <strong className="font-mono text-sm">{b.reservations}</strong>
                     </div>
                   </div>

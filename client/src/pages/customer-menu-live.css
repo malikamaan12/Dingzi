@@ -22,7 +22,7 @@
 .guest-motion-toggle:disabled{opacity:.5;cursor:default}
 .guest-live .guest-brand-icon{background:linear-gradient(145deg,rgb(var(--scene-third)),rgb(var(--scene-first)/.7));box-shadow:inset 0 1px 0 #fff9}
 .guest-live .guest-kicker{color:hsl(var(--primary))}
-.guest-live .guest-welcome h1{background:linear-gradient(110deg,hsl(var(--foreground)) 20%,hsl(var(--primary)));background-clip:text;-webkit-background-clip:text;color:transparent}
+.guest-live .guest-welcome h1{color:hsl(var(--foreground))}
 .guest-live .guest-search{background:#ffffff9c;border-color:#ffffffb0;box-shadow:inset 0 1px 0 #fff,0 6px 20px hsl(var(--primary)/.04);backdrop-filter:blur(16px);transition:box-shadow .3s,background .3s}
 .guest-live .guest-search:focus-within{background:#ffffffcc;box-shadow:0 0 0 3px hsl(var(--primary)/.12),0 8px 20px hsl(var(--primary)/.08)}
 .guest-live .guest-categories{gap:12px;scrollbar-color:hsl(var(--primary)/.2) transparent;padding-bottom:24px}

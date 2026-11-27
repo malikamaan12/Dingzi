@@ -81,23 +81,23 @@ function PortfolioAnalyticsPanel() {
               </div>
               <div className="grid grid-cols-3 gap-2 text-xs">
                 <div className="rounded-xl bg-muted/40 p-2">
-                  <span className="text-[10px] text-muted-foreground block">Pagers</span>
+                  <span className="text-xs text-muted-foreground block">Pagers</span>
                   <strong className="font-mono">{b.totalTickets}</strong>
                 </div>
                 <div className="rounded-xl bg-muted/40 p-2">
-                  <span className="text-[10px] text-muted-foreground block">Avg Prep</span>
+                  <span className="text-xs text-muted-foreground block">Avg Prep</span>
                   <strong className="font-mono">{b.avgPrepMins}m</strong>
                 </div>
                 <div className="rounded-xl bg-muted/40 p-2">
-                  <span className="text-[10px] text-muted-foreground block">Orders</span>
+                  <span className="text-xs text-muted-foreground block">Orders</span>
                   <strong className="font-mono">{b.totalOrders}</strong>
                 </div>
                 <div className="rounded-xl bg-muted/40 p-2">
-                  <span className="text-[10px] text-muted-foreground block">Bookings</span>
+                  <span className="text-xs text-muted-foreground block">Bookings</span>
                   <strong className="font-mono">{b.reservations}</strong>
                 </div>
                 <div className="rounded-xl bg-muted/40 p-2 col-span-2">
-                  <span className="text-[10px] text-muted-foreground block">Delivery Clicks</span>
+                  <span className="text-xs text-muted-foreground block">Delivery Clicks</span>
                   <strong className="font-mono">{b.aggregatorClicks}</strong>
                 </div>
               </div>

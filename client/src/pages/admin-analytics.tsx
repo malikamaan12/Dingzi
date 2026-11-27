@@ -123,7 +123,7 @@ export default function AdminAnalyticsPage() {
                         style={{ height: `${pct}%` }}
                         className={`w-full rounded-t-md transition-all ${total > 0 ? 'bg-primary' : 'bg-muted'}`}
                       />
-                      <span className="text-[10px] font-mono text-muted-foreground">{String(bucket.hour).padStart(2, '0')}</span>
+                      <span className="text-xs font-mono text-muted-foreground">{String(bucket.hour).padStart(2, '0')}</span>
                     </div>
                   );
                 })}
@@ -149,7 +149,7 @@ export default function AdminAnalyticsPage() {
                         style={{ height: `${pct}%` }}
                         className={`w-full rounded-t-md transition-all ${barTone}`}
                       />
-                      <span className="text-[10px] font-mono text-muted-foreground">{String(bucket.hour).padStart(2, '0')}</span>
+                      <span className="text-xs font-mono text-muted-foreground">{String(bucket.hour).padStart(2, '0')}</span>
                     </div>
                   );
                 })}

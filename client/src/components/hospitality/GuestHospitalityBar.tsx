@@ -5,14 +5,9 @@ import {
   Bell,
   CalendarDays,
   Car,
-  Check,
   CreditCard,
-  ExternalLink,
-  Minus,
-  Plus,
   QrCode,
   ShoppingBag,
-  Trash2,
   Truck,
   Users,
 } from 'lucide-react';
@@ -20,11 +15,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { apiRequest } from '@/lib/queryClient';
 import { saveGuestPass } from '@/lib/guestSession';
 import { useMenuLanguage } from '@/lib/menuLanguage';
-import { QrNfcScannerModal } from '@/components/qr-nfc/QrNfcScannerModal';
+import { GuestCheckoutAndDeliveryModals } from './GuestCheckoutAndDeliveryModals';
 import type { PublicCafe, PublicHospitalityConfig } from '@shared/schema';
 
 export interface GuestCartItem {
@@ -705,7 +699,7 @@ export default function GuestHospitalityBar({
                     >
                       <span className="block">{slot.time}</span>
                       {slot.requiresCombination && (
-                        <span className="block text-[9px] uppercase tracking-tight text-[#4B1FE0]">Joined</span>
+                        <span className="block text-xs uppercase tracking-tight text-[#4B1FE0]">Joined</span>
                       )}
                     </button>
                   ))
@@ -860,259 +854,48 @@ export default function GuestHospitalityBar({
         </DialogContent>
       </Dialog>
 
-      {/* 5. Aggregator Delivery Storefront Handoff Bottom Sheet */}
-      <Dialog open={deliveryOpen} onOpenChange={setDeliveryOpen}>
-        <DialogContent dir={dir} lang={language} className="max-w-sm rounded-3xl">
-          <DialogTitle className="flex items-center gap-2">
-            <Truck className="w-5 h-5 text-primary" />
-            {t('Order Delivery via Partner')}
-          </DialogTitle>
-          <DialogDescription>
-            Choose your preferred delivery partner for {label(restaurant.name)}.
-          </DialogDescription>
-          <div className="space-y-2.5 mt-2">
-            {aggregators.map(agg => {
-              const badge = language === 'ar' ? agg.badgeAr || agg.badgeEn : agg.badgeEn || agg.badgeAr;
-              const brandColors: Record<string, string> = {
-                talabat: 'bg-[#FF5A00] text-white',
-                snoonu: 'bg-[#D90429] text-white',
-                keeta: 'bg-[#FFB703] text-slate-950',
-                custom: 'bg-primary text-primary-foreground',
-              };
-              return (
-                <button
-                  key={agg.id}
-                  type="button"
-                  data-testid={`button-aggregator-${agg.platform}`}
-                  onClick={() => handleAggregatorClick(agg)}
-                  className="w-full min-h-14 p-3.5 rounded-2xl border bg-card hover:bg-muted/60 flex items-center justify-between gap-3 transition-all cursor-pointer text-left"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <span className={`px-2.5 py-1 rounded-xl text-xs font-black uppercase shrink-0 ${brandColors[agg.platform] || brandColors.custom}`}>
-                      {agg.platform}
-                    </span>
-                    <div className="min-w-0">
-                      <strong className="block text-sm truncate">{agg.displayName}</strong>
-                      {badge && <span className="text-xs text-primary font-medium">{badge}</span>}
-                    </div>
-                  </div>
-                  <ExternalLink className="w-4 h-4 text-muted-foreground shrink-0" />
-                </button>
-              );
-            })}
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      {/* 6. Configurable Cart & Checkout Sheet (Mode B: Pay at Venue & Mode C: SkipCash / Sadad Online) */}
-      <Sheet open={cartOpen} onOpenChange={setCartOpen}>
-        <SheetContent
-          side={dir === 'rtl' ? 'left' : 'right'}
-          dir={dir}
-          lang={language}
-          className="w-full sm:max-w-md overflow-y-auto"
-        >
-          <SheetHeader>
-            <SheetTitle>{t('Your Order')}</SheetTitle>
-            <SheetDescription>
-              {restaurant.orderingMode === 'full_online_checkout'
-                ? `Secure online payment via ${(restaurant.paymentGateway || 'skipcash').toUpperCase()}`
-                : 'Sent straight to the barista prep queue — pay when you pick up or at your table.'}
-            </SheetDescription>
-          </SheetHeader>
-
-          {pendingGateway ? (
-            <div className="mt-6 rounded-2xl border-2 border-primary/30 bg-card p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase px-2.5 py-1 rounded-lg bg-primary/10 text-primary">
-                  {pendingGateway.provider.toUpperCase()} Gateway
-                </span>
-                <span className="font-mono text-xs text-muted-foreground">{pendingGateway.paymentReference}</span>
-              </div>
-              <div>
-                <p className="text-sm text-muted-foreground">Order {pendingGateway.orderNumber}</p>
-                <p className="text-2xl font-black mt-1">
-                  {pendingGateway.total} {restaurant.currency}
-                </p>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Apple Pay · Google Pay · NAPS Qatar Debit · Visa / Mastercard (Signed HMAC Verification)
-              </p>
-              {orderError && <p className="text-xs text-destructive">{orderError}</p>}
-              <Button
-                type="button"
-                data-testid="button-confirm-online-payment"
-                className="w-full min-h-12 cursor-pointer gap-2"
-                disabled={confirmGatewayMutation.isPending}
-                onClick={() => confirmGatewayMutation.mutate()}
-              >
-                <CreditCard className="w-4 h-4" />
-                {confirmGatewayMutation.isPending
-                  ? 'Verifying Payment…'
-                  : `Authorize ${pendingGateway.total} ${restaurant.currency}`}
-              </Button>
-            </div>
-          ) : (
-            <form
-              onSubmit={e => {
-                e.preventDefault();
-                orderMutation.mutate();
-              }}
-              className="mt-5 space-y-4"
-            >
-              <div className="space-y-2">
-                {cart.map(item => (
-                  <div key={item.key} className="rounded-2xl border p-3 flex items-start justify-between gap-2 text-sm">
-                    <div className="min-w-0">
-                      <strong className="block truncate">{label(item.name)}</strong>
-                      {item.variantLabel && <span className="text-xs text-muted-foreground block">{item.variantLabel}</span>}
-                      {item.modifierSummary.length > 0 && (
-                        <span className="text-xs text-muted-foreground block">{item.modifierSummary.join(', ')}</span>
-                      )}
-                      {item.notes && (
-                        <span className="text-[11px] italic text-[#57507A] block">“{item.notes}”</span>
-                      )}
-                      <span className="text-xs font-semibold text-primary mt-1 block">
-                        {(Number(item.unitTotal) * item.quantity).toFixed(2)} {restaurant.currency}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        type="button"
-                        aria-label="Decrease quantity"
-                        onClick={() =>
-                          setCart(prev =>
-                            item.quantity <= 1
-                              ? prev.filter(i => i.key !== item.key)
-                              : prev.map(i => (i.key === item.key ? { ...i, quantity: i.quantity - 1 } : i)),
-                          )
-                        }
-                        className="w-11 h-11 rounded-xl border grid place-items-center cursor-pointer"
-                      >
-                        {item.quantity <= 1 ? <Trash2 className="w-4 h-4 text-destructive" /> : <Minus className="w-4 h-4" />}
-                      </button>
-                      <span className="w-6 text-center font-semibold font-mono text-xs">{item.quantity}</span>
-                      <button
-                        type="button"
-                        aria-label="Increase quantity"
-                        onClick={() =>
-                          setCart(prev => prev.map(i => (i.key === item.key ? { ...i, quantity: i.quantity + 1 } : i)))
-                        }
-                        className="w-11 h-11 rounded-xl border grid place-items-center cursor-pointer"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div>
-                <Label className="text-xs">{t('Order Channel')}</Label>
-                <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-2 mt-1">
-                  {[
-                    { id: 'counter_pickup', label: t('Counter Pickup') },
-                    { id: 'dine_in', label: t('Dine-In Table') },
-                    ...(restaurant.driveThruEnabled
-                      ? [
-                          { id: 'curbside', label: t('Curbside Bay') },
-                          { id: 'drive_thru', label: t('Drive-Thru') },
-                        ]
-                      : []),
-                  ].map(opt => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => setChannel(opt.id as any)}
-                      className={`min-h-11 px-3 rounded-xl border text-xs font-semibold flex items-center justify-between cursor-pointer ${
-                        channel === opt.id ? 'border-primary bg-primary/10 text-primary' : 'bg-card'
-                      }`}
-                    >
-                      <span>{opt.label}</span>
-                      {channel === opt.id && <Check className="w-3.5 h-3.5" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-2.5">
-                <div>
-                  <Label className="text-xs">{t('Your Name')} *</Label>
-                  <Input value={custName} onChange={e => setCustName(e.target.value)} required className="h-11" data-testid="input-order-customer-name" />
-                </div>
-                <div>
-                  <Label className="text-xs">{t('Phone (Optional)')}</Label>
-                  <Input type="tel" value={custPhone} onChange={e => setCustPhone(e.target.value)} className="h-11" />
-                </div>
-              </div>
-
-              {channel === 'dine_in' && (
-                <div>
-                  <Label className="text-xs">{t('Table Code')}</Label>
-                  <Input value={tableCode} onChange={e => setTableCode(e.target.value)} placeholder="e.g. T-04" className="h-11" />
-                </div>
-              )}
-
-              {(channel === 'curbside' || channel === 'drive_thru') && (
-                <div className="space-y-2 rounded-2xl border p-3 bg-muted/30">
-                  {bays.length > 0 && (
-                    <div>
-                      <Label className="text-xs">{t('Select Parking Bay')}</Label>
-                      <select className="manager-select w-full h-11" value={bayId} onChange={e => setBayId(e.target.value)}>
-                        <option value="">Will select upon arrival</option>
-                        {bays.map(b => (
-                          <option key={b.id} value={b.id}>{b.code} — {b.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                  )}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    <select className="manager-select h-11 text-xs" value={vehColor} onChange={e => setVehColor(e.target.value)}>
-                      {['White', 'Black', 'Silver', 'Blue', 'Red', 'Sand'].map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <select className="manager-select h-11 text-xs" value={vehType} onChange={e => setVehType(e.target.value as any)}>
-                      {['SUV', 'Sedan', 'Pickup', 'Coupe'].map(v => <option key={v} value={v}>{v}</option>)}
-                    </select>
-                    <Input value={plate} onChange={e => setPlate(e.target.value)} placeholder="Plate #" className="h-11 text-xs col-span-2 sm:col-span-1" />
-                  </div>
-                </div>
-              )}
-
-              <Input value={orderNotes} onChange={e => setOrderNotes(e.target.value)} placeholder={t('Order Notes')} className="h-11" />
-
-              <div className="flex items-center justify-between pt-2 border-t font-bold text-base">
-                <span>{t('Estimated total')}</span>
-                <span>
-                  {totalCartAmount} {restaurant.currency}
-                </span>
-              </div>
-
-              {orderError && <p className="text-xs text-destructive font-medium">{orderError}</p>}
-
-              <Button
-                type="submit"
-                data-testid="button-submit-guest-order"
-                className="w-full min-h-12 rounded-2xl cursor-pointer font-semibold"
-                disabled={!cart.length || !custName.trim() || orderMutation.isPending}
-              >
-                {orderMutation.isPending
-                  ? 'Submitting…'
-                  : restaurant.orderingMode === 'full_online_checkout'
-                    ? t('Pay Online & Place Order')
-                    : t('Place Order (Pay at Venue)')}
-              </Button>
-            </form>
-          )}
-        </SheetContent>
-      </Sheet>
-      <QrNfcScannerModal
-        open={scannerOpen}
-        onOpenChange={setScannerOpen}
-        restaurantId={restaurant.id}
-        restaurantName={label(restaurant.name)}
+      <GuestCheckoutAndDeliveryModals
+        restaurant={restaurant}
+        language={language}
         dir={dir}
-        lang={language}
         t={t}
+        label={label}
+        aggregators={aggregators}
+        deliveryOpen={deliveryOpen}
+        setDeliveryOpen={setDeliveryOpen}
+        onAggregatorClick={handleAggregatorClick}
+        cartOpen={cartOpen}
+        setCartOpen={setCartOpen}
+        cart={cart}
+        setCart={setCart}
+        bays={bays}
+        channel={channel}
+        setChannel={setChannel}
+        custName={custName}
+        setCustName={setCustName}
+        custPhone={custPhone}
+        setCustPhone={setCustPhone}
+        tableCode={tableCode}
+        setTableCode={setTableCode}
+        bayId={bayId}
+        setBayId={setBayId}
+        vehColor={vehColor}
+        setVehColor={setVehColor}
+        vehType={vehType}
+        setVehType={setVehType}
+        plate={plate}
+        setPlate={setPlate}
+        orderNotes={orderNotes}
+        setOrderNotes={setOrderNotes}
+        totalCartAmount={totalCartAmount}
+        orderError={orderError}
+        orderPending={orderMutation.isPending}
+        onSubmitOrder={() => orderMutation.mutate()}
+        pendingGateway={pendingGateway}
+        confirmGatewayPending={confirmGatewayMutation.isPending}
+        onConfirmGateway={() => confirmGatewayMutation.mutate()}
+        scannerOpen={scannerOpen}
+        setScannerOpen={setScannerOpen}
       />
     </>
   );
