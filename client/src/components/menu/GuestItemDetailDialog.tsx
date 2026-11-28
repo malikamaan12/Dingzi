@@ -416,7 +416,7 @@ export function GuestItemDetailDialog({
                       });
                       onOpenChange(false);
                     }}
-                    className="flex-1 min-h-12 px-4 rounded-2xl bg-primary hover:bg-[#4B1FE0] text-primary-foreground font-bold text-sm flex items-center justify-between gap-2 shadow-md disabled:opacity-50 cursor-pointer transition-all active:scale-[0.99]"
+                    className="flex-1 min-h-12 px-4 rounded-xl bg-[#17132E] hover:bg-[#241E42] text-white font-semibold text-sm flex items-center justify-between gap-2 disabled:opacity-50 cursor-pointer transition-colors"
                   >
                     <span className="inline-flex items-center gap-1.5 truncate">
                       <ShoppingBag size={16} className="shrink-0" />

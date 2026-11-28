@@ -6,7 +6,6 @@ import {
   Bell,
   CalendarDays,
   Car,
-  QrCode,
   Truck,
   Users,
   UtensilsCrossed,
@@ -44,6 +43,7 @@ interface Props {
   initialTableCode?: string | null;
   initialBayId?: string | null;
   initialAction?: string | null;
+  trailingActions?: React.ReactNode;
 }
 
 export default function GuestHospitalityBar({
@@ -53,6 +53,7 @@ export default function GuestHospitalityBar({
   initialTableCode,
   initialBayId,
   initialAction,
+  trailingActions,
 }: Props) {
   const { language, dir, t, label } = useMenuLanguage();
   const [, navigate] = useLocation();
@@ -508,7 +509,7 @@ export default function GuestHospitalityBar({
       )}
 
       <div
-        className="flex flex-nowrap sm:flex-wrap overflow-x-auto no-scrollbar -mx-1 px-1 py-1 gap-2 my-2 snap-x"
+        className="flex flex-nowrap overflow-x-auto no-scrollbar py-2 gap-1.5 my-1 snap-x"
         role="region"
         aria-label="Hospitality services"
       >
@@ -517,9 +518,9 @@ export default function GuestHospitalityBar({
             type="button"
             onClick={() => setReserveOpen(true)}
             data-testid="button-open-reservations"
-            className="inline-flex items-center gap-2 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border border-[#E5E2F2] bg-white/95 text-[#17132E] text-xs font-semibold shadow-sm hover:border-[#6236FF]/40 hover:bg-[#EFEAFF]/40 active:scale-[0.98] transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 min-h-10 shrink-0 snap-start whitespace-nowrap rounded-full border border-[#E5E2F2] bg-[#F6F5FC] text-[#17132E] text-xs font-medium hover:bg-[#EFEAFF] hover:border-[#CBC5E8] transition-colors cursor-pointer"
           >
-            <CalendarDays className="w-4 h-4 text-primary shrink-0" />
+            <CalendarDays className="w-3.5 h-3.5 text-[#57507A] shrink-0" />
             <span>{t('Book Table')}</span>
           </button>
         )}
@@ -529,9 +530,9 @@ export default function GuestHospitalityBar({
             type="button"
             onClick={() => setWaitlistOpen(true)}
             data-testid="button-open-waitlist"
-            className="inline-flex items-center gap-2 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border border-[#E5E2F2] bg-white/95 text-[#17132E] text-xs font-semibold shadow-sm hover:border-[#6236FF]/40 hover:bg-[#EFEAFF]/40 active:scale-[0.98] transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 min-h-10 shrink-0 snap-start whitespace-nowrap rounded-full border border-[#E5E2F2] bg-[#F6F5FC] text-[#17132E] text-xs font-medium hover:bg-[#EFEAFF] hover:border-[#CBC5E8] transition-colors cursor-pointer"
           >
-            <Users className="w-4 h-4 text-primary shrink-0" />
+            <Users className="w-3.5 h-3.5 text-[#57507A] shrink-0" />
             <span>{t('Walk-In Waitlist')}</span>
           </button>
         )}
@@ -541,10 +542,10 @@ export default function GuestHospitalityBar({
             type="button"
             onClick={() => setCurbsideOpen(true)}
             data-testid="button-open-curbside"
-            className="inline-flex items-center gap-2 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border border-[#E5E2F2] bg-white/95 text-[#17132E] text-xs font-semibold shadow-sm hover:border-[#6236FF]/40 hover:bg-[#EFEAFF]/40 active:scale-[0.98] transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 min-h-10 shrink-0 snap-start whitespace-nowrap rounded-full border border-[#E5E2F2] bg-[#F6F5FC] text-[#17132E] text-xs font-medium hover:bg-[#EFEAFF] hover:border-[#CBC5E8] transition-colors cursor-pointer"
           >
-            <Car className="w-4 h-4 text-primary shrink-0" />
-            <span>{t('Curbside & Drive-Thru')}</span>
+            <Car className="w-3.5 h-3.5 text-[#57507A] shrink-0" />
+            <span>{t('Curbside')}</span>
           </button>
         )}
 
@@ -552,10 +553,10 @@ export default function GuestHospitalityBar({
           type="button"
           onClick={() => setPagerOpen(true)}
           data-testid="button-open-pager-lookup"
-          className="inline-flex items-center gap-2 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border border-[#E5E2F2] bg-white/95 text-[#17132E] text-xs font-semibold shadow-sm hover:border-[#6236FF]/40 hover:bg-[#EFEAFF]/40 active:scale-[0.98] transition-all cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-3 min-h-10 shrink-0 snap-start whitespace-nowrap rounded-full border border-[#E5E2F2] bg-[#F6F5FC] text-[#17132E] text-xs font-medium hover:bg-[#EFEAFF] hover:border-[#CBC5E8] transition-colors cursor-pointer"
         >
-          <Bell className="w-4 h-4 text-primary shrink-0" />
-          <span>{t('Virtual Pager')}</span>
+          <Bell className="w-3.5 h-3.5 text-[#57507A] shrink-0" />
+          <span>{t('Track Pager')}</span>
         </button>
 
         {aggregators.length > 0 && (
@@ -563,49 +564,40 @@ export default function GuestHospitalityBar({
             type="button"
             onClick={() => setDeliveryOpen(true)}
             data-testid="button-open-delivery"
-            className="inline-flex items-center gap-2 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border border-[#E5E2F2] bg-white/95 text-[#17132E] text-xs font-semibold shadow-sm hover:border-[#6236FF]/40 hover:bg-[#EFEAFF]/40 active:scale-[0.98] transition-all cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3 min-h-10 shrink-0 snap-start whitespace-nowrap rounded-full border border-[#E5E2F2] bg-[#F6F5FC] text-[#17132E] text-xs font-medium hover:bg-[#EFEAFF] hover:border-[#CBC5E8] transition-colors cursor-pointer"
           >
-            <Truck className="w-4 h-4 text-primary shrink-0" />
+            <Truck className="w-3.5 h-3.5 text-[#57507A] shrink-0" />
             <span>{t('Get Delivery')}</span>
           </button>
         )}
-
-        <button
-          type="button"
-          onClick={() => setScannerOpen(true)}
-          data-testid="button-open-qr-nfc-scanner"
-          className="inline-flex items-center gap-2 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border border-[#E5E2F2] bg-white/95 text-[#17132E] text-xs font-semibold shadow-sm hover:border-[#6236FF]/40 hover:bg-[#EFEAFF]/40 active:scale-[0.98] transition-all cursor-pointer"
-        >
-          <QrCode className="w-4 h-4 text-primary shrink-0" />
-          <span>{t('Scan QR / NFC')}</span>
-        </button>
+        {trailingActions}
       </div>
 
       {orderingEnabled && totalCartItems > 0 && (
         <div
           style={{ bottom: 'max(1rem, calc(env(safe-area-inset-bottom, 0px) + 0.5rem))' }}
-          className="fixed inset-x-4 z-40 max-w-lg mx-auto"
+          className="fixed inset-x-4 z-40 max-w-md mx-auto"
         >
           <button
             type="button"
             onClick={() => setCartOpen(true)}
             data-testid="button-open-cart"
-            className="w-full min-h-14 px-4 py-2.5 rounded-2xl bg-[#17132E] text-white border border-[#241E42] shadow-2xl flex items-center justify-between gap-3 transition-transform duration-150 hover:-translate-y-0.5 active:scale-[0.99] cursor-pointer"
+            className="w-full min-h-14 px-4 rounded-2xl bg-[#17132E] hover:bg-[#241E42] text-white shadow-xl flex items-center justify-between gap-3 transition-all duration-150 active:scale-[0.99] cursor-pointer"
           >
             <span className="inline-flex items-center gap-3 min-w-0" role="status" aria-atomic="true">
-              <span className="min-w-8 h-8 px-2 rounded-xl bg-[#C8FF42] text-[#17132E] font-mono text-xs font-extrabold grid place-items-center shrink-0">
+              <span className="min-w-7 h-7 px-2 rounded-full bg-white/15 text-white font-mono text-xs font-bold grid place-items-center shrink-0">
                 {totalCartItems}
               </span>
               <span className="text-start min-w-0">
-                <strong className="block text-sm font-bold leading-tight">{t('View Cart')}</strong>
-                <small className="block text-[11px] text-white/70 truncate">{cartLeadSummary}</small>
+                <strong className="block text-sm font-semibold leading-tight">{t('View Cart')}</strong>
+                <small className="block text-[11px] text-white/65 truncate">{cartLeadSummary}</small>
               </span>
             </span>
-            <span className="inline-flex items-center gap-2 font-mono font-extrabold text-sm bg-[#6236FF] text-white px-3.5 py-2 rounded-xl shrink-0">
+            <span className="inline-flex items-center gap-1.5 font-mono font-semibold text-sm text-white shrink-0">
               <span>
                 <bdi dir="ltr">{totalCartAmount}</bdi> {currencyDisplay}
               </span>
-              <ArrowRight className="w-4 h-4 rtl:rotate-180" aria-hidden="true" />
+              <ArrowRight className="w-4 h-4 text-white/75 rtl:rotate-180" aria-hidden="true" />
             </span>
           </button>
         </div>

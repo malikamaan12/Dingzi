@@ -49,9 +49,9 @@ import {
 import './customer-menu.css';
 import './customer-menu-live.css';
 import './customer-menu-simple.css';
-import './customer-menu-polish.css';
 import './customer-menu-responsive.css';
 import './customer-menu-arabic.css';
+import './customer-menu-polish.css';
 import './customer-menu-compact.css';
 import { GuestMenuFiltersDialog, MenuCover, MenuImage, Price } from '@/components/menu/GuestMenuParts';
 import { getMenuData, keepMenuDuringReconnect, MenuLoadError } from '@/lib/menuRefresh';
@@ -71,6 +71,7 @@ function CustomerMenuContent() {
   const [, params] = useRoute('/menu/:id');
   const id = params?.id;
   const [search, setSearch] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const [category, setCategory] = useState<string | null>(null);
   const [group, setGroup] = useState<MenuGroup>('all');
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -514,18 +515,55 @@ function CustomerMenuContent() {
                 </span>
               </div>
               <div className="guest-header-actions">
-                <MenuLanguageSwitch />
                 <button
+                  type="button"
+                  className="guest-icon-button cursor-pointer"
+                  aria-label={t('Search menu')}
+                  aria-expanded={searchOpen || Boolean(search)}
+                  onClick={() => setSearchOpen(prev => !prev)}
+                >
+                  <Search size={17} />
+                </button>
+                <button
+                  type="button"
                   className="guest-filter-trigger cursor-pointer"
                   onClick={() => setFiltersOpen(true)}
                   aria-label={t('Open filters')}
                 >
-                  <SlidersHorizontal size={18} />
+                  <SlidersHorizontal size={16} />
                   <span>{t('Filters')}</span>
                   {appliedFilters > 0 && <small>{appliedFilters}</small>}
                 </button>
+                <MenuLanguageSwitch />
               </div>
             </header>
+
+            {(searchOpen || Boolean(search)) && (
+              <div className="pb-2.5">
+                <div className="guest-search !mt-0">
+                  <Search size={17} />
+                  <input
+                    autoFocus
+                    aria-label={t('Search menu')}
+                    placeholder={t('Search items or categories')}
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSearch('');
+                      setSearchOpen(false);
+                    }}
+                    aria-label={t('Clear search')}
+                    className="cursor-pointer"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+            )}
+
             <MenuCategoryBar
               categories={groupCategories}
               selected={category}
@@ -560,88 +598,54 @@ function CustomerMenuContent() {
             initialTableCode={initialTableCode}
             initialBayId={initialBayId}
             initialAction={initialAction}
-          />
-
-          {/* Sleek Single-Row Search + 1-Tap Discovery Chips */}
-          <div className="mt-3 mb-4 space-y-2.5">
-            <div className="guest-search !mt-0">
-              <Search size={18} />
-              <input
-                aria-label={t('Search menu')}
-                placeholder={t('Search items or categories')}
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-              />
-              {search && (
-                <button onClick={() => setSearch('')} aria-label={t('Clear search')} className="cursor-pointer">
-                  <X size={17} />
-                </button>
-              )}
-            </div>
-
-            <div className="flex items-center justify-between gap-2 overflow-x-auto no-scrollbar pb-0.5">
-              <div className="flex items-center gap-1.5 shrink-0">
-                <button
-                  type="button"
-                  aria-pressed={filter === 'all' && !category && group === 'all'}
-                  onClick={() => setFilter('all')}
-                  className={`min-h-11 px-3.5 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${
-                    filter === 'all'
-                      ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                      : 'bg-white/90 text-[#17132E] border-[#E5E2F2] hover:bg-white'
-                  }`}
-                >
-                  {t('All')} ({available.length})
-                </button>
-
+            trailingActions={
+              <>
                 {specialsCount > 0 && (
                   <button
                     type="button"
                     aria-pressed={filter === 'specials'}
                     onClick={() => setFilter(f => (f === 'specials' ? 'all' : 'specials'))}
-                    className={`min-h-11 px-3.5 rounded-full text-xs font-semibold border transition-colors inline-flex items-center gap-1.5 cursor-pointer ${
+                    className={`inline-flex items-center gap-1.5 px-3 min-h-10 shrink-0 snap-start whitespace-nowrap rounded-full border text-xs font-medium transition-colors cursor-pointer ${
                       filter === 'specials'
-                        ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                        : 'bg-white/90 text-[#17132E] border-[#E5E2F2] hover:bg-white'
+                        ? 'bg-[#17132E] text-white border-[#17132E]'
+                        : 'border-[#E5E2F2] bg-[#F6F5FC] text-[#17132E] hover:bg-[#EFEAFF]'
                     }`}
                   >
-                    <Sparkles size={13} className={filter === 'specials' ? '' : 'text-primary'} />
+                    <Sparkles className="w-3.5 h-3.5 text-[#57507A] shrink-0" />
                     <span>{t("Today's specials")}</span>
                   </button>
                 )}
-
                 {saved.length > 0 && (
                   <button
                     type="button"
                     aria-pressed={filter === 'saved'}
                     onClick={() => setFilter(f => (f === 'saved' ? 'all' : 'saved'))}
-                    className={`min-h-11 px-3.5 rounded-full text-xs font-semibold border transition-colors inline-flex items-center gap-1.5 cursor-pointer ${
+                    className={`inline-flex items-center gap-1.5 px-3 min-h-10 shrink-0 snap-start whitespace-nowrap rounded-full border text-xs font-medium transition-colors cursor-pointer ${
                       filter === 'saved'
-                        ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                        : 'bg-white/90 text-[#17132E] border-[#E5E2F2] hover:bg-white'
+                        ? 'bg-[#17132E] text-white border-[#17132E]'
+                        : 'border-[#E5E2F2] bg-[#F6F5FC] text-[#17132E] hover:bg-[#EFEAFF]'
                     }`}
                   >
-                    <Heart size={13} fill={filter === 'saved' ? 'currentColor' : 'none'} className={filter === 'saved' ? '' : 'text-primary'} />
+                    <Heart className="w-3.5 h-3.5 shrink-0" fill={filter === 'saved' ? 'currentColor' : 'none'} />
                     <span>
                       {t('Saved')} ({saved.length})
                     </span>
                   </button>
                 )}
-              </div>
-
-              {venueCfg.wheelEnabled && (
-                <button
-                  type="button"
-                  className="guest-wheel-link shrink-0 cursor-pointer"
-                  onClick={() => setWheelOpen(true)}
-                  disabled={!filtered.length || hasMenuError}
-                >
-                  <Sparkles size={15} />
-                  <span>{t("Can't decide?")}</span>
-                </button>
-              )}
-            </div>
-          </div>
+                {venueCfg.wheelEnabled && (
+                  <button
+                    type="button"
+                    onClick={() => setWheelOpen(true)}
+                    disabled={!filtered.length || hasMenuError}
+                    className="inline-flex items-center gap-1.5 px-3 min-h-10 shrink-0 snap-start whitespace-nowrap rounded-full border border-[#E5E2F2] bg-[#F6F5FC] text-[#17132E] text-xs font-medium hover:bg-[#EFEAFF] transition-colors cursor-pointer disabled:opacity-40"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-[#57507A] shrink-0" />
+                    <span>{t("Can't decide?")}</span>
+                  </button>
+                )}
+              </>
+            }
+          />
 
           <main id="guest-menu-list" className="guest-main">
             {menuQuery.isLoading ? (

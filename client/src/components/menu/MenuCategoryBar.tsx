@@ -1,11 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
-import { menuTone } from '@/lib/menuPalette';
-import { CategoryVectorIcon } from './CategoryVectorIcon';
+import { useEffect, useRef } from 'react';
 import type { Category } from '@shared/schema';
 import { useMenuLanguage } from '@/lib/menuLanguage';
 
-export default function MenuCategoryBar({ categories, selected, allLabel, motionEnabled, onSelect }: {
+export default function MenuCategoryBar({
+  categories,
+  selected,
+  allLabel,
+  motionEnabled,
+  onSelect,
+}: {
   categories: Category[];
   selected: string | null;
   allLabel: string;
@@ -15,26 +18,7 @@ export default function MenuCategoryBar({ categories, selected, allLabel, motion
   const { language, dir, label, t } = useMenuLanguage();
   const rtl = dir === 'rtl';
   const rail = useRef<HTMLElement>(null);
-  const [edges, setEdges] = useState({ before: false, after: false });
-  const categoryKey = categories.map(category => category.id + ':' + category.title + ':' + (category.titleAr || '')).join('|');
-
-  useEffect(() => {
-    const element = rail.current;
-    if (!element) return;
-    function update() {
-      const offset = Math.abs(element!.scrollLeft);
-      const before = offset > 2;
-      const after = offset + element!.clientWidth < element!.scrollWidth - 2;
-      setEdges(old => old.before === before && old.after === after ? old : { before, after });
-    }
-    const observer = new ResizeObserver(update);
-    observer.observe(element);
-    // Category data can arrive after the navigation container has been measured.
-    if (element.firstElementChild) observer.observe(element.firstElementChild);
-    element.addEventListener('scroll', update, { passive: true });
-    update();
-    return () => { observer.disconnect(); element.removeEventListener('scroll', update); };
-  }, [categoryKey, allLabel, dir]);
+  const categoryKey = categories.map(c => `${c.id}:${c.title}:${c.titleAr || ''}`).join('|');
 
   useEffect(() => {
     const element = rail.current;
@@ -42,30 +26,37 @@ export default function MenuCategoryBar({ categories, selected, allLabel, motion
     if (!element || !button) return;
     const buttonBounds = button.getBoundingClientRect();
     const railBounds = element.getBoundingClientRect();
-    element.scrollTo({ left: element.scrollLeft + (rtl ? buttonBounds.right - railBounds.right : buttonBounds.left - railBounds.left), behavior: motionEnabled ? 'smooth' : 'auto' });
+    element.scrollTo({
+      left: element.scrollLeft + (rtl ? buttonBounds.right - railBounds.right : buttonBounds.left - railBounds.left),
+      behavior: motionEnabled ? 'smooth' : 'auto',
+    });
   }, [selected, categoryKey, allLabel, motionEnabled, rtl]);
 
-  function move(direction: number) {
-    const element = rail.current;
-    if (!element) return;
-    const gap = parseFloat(getComputedStyle(element).columnGap) || 0;
-    element.scrollBy({ left: direction * (rtl ? -1 : 1) * (element.clientWidth + gap), behavior: motionEnabled ? 'smooth' : 'auto' });
-  }
-  function choose(id: string | null, button: HTMLButtonElement) {
-    onSelect(id);
-    const element = rail.current;
-    if (!element) return;
-    const buttonBounds = button.getBoundingClientRect();
-    const railBounds = element.getBoundingClientRect();
-    element.scrollTo({ left: element.scrollLeft + (rtl ? buttonBounds.right - railBounds.right : buttonBounds.left - railBounds.left), behavior: motionEnabled ? 'smooth' : 'auto' });
-  }
-
-  return <div className="guest-category-rail" data-before={edges.before} data-after={edges.after}>
-    {(edges.before || edges.after) && <button className="guest-category-prev" aria-label={t('Previous categories')} disabled={!edges.before} onClick={() => move(-1)}>{rtl ? <ChevronRight size={18}/> : <ChevronLeft size={18}/>}</button>}
-    <nav ref={rail} className="guest-category-bar" aria-label={t('Menu categories')}>
-      <button aria-pressed={!selected} onClick={event => choose(null, event.currentTarget)}><span aria-hidden="true"><Sparkles size={14} /></span><span className="guest-category-label">{allLabel}</span></button>
-      {categories.map(category => <button key={category.id} data-tone={menuTone(category.title)} aria-pressed={selected === category.id} onClick={event => choose(category.id, event.currentTarget)}><span aria-hidden="true"><CategoryVectorIcon title={category.title} size={15} /></span><span className="guest-category-label">{language === 'ar' && category.titleAr?.trim() ? category.titleAr : label(category.title)}</span></button>)}
-    </nav>
-    {(edges.before || edges.after) && <button className="guest-category-next" aria-label={t('More categories')} disabled={!edges.after} onClick={() => move(1)}>{rtl ? <ChevronLeft size={18}/> : <ChevronRight size={18}/>}</button>}
-  </div>;
+  return (
+    <div className="guest-category-rail">
+      <nav ref={rail} className="guest-category-bar" aria-label={t('Menu categories')}>
+        <button
+          type="button"
+          aria-pressed={!selected}
+          onClick={() => onSelect(null)}
+          className="cursor-pointer"
+        >
+          <span className="guest-category-label">{allLabel}</span>
+        </button>
+        {categories.map(cat => (
+          <button
+            key={cat.id}
+            type="button"
+            aria-pressed={selected === cat.id}
+            onClick={() => onSelect(cat.id)}
+            className="cursor-pointer"
+          >
+            <span className="guest-category-label">
+              {language === 'ar' && cat.titleAr?.trim() ? cat.titleAr : label(cat.title)}
+            </span>
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
 }
