@@ -8,7 +8,7 @@ import { storage } from "./storage";
 import { fromZodError } from "zod-validation-error";
 import { rateLimit } from './httpSecurity';
 import { safeError } from './securityHeaders';
-import { computeStationPinLookup } from './pinSecurity';
+import { computeStationPinLookup, formatStationPinSecret } from './pinSecurity';
 import { z } from 'zod';
 
 export function sessionCookieName() {
@@ -176,7 +176,9 @@ export async function setupAuth(app: Express) {
         return res.status(401).json({ message: "Invalid venue code or station PIN" });
       }
 
-      const validPin = await bcrypt.compare(parsed.data.pin, match.assignment.pinHash);
+      const validPin =
+        (await bcrypt.compare(formatStationPinSecret(parsed.data.pin), match.assignment.pinHash)) ||
+        (await bcrypt.compare(parsed.data.pin, match.assignment.pinHash));
       if (!validPin) {
         return res.status(401).json({ message: "Invalid venue code or station PIN" });
       }

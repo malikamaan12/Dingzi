@@ -331,6 +331,22 @@ try {
   const audit = await db.query<{n:number}>('SELECT count(*)::int AS n FROM access_audit WHERE actor_id = $1',[platform]);
   assert.ok(audit.rows[0].n >= 2);
   checks.push('Super-admin café access and mutation audit records survive request completion.');
+  const pinProvision = (await request(first,'POST','/api/hospitality/team',{
+    email:'pin-cashier@test.cafe',
+    password,
+    firstName:'Pin',
+    lastName:'Cashier',
+    staffRole:'host_cashier',
+    stationPin:'482910',
+  },cookie,201)).data;
+  assert.equal(pinProvision.assignment.hasPin,true);
+  const pinSigned = await request(second,'POST','/api/login/pin',{ venueCode:cafe, pin:'482910' });
+  assert.equal(pinSigned.data.user.email,'pin-cashier@test.cafe');
+  await request(first,'PATCH',`/api/hospitality/team/${pinProvision.user.id}`,{ stationPin:'739104' },cookie);
+  await request(second,'POST','/api/login/pin',{ venueCode:cafe, pin:'482910' },'',401);
+  const rotatedPinSigned = await request(first,'POST','/api/login/pin',{ venueCode:cafe, pin:'739104' });
+  assert.equal(rotatedPinSigned.data.user.email,'pin-cashier@test.cafe');
+  checks.push('6-digit Station PIN provisioning, rotation, and O(1) PIN login work end-to-end through the Worker password service.');
   for (let i=0;i<5;i++) await request(i%2 ? first : second,'PUT','/api/account/password',{currentPassword:'incorrect',newPassword:password},otherCookie,400);
   await request(second,'PUT','/api/account/password',{currentPassword:'incorrect',newPassword:password},otherCookie,429);
   for (let i=0;i<10;i++) await request(i%2 ? first : second,'POST','/api/login',{ email:'manager@test.cafe',password:'wrong-password' },'',401,{'CF-Connecting-IP':`192.0.2.${30+i}`});

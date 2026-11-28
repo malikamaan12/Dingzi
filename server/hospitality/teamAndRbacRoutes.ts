@@ -5,7 +5,7 @@ import { db } from '../db';
 import { isAuthenticated } from '../localAuth';
 import { authUser, getAccessibleBranches, getEffectiveStaffRole, getManagedCafe } from '../accessControl';
 import bcrypt from '../passwords';
-import { computeStationPinLookup } from '../pinSecurity';
+import { computeStationPinLookup, formatStationPinSecret } from '../pinSecurity';
 import {
   accessAudit,
   emailSchema,
@@ -269,7 +269,7 @@ export function mountTeamAndRbacRoutes(app: Express) {
       }
 
       const hashedPassword = body.password ? await bcrypt.hash(body.password, 12) : null;
-      const hashedPin = body.stationPin ? await bcrypt.hash(body.stationPin, 12) : null;
+      const hashedPin = body.stationPin ? await bcrypt.hash(formatStationPinSecret(body.stationPin), 12) : null;
 
       const created = await db.transaction(async tx => {
         const tenant = await ensureCafeTenantTx(tx, cafe);
@@ -470,7 +470,9 @@ export function mountTeamAndRbacRoutes(app: Express) {
       const isTenantAdminOrHigher = callerRole === 'super_admin' || callerRole === 'tenant_owner';
       const hashedPassword = body.newPassword ? await bcrypt.hash(body.newPassword, 12) : undefined;
       const hashedPin =
-        typeof body.stationPin === 'string' ? await bcrypt.hash(body.stationPin, 12) : undefined;
+        typeof body.stationPin === 'string'
+          ? await bcrypt.hash(formatStationPinSecret(body.stationPin), 12)
+          : undefined;
 
       const updated = await db.transaction(async tx => {
         const tenant = await ensureCafeTenantTx(tx, cafe);
