@@ -205,19 +205,21 @@ function Router() {
     location.startsWith('/tag/');
   // The Worker separately enforces this boundary for direct URL requests.
   if (isGuestSurface) return (
-    <Switch>
-      <Route path="/menu/:id" component={CustomerMenu}/>
-      <Route path="/v/:slug" component={VenueBySlugEntry}/>
-      <Route path="/screen/:slugOrId" component={ClearQrScreenPage}/>
-      <Route path="/pager/:token" component={VirtualPagerPage}/>
-      <Route path="/waitlist/:token" component={GuestWaitlistPage}/>
-      <Route path="/booking/:token" component={GuestBookingPage}/>
-      <Route path="/bay/:token" component={BayQrEntry}/>
-      <Route path="/table/:token" component={TableQrEntry}/>
-      <Route path="/tag/:token" component={SmartTagEntry}/>
-      <Route path="/" component={Home}/>
-      <Route component={NotFound}/>
-    </Switch>
+    <div className="w-full flex-1 min-w-0 max-w-full overflow-x-clip">
+      <Switch>
+        <Route path="/menu/:id" component={CustomerMenu}/>
+        <Route path="/v/:slug" component={VenueBySlugEntry}/>
+        <Route path="/screen/:slugOrId" component={ClearQrScreenPage}/>
+        <Route path="/pager/:token" component={VirtualPagerPage}/>
+        <Route path="/waitlist/:token" component={GuestWaitlistPage}/>
+        <Route path="/booking/:token" component={GuestBookingPage}/>
+        <Route path="/bay/:token" component={BayQrEntry}/>
+        <Route path="/table/:token" component={TableQrEntry}/>
+        <Route path="/tag/:token" component={SmartTagEntry}/>
+        <Route path="/" component={Home}/>
+        <Route component={NotFound}/>
+      </Switch>
+    </div>
   );
   return <StaffThemeProvider><StaffRouter/></StaffThemeProvider>;
 }
@@ -228,7 +230,7 @@ function StaffRouter() {
   if (!isAuthenticated && !isLoading) {
     if (window.location.pathname.startsWith('/admin') || window.location.pathname.startsWith('/super-admin')) return <Redirect to="/login"/>;
     return (
-      <div className="w-full">
+      <div className="w-full flex-1 min-w-0 max-w-full overflow-x-clip">
         <Switch>
           <Route path="/menu/:id" component={CustomerMenu} />
           <Route path="/register"><Redirect to="/login"/></Route>
@@ -243,7 +245,7 @@ function StaffRouter() {
   if (isLoading) {
     if (location.startsWith('/admin') || location.startsWith('/super-admin')) return <div className="p-8" role="status">Checking account access…</div>;
     return (
-      <div className="w-full">
+      <div className="w-full flex-1 min-w-0 max-w-full overflow-x-clip">
         <Switch>
           <Route path="/menu/:id" component={CustomerMenu} />
           <Route path="/register"><Redirect to="/login"/></Route>
@@ -378,7 +380,7 @@ export default function App() {
           <AppErrorBoundary>
             <Suspense
               fallback={
-                <div className="min-h-dvh grid place-items-center bg-[#F6F5FC] text-[#17132E] p-6" role="status">
+                <div className="w-full flex-1 min-w-0 min-h-dvh grid place-items-center bg-[#F6F5FC] text-[#17132E] p-6" role="status">
                   <div className="flex flex-col items-center gap-3">
                     <DingziMark size={44} />
                     <span className="text-xs font-semibold text-[#57507A]">Loading experience…</span>
