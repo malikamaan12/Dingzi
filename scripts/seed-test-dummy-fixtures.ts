@@ -7,9 +7,10 @@ export interface StaffMemberSeedSpec {
   branchIds?: string[];
   capabilities?: Record<string, boolean>;
   pin: string;
+  preservePassword?: boolean;
 }
 
-export function buildUrbanLusailProfile(existingRestaurant: any) {
+export function buildUrbanLusailProfile(existingRestaurant: any, fallbackCoverUrl?: string | null) {
   return {
     name: 'Urban Café',
     nameAr: 'أوربان كافيه · مرسى لوسيل',
@@ -27,9 +28,9 @@ export function buildUrbanLusailProfile(existingRestaurant: any) {
     openingHoursAr: 'يومياً · 7:00 ص – 11:30 م',
     openTime: '07:00',
     closeTime: '23:30',
-    logoUrl: existingRestaurant?.logoUrl || null,
-    coverMediaUrl: existingRestaurant?.coverMediaUrl || null,
-    coverMediaType: existingRestaurant?.coverMediaType || null,
+    logoUrl: existingRestaurant?.logoUrl || fallbackCoverUrl || null,
+    coverMediaUrl: existingRestaurant?.coverMediaUrl || fallbackCoverUrl || null,
+    coverMediaType: existingRestaurant?.coverMediaType || (fallbackCoverUrl ? 'image' : null),
     orderingMode: 'cart_pay_at_venue',
     paymentGateway: 'none',
     reservationsEnabled: true,
@@ -74,7 +75,7 @@ export function buildUrbanLusailProfile(existingRestaurant: any) {
   };
 }
 
-export function buildQstrawberryProfile(existingRestaurant: any) {
+export function buildQstrawberryProfile(existingRestaurant: any, fallbackCoverUrl?: string | null) {
   return {
     name: 'Qstrawberry',
     nameAr: 'كيو ستروبيري · كتارا',
@@ -92,9 +93,9 @@ export function buildQstrawberryProfile(existingRestaurant: any) {
     openingHoursAr: 'يومياً · 2:00 م – 1:00 ص',
     openTime: '14:00',
     closeTime: '01:00',
-    logoUrl: existingRestaurant?.logoUrl || null,
-    coverMediaUrl: existingRestaurant?.coverMediaUrl || null,
-    coverMediaType: existingRestaurant?.coverMediaType || null,
+    logoUrl: existingRestaurant?.logoUrl || fallbackCoverUrl || null,
+    coverMediaUrl: existingRestaurant?.coverMediaUrl || fallbackCoverUrl || null,
+    coverMediaType: existingRestaurant?.coverMediaType || (fallbackCoverUrl ? 'image' : null),
     orderingMode: 'full_online_checkout',
     paymentGateway: 'skipcash',
     reservationsEnabled: true,
@@ -145,6 +146,7 @@ export function buildWestBayProfile(coverImageUrl: string | null) {
     openingHoursAr: 'الأحد–الخميس · 6:30 ص – 10:00 م',
     openTime: '06:30',
     closeTime: '22:00',
+    logoUrl: coverImageUrl,
     coverMediaUrl: coverImageUrl,
     coverMediaType: coverImageUrl ? 'image' : null,
     orderingMode: 'cart_pay_at_venue',
@@ -152,6 +154,7 @@ export function buildWestBayProfile(coverImageUrl: string | null) {
     waitlistEnabled: true,
     driveThruEnabled: true,
     pagerMiniGameEnabled: true,
+    googleMapsReviewUrl: 'https://maps.google.com/?q=West+Bay+Doha',
     venueConfig: {
       pagerTicketPrefix: 'WB',
       waitlistTicketPrefix: 'WT',
@@ -185,6 +188,7 @@ export function buildSaffronMajlisProfile(coverImageUrl: string | null) {
     openingHoursAr: 'يومياً · 8:00 ص – 12:00 ص',
     openTime: '08:00',
     closeTime: '23:59',
+    logoUrl: coverImageUrl,
     coverMediaUrl: coverImageUrl,
     coverMediaType: coverImageUrl ? 'image' : null,
     orderingMode: 'browse_and_pager',
@@ -192,6 +196,7 @@ export function buildSaffronMajlisProfile(coverImageUrl: string | null) {
     waitlistEnabled: true,
     driveThruEnabled: false,
     pagerMiniGameEnabled: true,
+    googleMapsReviewUrl: 'https://maps.google.com/?q=Msheireb+Downtown+Doha',
     venueConfig: {
       pagerTicketPrefix: 'MJ',
       waitlistTicketPrefix: 'MW',
@@ -207,6 +212,33 @@ export function buildSaffronMajlisProfile(coverImageUrl: string | null) {
   };
 }
 
+export const DEFAULT_AGGREGATORS = [
+  {
+    platform: 'talabat' as const,
+    displayName: 'Talabat Qatar',
+    url: 'https://www.talabat.com/qatar',
+    badgeEn: '25–35 mins',
+    badgeAr: '٢٥–٣٥ دقيقة',
+    order: 0,
+  },
+  {
+    platform: 'snoonu' as const,
+    displayName: 'Snoonu Fast Delivery',
+    url: 'https://snoonu.com',
+    badgeEn: 'Local Qatari App',
+    badgeAr: 'توصيل قطري سريع',
+    order: 1,
+  },
+  {
+    platform: 'keeta' as const,
+    displayName: 'Keeta Express',
+    url: 'https://www.keeta-global.com',
+    badgeEn: 'Free Delivery Promo',
+    badgeAr: 'توصيل مجاني',
+    order: 2,
+  },
+];
+
 export function buildStaffPortfolio(urbanCafeId: string): {
   urban: StaffMemberSeedSpec[];
   qstrawberry: StaffMemberSeedSpec[];
@@ -214,6 +246,15 @@ export function buildStaffPortfolio(urbanCafeId: string): {
 } {
   return {
     urban: [
+      {
+        email: 'urban@dingzi.app',
+        firstName: 'Urban',
+        lastName: 'Founder',
+        staffRole: 'tenant_owner',
+        scope: 'all_branches',
+        pin: '101010',
+        preservePassword: true,
+      },
       {
         email: 'owner@urbancafe.test',
         firstName: 'Tariq',
@@ -270,6 +311,15 @@ export function buildStaffPortfolio(urbanCafeId: string): {
       },
     ],
     qstrawberry: [
+      {
+        email: 'qstrawberry@dingzi.app',
+        firstName: 'Qstrawberry',
+        lastName: 'Founder',
+        staffRole: 'tenant_owner',
+        scope: 'all_branches',
+        pin: '505050',
+        preservePassword: true,
+      },
       {
         email: 'owner@qstrawberry.test',
         firstName: 'Dana',
@@ -358,6 +408,7 @@ export function formatCredentialsSummary(params: {
     `- ${superAdminEmail} / ${sharedPassword}`,
     '',
     '## Tenant 1: Dingzi Qatar Hospitality Group (2 Branches: /v/urban-cafe & /v/urban-west-bay)',
+    `- Primary Cloud Owner:         urban@dingzi.app (existing password) | PIN: 101010`,
     `- Tenant Admin (All Branches): owner@urbancafe.test / ${sharedPassword} | PIN: 100100`,
     `- Branch Manager (Lusail):     manager@urbancafe.test / ${sharedPassword} | PIN: 200200`,
     `- Reception & Cashier (Full):  reception@urbancafe.test / ${sharedPassword} | PIN: 111222`,
@@ -366,6 +417,7 @@ export function formatCredentialsSummary(params: {
     `- Order Prep / Barista:        prep@urbancafe.test / ${sharedPassword} | PIN: 444555`,
     '',
     '## Tenant 2: Qstrawberry Artisanal Group (Mode C SkipCash Online + 25 QAR Deposit: /v/qstrawberry)',
+    `- Primary Cloud Owner: qstrawberry@dingzi.app (existing password) | PIN: 505050`,
     `- Tenant Admin:        owner@qstrawberry.test / ${sharedPassword} | PIN: 500500`,
     `- Reception & Cashier: reception@qstrawberry.test / ${sharedPassword} | PIN: 555666`,
     `- Order Prep Station:  prep@qstrawberry.test / ${sharedPassword} | PIN: 666777`,

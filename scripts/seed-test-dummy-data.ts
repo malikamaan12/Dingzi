@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import {
+  DEFAULT_AGGREGATORS,
   buildQstrawberryProfile,
   buildSaffronMajlisProfile,
   buildStaffPortfolio,
@@ -11,7 +12,7 @@ import {
   type StaffMemberSeedSpec,
 } from './seed-test-dummy-fixtures';
 
-const isCloud = process.argv.includes('--cloud');
+const isCloud = !process.argv.includes('--local');
 const SHARED_TEST_PASSWORD = process.env.DINGZI_DEMO_PASSWORD || 'DingziTest#2026';
 
 async function resolveSuperCredentials() {
@@ -84,9 +85,7 @@ const loginRes = await superApi.req('POST', '/api/login', {
 });
 assert.equal(loginRes.status, 200, `Super-admin login failed: ${JSON.stringify(loginRes.data)}`);
 
-const existingUsersRes = await superApi.req('GET', '/api/super-admin/users');
-assert.equal(existingUsersRes.status, 200);
-const existingUsers: any[] = existingUsersRes.data;
+const existingUsers: any[] = (await superApi.req('GET', '/api/super-admin/users')).data;
 const testSuperAdminEmail = 'superadmin@dingzi.test';
 const existingTestSuper = existingUsers.find(u => u.email.toLowerCase() === testSuperAdminEmail);
 if (!existingTestSuper) {
@@ -105,7 +104,7 @@ if (!existingTestSuper) {
 }
 
 let allCafes: any[] = (await superApi.req('GET', '/api/super-admin/restaurants')).data;
-const allTenants: any[] = (await superApi.req('GET', '/api/super-admin/tenants')).data.tenants;
+let allTenants: any[] = (await superApi.req('GET', '/api/super-admin/tenants')).data.tenants;
 
 const urbanCafe = allCafes.find(c => c.slug === 'urban-cafe' || c.name === 'Urban Café');
 const qCafe = allCafes.find(c => c.slug === 'qstrawberry' || c.name === 'Qstrawberry');
@@ -128,6 +127,7 @@ if (!urbanTenant) {
 } else {
   await superApi.req('PATCH', `/api/super-admin/tenants/${urbanTenant.id}`, {
     name: 'Dingzi Qatar Hospitality Group',
+    slug: 'dingzi-qatar-group',
     maxBranches: 5,
     status: 'active',
   });
@@ -149,6 +149,8 @@ if (!qTenant) {
   qTenant = createdT2.data.tenant;
 } else {
   await superApi.req('PATCH', `/api/super-admin/tenants/${qTenant.id}`, {
+    name: 'Qstrawberry Artisanal Group',
+    slug: 'qstrawberry-group',
     maxBranches: 3,
     status: 'active',
   });
@@ -172,8 +174,16 @@ if (!majlisCafe) {
   allCafes = (await superApi.req('GET', '/api/super-admin/restaurants')).data;
   majlisCafe = allCafes.find(c => c.id === createdMajlis.data.id);
 }
+allTenants = (await superApi.req('GET', '/api/super-admin/tenants')).data.tenants;
+const majlisTenant = allTenants.find(t => t.id === majlisCafe.tenantId);
+if (majlisTenant && !majlisTenant.slug) {
+  await superApi.req('PATCH', `/api/super-admin/tenants/${majlisTenant.id}`, {
+    slug: 'majlis-roastery-group',
+    maxBranches: 2,
+  });
+}
 
-console.log('3/7 Enriching bilingual profiles, dynamic VenueConfig rules & Global Menu Library...');
+console.log('3/7 Enriching bilingual profiles, logos, VenueConfig rules & Global Menu Library...');
 
 async function enterWorkspace(cafeId: string) {
   const r = await superApi.req('POST', '/api/super-admin/cafe-access', { restaurantId: cafeId });
@@ -182,7 +192,14 @@ async function enterWorkspace(cafeId: string) {
 
 await enterWorkspace(urbanCafe.id);
 const urbanMenuData = (await superApi.req('GET', '/api/manager-menu', undefined, urbanCafe.id)).data;
-await superApi.req('POST', '/api/restaurant', buildUrbanLusailProfile(urbanMenuData.restaurant), urbanCafe.id);
+const urbanItems: any[] = urbanMenuData.items || [];
+const urbanVariants: any[] = urbanMenuData.variants || [];
+await superApi.req(
+  'POST',
+  '/api/restaurant',
+  buildUrbanLusailProfile(urbanMenuData.restaurant, urbanItems.find(i => i.imageUrl)?.imageUrl),
+  urbanCafe.id,
+);
 
 const todayQatar = new Intl.DateTimeFormat('en-CA', {
   timeZone: 'Asia/Qatar',
@@ -191,11 +208,15 @@ const todayQatar = new Intl.DateTimeFormat('en-CA', {
   day: '2-digit',
 }).format(new Date());
 
-const urbanItems: any[] = urbanMenuData.items || [];
-const urbanVariants: any[] = urbanMenuData.variants || [];
 const margherita = urbanItems.find(i => /marg/i.test(i.name)) || urbanItems[0];
 const pistachioLatte = urbanItems.find(i => /pistachio latte/i.test(i.name)) || urbanItems[1];
 const spanishLatte = urbanItems.find(i => /^spanish latte$/i.test(i.name)) || urbanItems[2];
+const soldOutSample = urbanItems.find(i => i.id !== margherita?.id && i.id !== spanishLatte?.id && !i.isAvailable)
+  || urbanItems[urbanItems.length - 1];
+
+if (soldOutSample && soldOutSample.isAvailable) {
+  await superApi.req('PUT', `/api/menu-items/${soldOutSample.id}`, { isAvailable: false }, urbanCafe.id);
+}
 
 if (margherita && margherita.specialDate !== todayQatar) {
   await superApi.req(
@@ -279,7 +300,7 @@ if (pistachioLatte && pistachioLatte.specialDate !== todayQatar) {
   );
 }
 
-for (const item of urbanItems.filter(i => i.imageUrl).slice(0, 8)) {
+for (const item of urbanItems.filter(i => i.imageUrl && i.isAvailable).slice(0, 10)) {
   await superApi.req(
     'POST',
     '/api/menu-library/publish',
@@ -290,9 +311,15 @@ for (const item of urbanItems.filter(i => i.imageUrl).slice(0, 8)) {
 
 await enterWorkspace(qCafe.id);
 const qMenuData = (await superApi.req('GET', '/api/manager-menu', undefined, qCafe.id)).data;
-await superApi.req('POST', '/api/restaurant', buildQstrawberryProfile(qMenuData.restaurant), qCafe.id);
+const qItems: any[] = qMenuData.items || [];
+await superApi.req(
+  'POST',
+  '/api/restaurant',
+  buildQstrawberryProfile(qMenuData.restaurant, qItems.find(i => i.imageUrl)?.imageUrl),
+  qCafe.id,
+);
 
-for (const item of (qMenuData.items || []).filter((i: any) => i.imageUrl).slice(0, 3)) {
+for (const item of qItems.filter((i: any) => i.imageUrl).slice(0, 4)) {
   await superApi.req(
     'POST',
     '/api/menu-library/publish',
@@ -325,8 +352,8 @@ if (!westBayCafe) {
 
 await enterWorkspace(westBayCafe.id);
 const wbMenuBefore = (await superApi.req('GET', '/api/manager-menu', undefined, westBayCafe.id)).data;
-if ((wbMenuBefore.items || []).length === 0 && fullLibrary.length > 0) {
-  for (const libItem of fullLibrary.slice(0, 8)) {
+if ((wbMenuBefore.items || []).length < 12 && fullLibrary.length > 0) {
+  for (const libItem of fullLibrary.slice(0, 12)) {
     await superApi.req(
       'POST',
       '/api/menu-library/import',
@@ -350,8 +377,8 @@ await superApi.req(
 
 await enterWorkspace(majlisCafe.id);
 const majlisMenuBefore = (await superApi.req('GET', '/api/manager-menu', undefined, majlisCafe.id)).data;
-if ((majlisMenuBefore.items || []).length === 0 && fullLibrary.length > 0) {
-  for (const libItem of fullLibrary.slice(3, 10)) {
+if ((majlisMenuBefore.items || []).length < 10 && fullLibrary.length > 0) {
+  for (const libItem of fullLibrary.slice(2, 12)) {
     await superApi.req(
       'POST',
       '/api/menu-library/import',
@@ -382,42 +409,56 @@ async function upsertStaffMember(cafeId: string, spec: StaffMemberSeedSpec) {
     (m: any) => m.email.toLowerCase() === spec.email.toLowerCase(),
   );
   if (!existingMember) {
-    const created = await superApi.req(
-      'POST',
-      '/api/hospitality/team',
-      {
-        email: spec.email,
-        password: SHARED_TEST_PASSWORD,
-        firstName: spec.firstName,
-        lastName: spec.lastName,
-        staffRole: spec.staffRole,
-        applyTenantWide: spec.scope === 'all_branches',
-        ...(spec.scope === 'selected_branches' ? { restaurantIds: spec.branchIds || [cafeId] } : {}),
-        capabilities: spec.capabilities || {},
-        stationPin: spec.pin,
-      },
-      cafeId,
-    );
+    if (spec.preservePassword) {
+      const foundUser = existingUsers.find(u => u.email.toLowerCase() === spec.email.toLowerCase());
+      if (!foundUser) return;
+    }
+    let created = { status: 500, data: null as any };
+    for (let attempt = 0; attempt < 3; attempt++) {
+      created = await superApi.req(
+        'POST',
+        '/api/hospitality/team',
+        {
+          email: spec.email,
+          ...(spec.preservePassword ? {} : { password: SHARED_TEST_PASSWORD }),
+          firstName: spec.firstName,
+          lastName: spec.lastName,
+          staffRole: spec.staffRole,
+          applyTenantWide: spec.scope === 'all_branches',
+          ...(spec.scope === 'selected_branches' ? { restaurantIds: spec.branchIds || [cafeId] } : {}),
+          capabilities: spec.capabilities || {},
+          stationPin: spec.pin,
+        },
+        cafeId,
+      );
+      if (created.status < 500) break;
+      await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
+    }
     assert.ok(
       created.status === 201 || created.status === 200,
       `Failed creating ${spec.email}: ${JSON.stringify(created.data)}`,
     );
-  } else {
-    const updated = await superApi.req(
-      'PATCH',
-      `/api/hospitality/team/${existingMember.userId}`,
-      {
-        firstName: spec.firstName,
-        lastName: spec.lastName,
-        newPassword: SHARED_TEST_PASSWORD,
-        staffRole: spec.staffRole,
-        applyTenantWide: spec.scope === 'all_branches',
-        ...(spec.scope === 'selected_branches' ? { restaurantIds: spec.branchIds || [cafeId] } : {}),
-        capabilities: spec.capabilities || {},
-        stationPin: spec.pin,
-      },
-      cafeId,
-    );
+  } else if (!existingMember.hasPin || existingMember.highestRole !== spec.staffRole) {
+    let updated = { status: 500, data: null as any };
+    for (let attempt = 0; attempt < 3; attempt++) {
+      updated = await superApi.req(
+        'PATCH',
+        `/api/hospitality/team/${existingMember.userId}`,
+        {
+          firstName: spec.firstName,
+          lastName: spec.lastName,
+          ...(spec.preservePassword ? {} : { newPassword: SHARED_TEST_PASSWORD }),
+          staffRole: spec.staffRole,
+          applyTenantWide: spec.scope === 'all_branches',
+          ...(spec.scope === 'selected_branches' ? { restaurantIds: spec.branchIds || [cafeId] } : {}),
+          capabilities: spec.capabilities || {},
+          stationPin: spec.pin,
+        },
+        cafeId,
+      );
+      if (updated.status < 500) break;
+      await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
+    }
     assert.equal(updated.status, 200, `Failed updating ${spec.email}: ${JSON.stringify(updated.data)}`);
   }
 }
@@ -427,9 +468,9 @@ for (const s of staffSpecs.urban) await upsertStaffMember(urbanCafe.id, s);
 for (const s of staffSpecs.qstrawberry) await upsertStaffMember(qCafe.id, s);
 for (const s of staffSpecs.majlis) await upsertStaffMember(majlisCafe.id, s);
 
-console.log('6/7 Seeding Floor Zones, Tables, Bays, QR/NFC Smart Tags & Reusable Coasters...');
+console.log('6/7 Seeding Floor Zones, Tables, Bays, Aggregators, Smart Tags & Scan Telemetry...');
 
-async function ensureFloorAndBays(cafeId: string, prefix: string, includeBays = true) {
+async function ensureVenueInfrastructure(cafeId: string, prefix: string, includeBays: boolean, sampleItemIds: string[]) {
   await enterWorkspace(cafeId);
   let floor = (await superApi.req('GET', '/api/hospitality/floor', undefined, cafeId)).data;
   if ((floor.zones || []).length === 0) {
@@ -449,32 +490,19 @@ async function ensureFloorAndBays(cafeId: string, prefix: string, includeBays = 
         cafeId,
       )
     ).data.zone;
-    await superApi.req(
-      'POST',
-      '/api/hospitality/tables',
-      { zoneId: z1.id, tableCode: `${prefix}-01`, minCovers: 1, maxCovers: 2, isCombinable: false },
-      cafeId,
-    );
-    await superApi.req(
-      'POST',
-      '/api/hospitality/tables',
-      { zoneId: z1.id, tableCode: `${prefix}-02`, minCovers: 2, maxCovers: 4, isCombinable: true },
-      cafeId,
-    );
-    await superApi.req(
-      'POST',
-      '/api/hospitality/tables',
-      { zoneId: z2.id, tableCode: `${prefix}-03`, minCovers: 2, maxCovers: 6, isCombinable: true },
-      cafeId,
-    );
-    floor = (await superApi.req('GET', '/api/hospitality/floor', undefined, cafeId)).data;
-  } else if ((floor.tables || []).length === 0 && floor.zones[0]) {
-    await superApi.req(
-      'POST',
-      '/api/hospitality/tables',
-      { zoneId: floor.zones[0].id, tableCode: `${prefix}-01`, minCovers: 2, maxCovers: 4, isCombinable: true },
-      cafeId,
-    );
+    for (const [code, minC, maxC, comb, zId] of [
+      [`${prefix}-01`, 1, 2, false, z1.id],
+      [`${prefix}-02`, 2, 4, true, z1.id],
+      [`${prefix}-03`, 2, 6, true, z2.id],
+      [`${prefix}-04`, 4, 8, true, z2.id],
+    ] as const) {
+      await superApi.req(
+        'POST',
+        '/api/hospitality/tables',
+        { zoneId: zId, tableCode: code, minCovers: minC, maxCovers: maxC, isCombinable: comb },
+        cafeId,
+      );
+    }
     floor = (await superApi.req('GET', '/api/hospitality/floor', undefined, cafeId)).data;
   }
 
@@ -494,286 +522,380 @@ async function ensureFloorAndBays(cafeId: string, prefix: string, includeBays = 
     );
     baysData = (await superApi.req('GET', '/api/hospitality/bays', undefined, cafeId)).data;
   }
-  return { floor, bays: baysData.bays || [] };
-}
+  const bays = baysData.bays || [];
 
-const urbanInfra = await ensureFloorAndBays(urbanCafe.id, 'T', true);
-await ensureFloorAndBays(qCafe.id, 'K', true);
-await ensureFloorAndBays(westBayCafe.id, 'WB', true);
-await ensureFloorAndBays(majlisCafe.id, 'M', false);
+  let aggList: any[] =
+    (await superApi.req('GET', '/api/hospitality/aggregators', undefined, cafeId)).data.aggregators || [];
+  if (aggList.length === 0) {
+    for (const agg of DEFAULT_AGGREGATORS) {
+      const createdAgg = await superApi.req('POST', '/api/hospitality/aggregators', agg, cafeId);
+      if (createdAgg.data?.aggregator) aggList.push(createdAgg.data.aggregator);
+    }
+  }
+  const anBefore = (await superApi.req('GET', '/api/hospitality/analytics', undefined, cafeId)).data;
+  if ((anBefore?.summary?.aggregatorClicksTotal || 0) === 0 && aggList.length > 0) {
+    for (let k = 0; k < aggList.length * 2; k++) {
+      const agg = aggList[k % aggList.length];
+      await guestApi.req('POST', '/api/public/aggregator-click', {
+        restaurantId: cafeId,
+        aggregatorId: agg.id || null,
+        platform: agg.platform,
+        menuItemId: sampleItemIds[k % sampleItemIds.length] || null,
+        locale: k % 2 === 0 ? 'en' : 'ar',
+      });
+    }
+  }
 
-async function ensureSmartTag(
-  cafeId: string,
-  existingTags: any[],
-  spec: {
-    tagCode: string;
-    label: string;
-    hardwareKind: 'qr_only' | 'nfc_tag' | 'dual_qr_nfc' | 'coaster_puck';
-    targetType: 'venue_menu' | 'dining_table' | 'curbside_bay' | 'waitlist_join' | 'reservations' | 'reusable_pager';
-    tableId?: string | null;
-    bayId?: string | null;
-  },
-) {
-  const found = existingTags.find(t => t.tagCode.toUpperCase() === spec.tagCode.toUpperCase());
-  if (found) return found;
-  const created = await superApi.req('POST', '/api/hospitality/smart-tags', spec, cafeId);
-  assert.equal(created.status, 201, `Smart tag ${spec.tagCode} failed: ${JSON.stringify(created.data)}`);
-  return created.data.tag;
-}
+  const existingTags: any[] =
+    (await superApi.req('GET', '/api/hospitality/smart-tags', undefined, cafeId)).data.tags || [];
+  const ensureTag = async (spec: any) => {
+    const found = existingTags.find(t => t.tagCode.toUpperCase() === spec.tagCode.toUpperCase());
+    if (found) return found;
+    const created = await superApi.req('POST', '/api/hospitality/smart-tags', spec, cafeId);
+    assert.equal(created.status, 201, `Smart tag ${spec.tagCode} failed: ${JSON.stringify(created.data)}`);
+    return created.data.tag;
+  };
 
-await enterWorkspace(urbanCafe.id);
-const urbanTagsExisting =
-  (await superApi.req('GET', '/api/hospitality/smart-tags', undefined, urbanCafe.id)).data.tags || [];
-await ensureSmartTag(urbanCafe.id, urbanTagsExisting, {
-  tagCode: 'MENU-MAIN',
-  label: 'Entrance Welcome Stand (QR + NFC)',
-  hardwareKind: 'dual_qr_nfc',
-  targetType: 'venue_menu',
-});
-if (urbanInfra.floor.tables?.[1] || urbanInfra.floor.tables?.[0]) {
-  const tbl = urbanInfra.floor.tables[1] || urbanInfra.floor.tables[0];
-  await ensureSmartTag(urbanCafe.id, urbanTagsExisting, {
-    tagCode: 'TBL-T02',
-    label: `Dine-In Table ${tbl.tableCode} Acrylic Disc`,
+  const menuTag = await ensureTag({
+    tagCode: 'MENU-MAIN',
+    label: 'Entrance Welcome Stand (QR + NFC)',
     hardwareKind: 'dual_qr_nfc',
-    targetType: 'dining_table',
-    tableId: tbl.id,
+    targetType: 'venue_menu',
   });
-}
-if (urbanInfra.bays?.[0]) {
-  await ensureSmartTag(urbanCafe.id, urbanTagsExisting, {
-    tagCode: 'BAY-M01',
-    label: 'Marina Curbside Bay 1 Bollard',
+  const firstTable = floor.tables?.[1] || floor.tables?.[0];
+  const tableTag = firstTable
+    ? await ensureTag({
+        tagCode: 'TBL-T02',
+        label: `Dine-In Table ${firstTable.tableCode} Disc`,
+        hardwareKind: 'dual_qr_nfc',
+        targetType: 'dining_table',
+        tableId: firstTable.id,
+      })
+    : null;
+  const bayTag =
+    includeBays && bays[0]
+      ? await ensureTag({
+          tagCode: 'BAY-M01',
+          label: 'Curbside Bay 1 Bollard',
+          hardwareKind: 'dual_qr_nfc',
+          targetType: 'curbside_bay',
+          bayId: bays[0].id,
+        })
+      : null;
+  const wlTag = await ensureTag({
+    tagCode: 'HOST-WL',
+    label: 'Host Stand Walk-In Waitlist Poster',
     hardwareKind: 'dual_qr_nfc',
-    targetType: 'curbside_bay',
-    bayId: urbanInfra.bays[0].id,
+    targetType: 'waitlist_join',
   });
+  const coaster1 = await ensureTag({
+    tagCode: 'COASTER-01',
+    label: 'Counter Reusable Coaster #01',
+    hardwareKind: 'coaster_puck',
+    targetType: 'reusable_pager',
+  });
+  await ensureTag({
+    tagCode: 'COASTER-02',
+    label: 'Counter Reusable Coaster #02',
+    hardwareKind: 'coaster_puck',
+    targetType: 'reusable_pager',
+  });
+  await ensureTag({
+    tagCode: 'COASTER-03',
+    label: 'Counter Reusable Coaster #03',
+    hardwareKind: 'coaster_puck',
+    targetType: 'reusable_pager',
+  });
+
+  // Record realistic QR & NFC scan telemetry if zero scans exist
+  const totalScansNow = [menuTag, tableTag, bayTag, wlTag, coaster1]
+    .filter(Boolean)
+    .reduce((s, t) => s + (t.qrScans || 0) + (t.nfcTaps || 0), 0);
+  if (totalScansNow === 0) {
+    for (const tag of [menuTag, tableTag, bayTag, wlTag, coaster1].filter(Boolean)) {
+      await guestApi.req('GET', `/api/public/tag/${tag.token}?src=qr`);
+      await guestApi.req('GET', `/api/public/tag/${tag.token}?src=qr`);
+      await guestApi.req('GET', `/api/public/tag/${tag.token}?src=nfc`);
+    }
+  }
+
+  return { floor, bays, coaster1 };
 }
-await ensureSmartTag(urbanCafe.id, urbanTagsExisting, {
-  tagCode: 'HOST-WL',
-  label: 'Host Stand Walk-In Waitlist Poster',
-  hardwareKind: 'dual_qr_nfc',
-  targetType: 'waitlist_join',
-});
-const coaster1 = await ensureSmartTag(urbanCafe.id, urbanTagsExisting, {
-  tagCode: 'COASTER-01',
-  label: 'Counter Reusable Coaster #01',
-  hardwareKind: 'coaster_puck',
-  targetType: 'reusable_pager',
-});
-await ensureSmartTag(urbanCafe.id, urbanTagsExisting, {
-  tagCode: 'COASTER-02',
-  label: 'Counter Reusable Coaster #02',
-  hardwareKind: 'coaster_puck',
-  targetType: 'reusable_pager',
-});
-await ensureSmartTag(urbanCafe.id, urbanTagsExisting, {
-  tagCode: 'COASTER-03',
-  label: 'Counter Reusable Coaster #03',
-  hardwareKind: 'coaster_puck',
-  targetType: 'reusable_pager',
-});
 
-console.log('7/7 Seeding Live Orders, Virtual Pagers, Reservations & Walk-In Waitlist Passes...');
+const urbanAvailItems = urbanItems.filter(i => i.isAvailable);
+const qAvailItems = qItems.filter((i: any) => i.isAvailable);
+const wbAvailItems = (wbMenuAfter.items || []).filter((i: any) => i.isAvailable);
+const mjAvailItems = (majlisMenuAfter.items || []).filter((i: any) => i.isAvailable);
 
-await enterWorkspace(urbanCafe.id);
-const urbanPagersNow = (await superApi.req('GET', '/api/hospitality/pagers', undefined, urbanCafe.id)).data;
-const activeUrbanTickets = (urbanPagersNow.tickets || []).filter((t: any) =>
-  ['waiting', 'preparing', 'ready'].includes(t.status),
-);
+const urbanInfra = await ensureVenueInfrastructure(urbanCafe.id, 'T', true, urbanAvailItems.map(i => i.id));
+const qInfra = await ensureVenueInfrastructure(qCafe.id, 'K', true, qAvailItems.map((i: any) => i.id));
+const wbInfra = await ensureVenueInfrastructure(westBayCafe.id, 'WB', true, wbAvailItems.map((i: any) => i.id));
+const majlisInfra = await ensureVenueInfrastructure(majlisCafe.id, 'M', false, mjAvailItems.map((i: any) => i.id));
 
-let sampleReadyPagerToken = activeUrbanTickets.find((t: any) => t.status === 'ready')?.trackingToken || '';
-let samplePreparingPagerToken = activeUrbanTickets.find((t: any) => t.status === 'preparing')?.trackingToken || '';
+console.log('7/7 Seeding Live Orders, Completed Reviews, Pagers, Reservations & Waitlists Across All 4 Venues...');
 
-if (activeUrbanTickets.length < 3 && margherita && spanishLatte) {
-  const ordWait = await guestApi.req('POST', '/api/public/orders', {
-    restaurantId: urbanCafe.id,
-    channel: 'dine_in',
-    customerName: 'Fatima Al-Mansoori',
-    customerPhone: '+974 5510 2201',
-    tableCode: 'T-02',
-    notes: 'Extra crispy crust please',
-    items: [
-      { menuItemId: margherita.id, quantity: 1 },
-      { menuItemId: spanishLatte.id, quantity: 2 },
-    ],
-  });
-  assert.equal(ordWait.status, 201, JSON.stringify(ordWait.data));
+async function seedVenueLiveActivity(params: {
+  cafeId: string;
+  items: any[];
+  infra: { floor: any; bays: any[]; coaster1: any };
+  minOrders: number;
+  platePrefix: string;
+}) {
+  const { cafeId, items, infra, minOrders, platePrefix } = params;
+  await enterWorkspace(cafeId);
+  const existingOrdersData = (await superApi.req('GET', '/api/hospitality/orders', undefined, cafeId)).data;
+  const existingOrders: any[] = existingOrdersData.orders || [];
+  let readyToken = '';
+  let preparingToken = '';
 
-  const ordPrep = await guestApi.req('POST', '/api/public/orders', {
-    restaurantId: urbanCafe.id,
-    channel: 'curbside',
-    customerName: 'Hamad Al-Dosari',
-    customerPhone: '+974 5510 3302',
-    bayId: urbanInfra.bays[0]?.id || null,
-    vehicleColor: 'White',
-    vehicleType: 'SUV',
-    licensePlate: 'QAT 88420',
-    items: [
-      { menuItemId: margherita.id, quantity: 1 },
-      { menuItemId: spanishLatte.id, quantity: 1 },
-    ],
-  });
-  assert.equal(ordPrep.status, 201, JSON.stringify(ordPrep.data));
-  if (ordPrep.data.pager?.id) {
-    samplePreparingPagerToken = ordPrep.data.pager.trackingToken;
+  if (existingOrders.length < minOrders && items.length >= 2) {
+    const itemA = items[0];
+    const itemB = items[1];
+    const itemC = items[2] || items[0];
+    const tableCode = infra.floor.tables?.[1]?.tableCode || infra.floor.tables?.[0]?.tableCode || 'T-01';
+
+    // 1) Three completed, paid POS orders with SLA completion & 5-star / 4-star guest reviews
+    const completedSpecs = [
+      {
+        name: 'Sheikha Al-Thani',
+        channel: 'dine_in',
+        rating: 5,
+        comment: 'Super fast espresso & wood-fired service — loved the live virtual pager!',
+        lines: [{ menuItemId: itemA.id, quantity: 2 }, { menuItemId: itemB.id, quantity: 1 }],
+      },
+      {
+        name: 'Mohammed Al-Sulaiti',
+        channel: 'counter_pickup',
+        rating: 5,
+        comment: 'Zero waiting at the counter, Volt Lime ready chime worked right in Safari.',
+        lines: [{ menuItemId: itemB.id, quantity: 2 }, { menuItemId: itemC.id, quantity: 1 }],
+      },
+      {
+        name: 'Elena Rossi',
+        channel: 'curbside',
+        rating: 4,
+        comment: 'Brought warm straight to our car in Bay 1.',
+        lines: [{ menuItemId: itemA.id, quantity: 1 }, { menuItemId: itemC.id, quantity: 2 }],
+      },
+    ];
+
+    for (const cSpec of completedSpecs) {
+      const created = await superApi.req(
+        'POST',
+        '/api/hospitality/orders',
+        {
+          channel: cSpec.channel,
+          customerName: cSpec.name,
+          tableCode: cSpec.channel === 'dine_in' ? tableCode : undefined,
+          paymentStatus: 'paid',
+          items: cSpec.lines,
+        },
+        cafeId,
+      );
+      if (created.status === 201 && created.data.pager?.id) {
+        const pid = created.data.pager.id;
+        const pToken = created.data.pager.trackingToken;
+        await superApi.req('POST', `/api/hospitality/pagers/${pid}/transition`, { action: 'preparing' }, cafeId);
+        await superApi.req('POST', `/api/hospitality/pagers/${pid}/transition`, { action: 'ready' }, cafeId);
+        await superApi.req('POST', `/api/hospitality/pagers/${pid}/transition`, { action: 'collected' }, cafeId);
+        await guestApi.req('POST', `/api/public/pager/${pToken}/feedback`, {
+          rating: cSpec.rating,
+          comment: cSpec.comment,
+        });
+      }
+    }
+
+    // 2) Active READY order (Volt Lime #C8FF42 ready state!)
+    const ordReady = await superApi.req(
+      'POST',
+      '/api/hospitality/orders',
+      {
+        channel: 'counter_pickup',
+        customerName: 'Khalid Al-Kuwari',
+        customerPhone: '+974 5518 9001',
+        paymentStatus: 'paid',
+        items: [{ menuItemId: itemB.id, quantity: 2 }],
+      },
+      cafeId,
+    );
+    if (ordReady.status === 201 && ordReady.data.pager?.id) {
+      readyToken = ordReady.data.pager.trackingToken;
+      await superApi.req(
+        'POST',
+        `/api/hospitality/pagers/${ordReady.data.pager.id}/transition`,
+        { action: 'ready' },
+        cafeId,
+      );
+    }
+
+    // 3) Active PREPARING order with 1/2 items checked off + Curbside Bay Arrival (if bays exist)
+    const ordPrep = await superApi.req(
+      'POST',
+      '/api/hospitality/orders',
+      {
+        channel: infra.bays[0] ? 'curbside' : 'dine_in',
+        customerName: 'Hamad Al-Dosari',
+        customerPhone: '+974 5510 3302',
+        paymentStatus: 'paid',
+        notes: 'Extra napkins please',
+        items: [
+          { menuItemId: itemA.id, quantity: 1 },
+          { menuItemId: itemC.id, quantity: 2 },
+        ],
+      },
+      cafeId,
+    );
+    if (ordPrep.status === 201 && ordPrep.data.pager?.id) {
+      preparingToken = ordPrep.data.pager.trackingToken;
+      await superApi.req(
+        'POST',
+        `/api/hospitality/pagers/${ordPrep.data.pager.id}/line-items/0/toggle`,
+        { prepared: true },
+        cafeId,
+      );
+      if (infra.bays[0]) {
+        await guestApi.req('POST', '/api/public/curbside/checkin', {
+          trackingToken: preparingToken,
+          bayId: infra.bays[0].id,
+          etaStatus: 'arrived',
+          vehicleColor: 'White',
+          vehicleType: 'SUV',
+          licensePlate: `${platePrefix} 88420`,
+        });
+      }
+    }
+
+    // 4) Active WAITING Dine-In Pay-at-Venue order (ready for Cashier POS settlement + Prep checkoff)
     await superApi.req(
       'POST',
-      `/api/hospitality/pagers/${ordPrep.data.pager.id}/line-items/0/toggle`,
-      { prepared: true },
-      urbanCafe.id,
+      '/api/hospitality/orders',
+      {
+        channel: 'dine_in',
+        customerName: 'Fatima Al-Mansoori',
+        customerPhone: '+974 5510 2201',
+        tableCode,
+        paymentStatus: 'pay_at_venue',
+        notes: 'Serve coffee together with food',
+        items: [
+          { menuItemId: itemA.id, quantity: 1 },
+          { menuItemId: itemB.id, quantity: 2 },
+        ],
+      },
+      cafeId,
     );
   }
 
-  const ordReady = await guestApi.req('POST', '/api/public/orders', {
-    restaurantId: urbanCafe.id,
-    channel: 'counter_pickup',
-    customerName: 'Khalid Al-Sulaiti',
-    items: [{ menuItemId: spanishLatte.id, quantity: 2 }],
-  });
-  assert.equal(ordReady.status, 201, JSON.stringify(ordReady.data));
-  if (ordReady.data.pager?.id) {
-    sampleReadyPagerToken = ordReady.data.pager.trackingToken;
+  // Bind COASTER-01 to an active ticket if currently idle
+  const refreshedTags =
+    (await superApi.req('GET', '/api/hospitality/smart-tags', undefined, cafeId)).data.tags || [];
+  const liveCoaster1 = refreshedTags.find((t: any) => t.id === infra.coaster1.id);
+  if (liveCoaster1 && !liveCoaster1.activeTicketId) {
     await superApi.req(
       'POST',
-      `/api/hospitality/pagers/${ordReady.data.pager.id}/transition`,
-      { action: 'ready' },
-      urbanCafe.id,
+      '/api/hospitality/pagers/issue',
+      {
+        mode: 'auto_number',
+        customerName: 'Layla (NFC Coaster #01)',
+        channel: 'counter_pickup',
+        smartTagId: infra.coaster1.id,
+      },
+      cafeId,
     );
   }
-}
 
-const refreshedTags =
-  (await superApi.req('GET', '/api/hospitality/smart-tags', undefined, urbanCafe.id)).data.tags || [];
-const liveCoaster1 = refreshedTags.find((t: any) => t.id === coaster1.id);
-if (liveCoaster1 && !liveCoaster1.activeTicketId) {
-  await superApi.req(
-    'POST',
-    '/api/hospitality/pagers/issue',
-    {
-      mode: 'auto_number',
-      customerName: 'Layla (Coaster #01)',
-      channel: 'counter_pickup',
-      smartTagId: coaster1.id,
-    },
-    urbanCafe.id,
-  );
-}
-
-let sampleWaitlistToken = '';
-let sampleBookingToken = '';
-const activeUrbanWl = (urbanInfra.floor.waitlist || []).filter((w: any) => ['waiting', 'ready'].includes(w.status));
-if (activeUrbanWl.length < 2) {
-  const wl1 = await guestApi.req('POST', `/api/public/waitlist/${urbanCafe.id}`, {
-    guestName: 'Mariam & Family',
-    guestPhone: '+974 5590 1122',
-    partySize: 4,
-    notes: 'Marina Terrace preferred',
-  });
-  if (wl1.status === 201) sampleWaitlistToken = wl1.data.entry.trackingToken;
-
-  const wl2 = await guestApi.req('POST', `/api/public/waitlist/${urbanCafe.id}`, {
-    guestName: 'Faisal Al-Marri',
-    guestPhone: '+974 5590 4455',
-    partySize: 2,
-  });
-  if (wl2.status === 201) {
-    await superApi.req(
-      'POST',
-      `/api/hospitality/waitlist/${wl2.data.entry.id}/action`,
-      { action: 'ready' },
-      urbanCafe.id,
-    );
-    sampleWaitlistToken = wl2.data.entry.trackingToken;
-  }
-} else {
-  sampleWaitlistToken = activeUrbanWl[0].trackingToken;
-}
-
-const activeUrbanRes = (urbanInfra.floor.reservations || []).filter((r: any) =>
-  ['confirmed', 'seated'].includes(r.status),
-);
-if (activeUrbanRes.length < 2) {
-  const slot1 = new Date(Date.now() + 2 * 3_600_000).toISOString();
-  const slot2 = new Date(Date.now() + 4 * 3_600_000).toISOString();
-  const r1 = await superApi.req(
-    'POST',
-    '/api/hospitality/reservations',
-    {
-      guestName: 'Dr. Rashed Al-Naimi',
-      guestPhone: '+974 5522 7788',
+  // Ensure Walk-In Waitlist (1 waiting + 1 ready)
+  const freshFloor = (await superApi.req('GET', '/api/hospitality/floor', undefined, cafeId)).data;
+  const activeWl = (freshFloor.waitlist || []).filter((w: any) => ['waiting', 'ready'].includes(w.status));
+  let waitlistToken = activeWl.find((w: any) => w.status === 'ready')?.trackingToken || activeWl[0]?.trackingToken || '';
+  if (activeWl.length < 2) {
+    const wl1 = await guestApi.req('POST', `/api/public/waitlist/${cafeId}`, {
+      guestName: 'Mariam & Family',
+      guestPhone: '+974 5590 1122',
       partySize: 4,
-      startAt: slot1,
-      notes: 'Anniversary window table',
-    },
-    urbanCafe.id,
-  );
-  if (r1.status === 201) sampleBookingToken = r1.data.reservation.trackingToken;
-  await superApi.req(
-    'POST',
-    '/api/hospitality/reservations',
-    {
-      guestName: 'Aisha Executive Dinner',
-      guestPhone: '+974 5522 9900',
-      partySize: 6,
-      startAt: slot2,
-    },
-    urbanCafe.id,
-  );
-} else {
-  sampleBookingToken = activeUrbanRes[0].trackingToken;
-}
-
-await enterWorkspace(westBayCafe.id);
-const wbPagers = (await superApi.req('GET', '/api/hospitality/pagers', undefined, westBayCafe.id)).data;
-if ((wbPagers.tickets || []).length === 0 && wbMenuAfter.items?.[0]) {
-  await superApi.req(
-    'POST',
-    '/api/hospitality/orders',
-    {
-      channel: 'counter_pickup',
-      customerName: 'Zaid (West Bay Tower)',
-      paymentStatus: 'paid',
-      items: [{ menuItemId: wbMenuAfter.items[0].id, quantity: 2 }],
-    },
-    westBayCafe.id,
-  );
-}
-
-await enterWorkspace(qCafe.id);
-const qPagers = (await superApi.req('GET', '/api/hospitality/pagers', undefined, qCafe.id)).data;
-const qFirstItem = qMenuData.items?.[0];
-if ((qPagers.tickets || []).length === 0 && qFirstItem) {
-  const qOrd = await guestApi.req('POST', '/api/public/orders', {
-    restaurantId: qCafe.id,
-    channel: 'counter_pickup',
-    customerName: 'Noora Al-Hajri',
-    customerPhone: '+974 5544 1234',
-    items: [{ menuItemId: qFirstItem.id, quantity: 2 }],
-  });
-  if (qOrd.status === 201 && qOrd.data.checkout?.signatureToken) {
-    await guestApi.req('POST', `/api/public/payments/${qOrd.data.order.id}/confirm-sandbox`, {
-      provider: qOrd.data.checkout.provider,
-      paymentReference: qOrd.data.checkout.paymentReference,
-      signatureToken: qOrd.data.checkout.signatureToken,
+      notes: 'Terrace table preferred',
     });
+    if (wl1.status === 201) waitlistToken = wl1.data.entry.trackingToken;
+
+    const wl2 = await guestApi.req('POST', `/api/public/waitlist/${cafeId}`, {
+      guestName: 'Faisal Al-Marri',
+      guestPhone: '+974 5590 4455',
+      partySize: 2,
+    });
+    if (wl2.status === 201) {
+      await superApi.req('POST', `/api/hospitality/waitlist/${wl2.data.entry.id}/action`, { action: 'ready' }, cafeId);
+      waitlistToken = wl2.data.entry.trackingToken;
+    }
   }
+
+  // Ensure Upcoming Table Reservations (2 confirmed)
+  const activeRes = (freshFloor.reservations || []).filter((r: any) => ['confirmed', 'seated'].includes(r.status));
+  let bookingToken = activeRes[0]?.trackingToken || '';
+  if (activeRes.length < 2) {
+    const slot1 = new Date(Date.now() + 2 * 3_600_000).toISOString();
+    const slot2 = new Date(Date.now() + 4 * 3_600_000).toISOString();
+    const r1 = await superApi.req(
+      'POST',
+      '/api/hospitality/reservations',
+      {
+        guestName: 'Dr. Rashed Al-Naimi',
+        guestPhone: '+974 5522 7788',
+        partySize: 4,
+        startAt: slot1,
+        notes: 'Window table',
+      },
+      cafeId,
+    );
+    if (r1.status === 201) bookingToken = r1.data.reservation.trackingToken;
+    await superApi.req(
+      'POST',
+      '/api/hospitality/reservations',
+      {
+        guestName: 'Aisha Executive Dinner',
+        guestPhone: '+974 5522 9900',
+        partySize: 4,
+        startAt: slot2,
+      },
+      cafeId,
+    );
+  }
+
+  if (!readyToken || !preparingToken) {
+    const latestPagers = (await superApi.req('GET', '/api/hospitality/pagers', undefined, cafeId)).data.tickets || [];
+    readyToken = readyToken || latestPagers.find((t: any) => t.status === 'ready')?.trackingToken || '';
+    preparingToken = preparingToken || latestPagers.find((t: any) => t.status === 'preparing')?.trackingToken || '';
+  }
+
+  return { readyToken, preparingToken, waitlistToken, bookingToken };
 }
 
-await enterWorkspace(majlisCafe.id);
-const mjPagers = (await superApi.req('GET', '/api/hospitality/pagers', undefined, majlisCafe.id)).data;
-if ((mjPagers.tickets || []).length === 0) {
-  await superApi.req(
-    'POST',
-    '/api/hospitality/pagers/issue',
-    { mode: 'auto_number', customerName: 'Sheikh Jassim', channel: 'dine_in' },
-    majlisCafe.id,
-  );
-  await guestApi.req('POST', `/api/public/waitlist/${majlisCafe.id}`, {
-    guestName: 'Abdullah & Guests',
-    partySize: 5,
-  });
-}
+const urbanLive = await seedVenueLiveActivity({
+  cafeId: urbanCafe.id,
+  items: urbanAvailItems,
+  infra: urbanInfra,
+  minOrders: 8,
+  platePrefix: 'QAT',
+});
+await seedVenueLiveActivity({
+  cafeId: westBayCafe.id,
+  items: wbAvailItems,
+  infra: wbInfra,
+  minOrders: 5,
+  platePrefix: 'WB',
+});
+await seedVenueLiveActivity({
+  cafeId: qCafe.id,
+  items: qAvailItems,
+  infra: qInfra,
+  minOrders: 5,
+  platePrefix: 'KTR',
+});
+await seedVenueLiveActivity({
+  cafeId: majlisCafe.id,
+  items: mjAvailItems,
+  infra: majlisInfra,
+  minOrders: 5,
+  platePrefix: 'MSH',
+});
 
 await superApi.req('DELETE', '/api/super-admin/cafe-access');
 
@@ -790,11 +912,11 @@ const summaryLines = formatCredentialsSummary({
   guestBase: target.guestBase,
   sharedPassword: SHARED_TEST_PASSWORD,
   superAdminEmail: testSuperAdminEmail,
-  sampleReadyPagerToken,
-  samplePreparingPagerToken,
-  sampleWaitlistToken,
-  sampleBookingToken,
-  coasterToken: coaster1.token,
+  sampleReadyPagerToken: urbanLive.readyToken,
+  samplePreparingPagerToken: urbanLive.preparingToken,
+  sampleWaitlistToken: urbanLive.waitlistToken,
+  sampleBookingToken: urbanLive.bookingToken,
+  coasterToken: urbanInfra.coaster1.token,
 });
 
 const outFile = isCloud ? 'TEST-CLOUD-CREDENTIALS.txt' : 'TEST-LOCAL-CREDENTIALS.txt';
