@@ -2,29 +2,28 @@ import { useMemo, useState } from 'react';
 import { Link } from 'wouter';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
-  Ban,
   BarChart3,
   BellRing,
   Building2,
-  CalendarDays,
-  CheckCircle,
+  CheckCircle2,
   Eye,
+  EyeOff,
   History,
-  LibraryBig,
   Network,
+  PauseCircle,
   Phone,
+  PlayCircle,
   Plus,
   QrCode,
   Receipt,
   Search,
   Settings,
+  SlidersHorizontal,
   Users,
   UtensilsCrossed,
-  Wifi,
 } from 'lucide-react';
 import { OpenCafeAccount } from '@/components/open-cafe-account';
 import PermanentMenuQR from '@/components/permanent-menu-qr';
-import { DingziMark } from '@/components/staff-brand';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -38,6 +37,7 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
@@ -94,18 +94,32 @@ interface PortfolioAnalyticsResponse {
   branches: PortfolioBranchMetric[];
 }
 
+const ORDERING_MODE_LABELS: Record<string, string> = {
+  browse_and_pager: 'Counter Pager',
+  cart_pay_at_venue: 'Pay at Venue',
+  full_online_checkout: 'Online Payment',
+};
+
 function PortfolioAnalyticsPanel({ branches }: { branches: PortfolioBranchMetric[] }) {
-  if (!branches.length) return null;
+  if (!branches.length) {
+    return (
+      <Card className="rounded-2xl">
+        <CardContent className="p-8 text-center text-sm text-muted-foreground">
+          No venue activity recorded yet.
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
-    <Card className="rounded-3xl border-border">
+    <Card className="rounded-2xl border-border">
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
           <BarChart3 className="w-5 h-5 text-primary" />
-          Multi-Branch Portfolio SLA, Revenue &amp; QR/NFC Demand
+          <span>Side-by-Side Branch SLA, Revenue &amp; QR/NFC Demand</span>
         </CardTitle>
         <CardDescription>
-          Live side-by-side comparison across all dingzi venues on the platform.
+          Live performance comparison across every venue on the platform.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -114,33 +128,33 @@ function PortfolioAnalyticsPanel({ branches }: { branches: PortfolioBranchMetric
             <article key={b.id} className="rounded-2xl border p-3.5 space-y-2.5 bg-card">
               <div className="flex items-center justify-between gap-2">
                 <strong className="text-sm truncate">{b.name}</strong>
-                <Badge variant="outline" className="text-[11px] font-mono shrink-0">
-                  {b.orderingMode}
+                <Badge variant="outline" className="text-[11px] shrink-0">
+                  {ORDERING_MODE_LABELS[b.orderingMode] || b.orderingMode}
                 </Badge>
               </div>
               <div className="grid grid-cols-3 gap-2 text-xs">
                 <div className="rounded-xl bg-muted/40 p-2">
-                  <span className="text-xs text-muted-foreground block">Live / Total</span>
+                  <span className="text-muted-foreground block">Queue</span>
                   <strong className="font-mono">{b.activeTickets || 0} / {b.totalTickets}</strong>
                 </div>
                 <div className="rounded-xl bg-muted/40 p-2">
-                  <span className="text-xs text-muted-foreground block">Avg Prep</span>
+                  <span className="text-muted-foreground block">Avg Prep</span>
                   <strong className="font-mono">{b.avgPrepMins}m</strong>
                 </div>
                 <div className="rounded-xl bg-muted/40 p-2">
-                  <span className="text-xs text-muted-foreground block">Orders</span>
+                  <span className="text-muted-foreground block">Orders</span>
                   <strong className="font-mono">{b.totalOrders}</strong>
                 </div>
                 <div className="rounded-xl bg-muted/40 p-2">
-                  <span className="text-xs text-muted-foreground block">Revenue</span>
+                  <span className="text-muted-foreground block">Revenue</span>
                   <strong className="font-mono">{b.revenue || '0.00'} {b.currency}</strong>
                 </div>
                 <div className="rounded-xl bg-muted/40 p-2">
-                  <span className="text-xs text-muted-foreground block">Bookings</span>
+                  <span className="text-muted-foreground block">Bookings</span>
                   <strong className="font-mono">{b.reservations}</strong>
                 </div>
                 <div className="rounded-xl bg-muted/40 p-2">
-                  <span className="text-xs text-muted-foreground block">QR + NFC</span>
+                  <span className="text-muted-foreground block">QR + NFC</span>
                   <strong className="font-mono">{(b.qrScans || 0) + (b.nfcTaps || 0)}</strong>
                 </div>
               </div>
@@ -152,11 +166,11 @@ function PortfolioAnalyticsPanel({ branches }: { branches: PortfolioBranchMetric
           <table className="w-full text-sm text-left">
             <thead>
               <tr className="border-b text-xs uppercase text-muted-foreground">
-                <th className="py-2.5 pr-4">Branch</th>
-                <th className="py-2.5 px-3">Commerce Mode</th>
+                <th className="py-2.5 pr-4">Venue</th>
+                <th className="py-2.5 px-3">Mode</th>
                 <th className="py-2.5 px-3 text-right">Live Queue</th>
                 <th className="py-2.5 px-3 text-right">Total Pagers</th>
-                <th className="py-2.5 px-3 text-right">Avg Prep SLA</th>
+                <th className="py-2.5 px-3 text-right">Avg Prep</th>
                 <th className="py-2.5 px-3 text-right">Orders &amp; Revenue</th>
                 <th className="py-2.5 px-3 text-right">Bookings</th>
                 <th className="py-2.5 pl-3 text-right">QR / NFC</th>
@@ -167,8 +181,8 @@ function PortfolioAnalyticsPanel({ branches }: { branches: PortfolioBranchMetric
                 <tr key={b.id}>
                   <td className="py-2.5 pr-4 font-semibold">{b.name}</td>
                   <td className="py-2.5 px-3">
-                    <Badge variant="outline" className="text-[11px] font-mono">
-                      {b.orderingMode}
+                    <Badge variant="outline" className="text-[11px]">
+                      {ORDERING_MODE_LABELS[b.orderingMode] || b.orderingMode}
                     </Badge>
                   </td>
                   <td className="py-2.5 px-3 text-right font-mono font-bold text-[#6236FF]">
@@ -181,7 +195,7 @@ function PortfolioAnalyticsPanel({ branches }: { branches: PortfolioBranchMetric
                   </td>
                   <td className="py-2.5 px-3 text-right font-mono">{b.reservations}</td>
                   <td className="py-2.5 pl-3 text-right font-mono">
-                    {(b.qrScans || 0)} QR / {(b.nfcTaps || 0)} NFC
+                    {b.qrScans || 0} QR / {b.nfcTaps || 0} NFC
                   </td>
                 </tr>
               ))}
@@ -193,7 +207,7 @@ function PortfolioAnalyticsPanel({ branches }: { branches: PortfolioBranchMetric
   );
 }
 
-function SuspendRestaurantDialog({
+function PauseVenueDialog({
   restaurant,
   open,
   onOpenChange,
@@ -203,25 +217,31 @@ function SuspendRestaurantDialog({
   onOpenChange: (open: boolean) => void;
 }) {
   const { toast } = useToast();
-  const [reason, setReason] = useState('');
+  const [reason, setReason] = useState('Seasonal pause / owner offboarding request');
+  const [freezeExclusiveStaff, setFreezeExclusiveStaff] = useState(true);
 
-  const suspendMutation = useMutation({
+  const pauseMutation = useMutation({
     mutationFn: async () => {
-      await apiRequest('PUT', `/api/super-admin/restaurants/${restaurant.id}/suspend`, { reason });
+      await apiRequest('POST', `/api/super-admin/restaurants/${restaurant.id}/offboard`, {
+        stage: 'pause_venue',
+        reason: reason.trim(),
+        freezeExclusiveStaff,
+      });
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['/api/super-admin/restaurants'] });
       void queryClient.invalidateQueries({ queryKey: ['/api/super-admin/portfolio-analytics'] });
+      void queryClient.invalidateQueries({ queryKey: ['/api/super-admin/users'] });
       toast({
-        title: 'Restaurant Suspended',
-        description: 'Restaurant has been suspended successfully',
+        title: `${restaurant.name} paused`,
+        description: 'Public menu hidden and dangling pagers closed. All menus, orders, and QRs remain preserved.',
       });
       onOpenChange(false);
     },
-    onError: () => {
+    onError: (e: Error) => {
       toast({
-        title: 'Error',
-        description: 'Failed to suspend restaurant',
+        title: 'Could not pause venue',
+        description: e.message || 'Check reason and try again',
         variant: 'destructive',
       });
     },
@@ -229,39 +249,61 @@ function SuspendRestaurantDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="rounded-3xl">
+      <DialogContent className="rounded-3xl max-w-lg">
         <DialogHeader>
-          <DialogTitle>Suspend Restaurant</DialogTitle>
+          <DialogTitle>Pause or Offboard {restaurant.name}</DialogTitle>
           <DialogDescription>
-            Suspend {restaurant.name}. The restaurant will be hidden from public view.
+            Safely pauses public guest access, closes active pager tickets, and preserves 100% of menus, orders, and QR codes. Need to download a full JSON archive or permanently delete this venue? Open{' '}
+            <Link
+              href={`/super-admin/restaurant/${restaurant.id}?tab=lifecycle`}
+              onClick={() => onOpenChange(false)}
+              className="text-[#4B1FE0] font-semibold underline"
+            >
+              Lifecycle &amp; Offboarding
+            </Link>
+            .
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="reason">Suspension Reason</Label>
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="reason">Pause / Offboarding Reason</Label>
             <Textarea
               id="reason"
               value={reason}
               onChange={e => setReason(e.target.value)}
-              placeholder="e.g., Temporarily closed for renovations..."
+              placeholder="e.g. Closed for summer renovations…"
               rows={3}
               required
               data-testid="input-suspension-reason"
             />
           </div>
+          <label className="flex items-center gap-2 text-xs cursor-pointer">
+            <input
+              type="checkbox"
+              checked={freezeExclusiveStaff}
+              onChange={e => setFreezeExclusiveStaff(e.target.checked)}
+              className="accent-[#6236FF]"
+            />
+            <span>Also freeze staff logins assigned exclusively to this branch</span>
+          </label>
         </div>
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-suspend" className="min-h-11 cursor-pointer">
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            data-testid="button-cancel-suspend"
+            className="min-h-11 rounded-xl cursor-pointer"
+          >
             Cancel
           </Button>
           <Button
             variant="destructive"
-            onClick={() => suspendMutation.mutate()}
-            disabled={suspendMutation.isPending || !reason}
+            onClick={() => pauseMutation.mutate()}
+            disabled={pauseMutation.isPending || reason.trim().length < 5}
             data-testid="button-confirm-suspend"
-            className="min-h-11 cursor-pointer"
+            className="min-h-11 rounded-xl cursor-pointer"
           >
-            {suspendMutation.isPending ? 'Suspending...' : 'Suspend Restaurant'}
+            {pauseMutation.isPending ? 'Pausing…' : 'Pause Venue'}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -307,9 +349,10 @@ function MultiBranchTenantGroupsPanel({ restaurants }: { restaurants: Restaurant
       setOwnerUserId('');
       void queryClient.invalidateQueries({ queryKey: ['/api/super-admin/tenants'] });
       void queryClient.invalidateQueries({ queryKey: ['/api/super-admin/portfolio-analytics'] });
-      toast({ title: 'Multi-branch tenant group created' });
+      toast({ title: 'Multi-branch brand group created' });
     },
-    onError: (e: Error) => toast({ title: 'Could not create tenant group', description: e.message, variant: 'destructive' }),
+    onError: (e: Error) =>
+      toast({ title: 'Could not create brand group', description: e.message, variant: 'destructive' }),
   });
 
   const linkBranchMutation = useMutation({
@@ -321,23 +364,24 @@ function MultiBranchTenantGroupsPanel({ restaurants }: { restaurants: Restaurant
       void queryClient.invalidateQueries({ queryKey: ['/api/super-admin/tenants'] });
       void queryClient.invalidateQueries({ queryKey: ['/api/super-admin/restaurants'] });
       void queryClient.invalidateQueries({ queryKey: ['/api/super-admin/portfolio-analytics'] });
-      toast({ title: 'Branch tenant assignment updated' });
+      toast({ title: 'Branch brand group updated' });
     },
-    onError: (e: Error) => toast({ title: 'Could not update branch group', description: e.message, variant: 'destructive' }),
+    onError: (e: Error) =>
+      toast({ title: 'Could not update branch group', description: e.message, variant: 'destructive' }),
   });
 
   const tenantsList = tenantsQuery.data?.tenants || [];
   const eligibleOwners = (usersQuery.data || []).filter(u => u.role === 'admin');
 
   return (
-    <Card className="rounded-3xl border-border">
+    <Card className="rounded-2xl border-border">
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
           <Network className="w-5 h-5 text-primary" />
-          Multi-Branch Brand &amp; Tenant Groups
+          <span>Multi-Branch Brand &amp; Tenant Groups</span>
         </CardTitle>
         <CardDescription>
-          Group multiple branches under one hospitality brand so a Tenant Owner gets a live portfolio dashboard and instant branch switching.
+          Group branches under one hospitality organization so its Tenant Owner gets a unified portfolio dashboard and instant branch switcher.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -350,11 +394,22 @@ function MultiBranchTenantGroupsPanel({ restaurants }: { restaurants: Restaurant
         >
           <div>
             <Label className="text-xs">Brand / Group Name *</Label>
-            <Input value={name} onChange={e => setName(e.target.value)} placeholder="Urban Hospitality Group" required className="min-h-11" />
+            <Input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="Urban Hospitality Group"
+              required
+              className="min-h-11"
+            />
           </div>
           <div>
             <Label className="text-xs">Group Slug (optional)</Label>
-            <Input value={slug} onChange={e => setSlug(e.target.value)} placeholder="urban-group" className="min-h-11 font-mono" />
+            <Input
+              value={slug}
+              onChange={e => setSlug(e.target.value)}
+              placeholder="urban-group"
+              className="min-h-11 font-mono"
+            />
           </div>
           <div>
             <Label className="text-xs">Tenant Owner Account</Label>
@@ -371,7 +426,11 @@ function MultiBranchTenantGroupsPanel({ restaurants }: { restaurants: Restaurant
               ))}
             </select>
           </div>
-          <Button type="submit" disabled={!name.trim() || createTenantMutation.isPending} className="min-h-11 cursor-pointer gap-1.5">
+          <Button
+            type="submit"
+            disabled={!name.trim() || createTenantMutation.isPending}
+            className="min-h-11 rounded-xl cursor-pointer gap-1.5"
+          >
             <Plus className="w-4 h-4" />
             <span>Create Brand Group</span>
           </Button>
@@ -399,14 +458,14 @@ function MultiBranchTenantGroupsPanel({ restaurants }: { restaurants: Restaurant
         )}
 
         {tenantsList.length > 0 && restaurants.length > 0 && (
-          <div className="pt-2 border-t grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+          <div className="pt-3 border-t grid sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
             {restaurants.map(r => (
               <div key={r.id} className="rounded-2xl border p-2.5 flex items-center justify-between gap-2 text-xs">
                 <span className="font-semibold truncate">{r.name}</span>
                 <select
                   aria-label={`Assign tenant group for ${r.name}`}
                   className="manager-select min-h-11 text-xs max-w-[170px]"
-                  value={(r as any).tenantId || ''}
+                  value={r.tenantId || ''}
                   onChange={e =>
                     linkBranchMutation.mutate({
                       restaurantId: r.id,
@@ -414,7 +473,7 @@ function MultiBranchTenantGroupsPanel({ restaurants }: { restaurants: Restaurant
                     })
                   }
                 >
-                  <option value="">Standalone Café</option>
+                  <option value="">Standalone Venue</option>
                   {tenantsList.map(t => (
                     <option key={t.id} value={t.id}>
                       {t.name}
@@ -446,22 +505,22 @@ export default function SuperAdminDashboard() {
     refetchInterval: 10_000,
   });
 
-  const activateMutation = useMutation({
+  const reactivateMutation = useMutation({
     mutationFn: async (id: string) => {
-      await apiRequest('PUT', `/api/super-admin/restaurants/${id}/activate`, {});
+      await apiRequest('POST', `/api/super-admin/restaurants/${id}/reactivate`, {});
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['/api/super-admin/restaurants'] });
       void queryClient.invalidateQueries({ queryKey: ['/api/super-admin/portfolio-analytics'] });
+      void queryClient.invalidateQueries({ queryKey: ['/api/super-admin/users'] });
       toast({
-        title: 'Restaurant Activated',
-        description: 'Restaurant has been activated successfully',
+        title: 'Venue reactivated',
+        description: 'Public menu, QR/NFC smart tags, and staff logins are back online.',
       });
     },
     onError: () => {
       toast({
-        title: 'Error',
-        description: 'Failed to activate restaurant',
+        title: 'Could not reactivate venue',
         variant: 'destructive',
       });
     },
@@ -504,313 +563,330 @@ export default function SuperAdminDashboard() {
   const pausedCount = restaurants?.filter(r => r.status !== 'active' || r.hidden).length || 0;
 
   return (
-    <div className="space-y-6 max-w-[1500px]">
-      {/* Platform Super-Admin Command Hero */}
-      <section className="rounded-3xl bg-[#17132E] text-white border border-[#241E42] p-5 sm:p-7 shadow-xl">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-          <div className="space-y-2.5">
-            <div className="flex flex-wrap items-center gap-2">
-              <DingziMark size={34} />
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#C8FF42] text-[#17132E] text-xs font-extrabold">
-                Platform Super-Admin Console
-              </span>
-              <span className="px-3 py-1 rounded-full bg-[#241E42] text-white/85 text-xs font-mono">
-                {restaurants?.length || 0} Venues · {totals?.tenantGroupsCount ?? 0} Brand Groups
-              </span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-display font-extrabold tracking-tight" data-testid="heading-super-admin">
-              Platform Network Command Center
-            </h1>
-            <p className="text-sm text-white/75 max-w-2xl">
-              Provision café workspaces, manage multi-branch hospitality groups, audit staff access, and monitor live pager, order, and QR/NFC traffic across the entire network.
-            </p>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2.5">
-            <Button asChild className="min-h-11 rounded-2xl bg-[#6236FF] hover:bg-[#4B1FE0] text-white font-bold cursor-pointer gap-1.5">
-              <Link href="/super-admin/restaurants/new">
-                <Plus className="w-4 h-4" />
-                <span>Add Café</span>
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="min-h-11 rounded-2xl border-white/20 bg-[#241E42] text-white hover:bg-[#312959] cursor-pointer gap-1.5">
-              <Link href="/super-admin/accounts">
-                <Users className="w-4 h-4" />
-                <span>Accounts &amp; Roles</span>
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="min-h-11 rounded-2xl border-white/20 bg-[#241E42] text-white hover:bg-[#312959] cursor-pointer gap-1.5">
-              <Link href="/admin/library">
-                <LibraryBig className="w-4 h-4" />
-                <span>Global Library</span>
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="min-h-11 rounded-2xl border-white/20 bg-[#241E42] text-white hover:bg-[#312959] cursor-pointer gap-1.5">
-              <Link href="/super-admin/access-history">
-                <History className="w-4 h-4" />
-                <span>Audit Log</span>
-              </Link>
-            </Button>
-          </div>
+    <div className="space-y-6 max-w-[1440px]">
+      {/* Clean Operational Header */}
+      <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-2 border-b">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-display font-extrabold tracking-tight" data-testid="heading-super-admin">
+            Venues &amp; Network
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Onboard cafés and restaurants, manage multi-branch brand groups, monitor live traffic, or safely offboard venues.
+          </p>
         </div>
-      </section>
 
-      {/* 6-Card Platform Network Pulse */}
-      <section className="grid grid-cols-2 lg:grid-cols-6 gap-3 sm:gap-4" role="status" aria-live="polite">
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            asChild
+            data-testid="button-onboard-venue"
+            className="min-h-11 rounded-xl bg-[#6236FF] hover:bg-[#4B1FE0] text-white font-bold cursor-pointer gap-1.5"
+          >
+            <Link href="/super-admin/restaurants/new">
+              <Plus className="w-4 h-4" />
+              <span>Onboard Venue</span>
+            </Link>
+          </Button>
+          <Button asChild variant="outline" className="min-h-11 rounded-xl cursor-pointer gap-1.5">
+            <Link href="/super-admin/accounts">
+              <Users className="w-4 h-4" />
+              <span>Accounts &amp; PINs</span>
+            </Link>
+          </Button>
+          <Button asChild variant="outline" className="min-h-11 rounded-xl cursor-pointer gap-1.5">
+            <Link href="/super-admin/settings">
+              <SlidersHorizontal className="w-4 h-4" />
+              <span>Platform CMS</span>
+            </Link>
+          </Button>
+          <Button asChild variant="outline" className="min-h-11 rounded-xl cursor-pointer gap-1.5">
+            <Link href="/super-admin/access-history">
+              <History className="w-4 h-4" />
+              <span>Audit Log</span>
+            </Link>
+          </Button>
+        </div>
+      </header>
+
+      {/* Focused 4-Metric Network Pulse */}
+      <section className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4" role="status" aria-live="polite">
         <div className="rounded-2xl border bg-card p-4 space-y-1">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>Live Menus</span>
+            <span>Live Venues</span>
             <Eye className="w-4 h-4 text-[#6236FF]" />
           </div>
           <strong className="block text-2xl font-display font-extrabold font-mono">
             {liveCount} / {restaurants?.length || 0}
           </strong>
-          <span className="text-xs text-muted-foreground block">{pausedCount} paused or hidden</span>
+          <span className="text-xs text-muted-foreground block">
+            {pausedCount > 0 ? `${pausedCount} paused or hidden` : 'All venues accepting guests'}
+          </span>
         </div>
 
         <div className="rounded-2xl border bg-card p-4 space-y-1">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>Active Queues</span>
+            <span>Active Queues &amp; Taps</span>
             <BellRing className="w-4 h-4 text-[#6236FF]" />
           </div>
           <strong className="block text-2xl font-display font-extrabold font-mono">
-            {totals?.activeTicketsNow ?? 0}
+            {totals?.activeTicketsNow ?? 0} live
           </strong>
-          <span className="text-xs text-muted-foreground block">{totals?.totalTickets ?? 0} total issued</span>
+          <span className="text-xs text-muted-foreground block font-mono">
+            {(totals?.totalQrScans ?? 0) + (totals?.totalNfcTaps ?? 0)} QR/NFC scans
+          </span>
         </div>
 
         <div className="rounded-2xl border bg-card p-4 space-y-1">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>Network Orders</span>
+            <span>Settled Revenue</span>
             <Receipt className="w-4 h-4 text-[#6236FF]" />
           </div>
           <strong className="block text-2xl font-display font-extrabold font-mono">
-            {totals?.totalOrders ?? 0}
+            {totals?.settledRevenueTotal ?? '0.00'} QAR
           </strong>
-          <span className="text-xs text-muted-foreground block font-mono">{totals?.settledRevenueTotal ?? '0.00'} QAR</span>
+          <span className="text-xs text-muted-foreground block font-mono">
+            {totals?.totalOrders ?? 0} orders · {totals?.reservationsCount ?? 0} bookings
+          </span>
         </div>
 
         <div className="rounded-2xl border bg-card p-4 space-y-1">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>QR &amp; NFC Taps</span>
-            <Wifi className="w-4 h-4 text-[#6236FF]" />
-          </div>
-          <strong className="block text-2xl font-display font-extrabold font-mono">
-            {(totals?.totalQrScans ?? 0) + (totals?.totalNfcTaps ?? 0)}
-          </strong>
-          <span className="text-xs text-muted-foreground block">{totals?.smartTagsCount ?? 0} smart tags</span>
-        </div>
-
-        <div className="rounded-2xl border bg-card p-4 space-y-1">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>Floor &amp; Waitlist</span>
-            <CalendarDays className="w-4 h-4 text-[#6236FF]" />
-          </div>
-          <strong className="block text-2xl font-display font-extrabold font-mono">
-            {totals?.reservationsCount ?? 0}
-          </strong>
-          <span className="text-xs text-muted-foreground block">{totals?.waitlistWaitingNow ?? 0} in waitlist now</span>
-        </div>
-
-        <div className="rounded-2xl border bg-card p-4 space-y-1">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>Staff Accounts</span>
+            <span>Tenants &amp; Staff</span>
             <Users className="w-4 h-4 text-[#6236FF]" />
           </div>
           <strong className="block text-2xl font-display font-extrabold font-mono">
-            {totals?.totalUsers ?? 0}
+            {totals?.tenantGroupsCount ?? 0} brands
           </strong>
-          <span className="text-xs text-muted-foreground block">{totals?.tenantGroupsCount ?? 0} brand groups</span>
+          <span className="text-xs text-muted-foreground block font-mono">
+            {totals?.totalUsers ?? 0} staff accounts
+          </span>
         </div>
       </section>
 
-      <PortfolioAnalyticsPanel branches={portfolioQuery.data?.branches || []} />
+      {/*Focused 3-Tab Operational Workspace */}
+      <Tabs defaultValue="venues" className="space-y-4">
+        <TabsList className="flex flex-wrap h-auto gap-1 p-1.5 rounded-2xl w-fit">
+          <TabsTrigger value="venues" className="min-h-10 rounded-xl cursor-pointer gap-1.5">
+            <Building2 className="w-4 h-4" />
+            <span>Venues ({restaurants?.length || 0})</span>
+          </TabsTrigger>
+          <TabsTrigger value="analytics" className="min-h-10 rounded-xl cursor-pointer gap-1.5">
+            <BarChart3 className="w-4 h-4" />
+            <span>Branch Comparison</span>
+          </TabsTrigger>
+          <TabsTrigger value="tenants" className="min-h-10 rounded-xl cursor-pointer gap-1.5">
+            <Network className="w-4 h-4" />
+            <span>Brand Groups ({totals?.tenantGroupsCount ?? 0})</span>
+          </TabsTrigger>
+        </TabsList>
 
-      <MultiBranchTenantGroupsPanel restaurants={restaurants || []} />
-
-      {/* Venue Fleet Directory + Search & Filter */}
-      <section className="space-y-4">
-        <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
-          <div className="relative flex-1 sm:max-w-md">
-            <Search className="w-4 h-4 text-muted-foreground absolute top-3.5 start-3.5 pointer-events-none" />
-            <Input
-              type="search"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Search venues, slugs, or manager emails…"
-              aria-label="Search venues"
-              className="min-h-11 ps-10 rounded-2xl"
-            />
+        <TabsContent value="venues" className="space-y-4">
+          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
+            <div className="relative flex-1 sm:max-w-md">
+              <Search className="w-4 h-4 text-muted-foreground absolute top-3.5 start-3.5 pointer-events-none" />
+              <Input
+                type="search"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search venues, /v/ slugs, or owner emails…"
+                aria-label="Search venues"
+                className="min-h-11 ps-10 rounded-xl"
+              />
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { id: 'all' as const, label: `All (${restaurants?.length || 0})` },
+                { id: 'live' as const, label: `Live (${liveCount})` },
+                { id: 'paused' as const, label: `Paused / Hidden (${pausedCount})` },
+                { id: 'grouped' as const, label: 'Multi-Branch' },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  aria-pressed={statusFilter === tab.id}
+                  onClick={() => setStatusFilter(tab.id)}
+                  className={`min-h-11 px-4 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
+                    statusFilter === tab.id
+                      ? 'bg-[#6236FF] text-white border-[#6236FF]'
+                      : 'bg-card text-foreground border-border hover:bg-muted'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {[
-              { id: 'all' as const, label: `All (${restaurants?.length || 0})` },
-              { id: 'live' as const, label: `Live (${liveCount})` },
-              { id: 'paused' as const, label: `Paused / Hidden (${pausedCount})` },
-              { id: 'grouped' as const, label: 'Multi-Branch' },
-            ].map(tab => (
-              <button
-                key={tab.id}
-                type="button"
-                aria-pressed={statusFilter === tab.id}
-                onClick={() => setStatusFilter(tab.id)}
-                className={`min-h-11 px-4 rounded-full text-xs font-semibold border transition-colors cursor-pointer ${
-                  statusFilter === tab.id
-                    ? 'bg-[#6236FF] text-white border-[#6236FF]'
-                    : 'bg-card text-foreground border-border hover:bg-muted'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-        </div>
 
-        <div className="staff-platform-grid">
-          {filteredRestaurants.length === 0 && (
-            <Card className="col-span-full rounded-3xl">
-              <CardContent className="p-8 text-center">
-                <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-                <p className="text-muted-foreground">No restaurants match this filter</p>
-              </CardContent>
-            </Card>
-          )}
-
-          {filteredRestaurants.map(restaurant => {
-            const metric = metricsByBranchId.get(restaurant.id);
-            return (
-              <Card key={restaurant.id} className="staff-restaurant-card" data-testid={`card-restaurant-${restaurant.id}`}>
-                <CardHeader>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="staff-restaurant-avatar !mb-3">
-                      {restaurant.logoUrl ? (
-                        <img src={restaurant.logoUrl} alt={`${restaurant.name} logo`} />
-                      ) : (
-                        <Building2 size={23} />
-                      )}
-                    </div>
-                    <Badge variant="outline" className="font-mono text-[11px]">
-                      {restaurant.orderingMode}
-                    </Badge>
-                  </div>
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <CardTitle className="text-xl">{restaurant.name}</CardTitle>
-                      {restaurant.status === 'suspended' ? (
-                        <Badge variant="destructive">Suspended</Badge>
-                      ) : (
-                        <Badge variant="default">Active</Badge>
-                      )}
-                    </div>
-                    <CardDescription className="flex flex-wrap items-center gap-2 text-sm">
-                      {restaurant.owner && <span data-restaurant-owner>{restaurant.owner.email}</span>}
-                      {restaurant.phone && (
-                        <span className="inline-flex items-center gap-1">
-                          <Phone className="w-3.5 h-3.5" /> {restaurant.phone}
-                        </span>
-                      )}
-                      {restaurant.cuisineType && (
-                        <span className="inline-flex items-center gap-1">
-                          <UtensilsCrossed className="w-3.5 h-3.5" /> {restaurant.cuisineType}
-                        </span>
-                      )}
-                    </CardDescription>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid grid-cols-3 gap-2 p-3 bg-muted/40 rounded-xl text-xs">
-                    <div>
-                      <span className="text-muted-foreground block">Live Queue</span>
-                      <strong className="font-mono text-sm">{metric?.activeTickets ?? 0}</strong>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block">Orders</span>
-                      <strong className="font-mono text-sm">{metric?.totalOrders ?? 0}</strong>
-                    </div>
-                    <div>
-                      <span className="text-muted-foreground block">QR + NFC</span>
-                      <strong className="font-mono text-sm">
-                        {(metric?.qrScans ?? 0) + (metric?.nfcTaps ?? 0)}
-                      </strong>
-                    </div>
-                  </div>
-
-                  {restaurant.suspensionReason && (
-                    <div className="p-3 bg-destructive/10 border border-destructive/20 rounded-xl">
-                      <p className="text-sm text-destructive">
-                        <strong>Suspension Reason:</strong> {restaurant.suspensionReason}
-                      </p>
-                    </div>
-                  )}
-
-                  <div className="staff-restaurant-actions flex flex-wrap gap-2 pt-1">
-                    <OpenCafeAccount id={restaurant.id} name={restaurant.name} />
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => (window.location.href = `/super-admin/restaurant/${restaurant.id}`)}
-                      data-testid={`button-manage-${restaurant.id}`}
-                      className="min-h-11 cursor-pointer"
-                    >
-                      <Settings className="h-4 w-4 mr-1" />
-                      Platform controls
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setQrRestaurant(restaurant)}
-                      data-testid={`button-menu-qr-${restaurant.id}`}
-                      className="min-h-11 cursor-pointer"
-                    >
-                      <QrCode className="h-4 w-4 mr-1" />
-                      Menu QR
-                    </Button>
-                    {restaurant.status === 'suspended' ? (
-                      <Button
-                        size="sm"
-                        variant="default"
-                        onClick={() => activateMutation.mutate(restaurant.id)}
-                        disabled={activateMutation.isPending}
-                        data-testid={`button-activate-${restaurant.id}`}
-                        className="min-h-11 cursor-pointer"
-                      >
-                        <CheckCircle className="h-4 w-4 mr-1" />
-                        Activate
-                      </Button>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => setSuspendRestaurant(restaurant)}
-                        data-testid={`button-suspend-${restaurant.id}`}
-                        className="min-h-11 cursor-pointer"
-                      >
-                        <Ban className="h-4 w-4 mr-1" />
-                        Suspend
-                      </Button>
-                    )}
-                  </div>
+          <div className="staff-platform-grid">
+            {filteredRestaurants.length === 0 && (
+              <Card className="col-span-full rounded-2xl">
+                <CardContent className="p-8 text-center space-y-3">
+                  <Building2 className="h-10 w-10 mx-auto text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">No venues match this filter.</p>
                 </CardContent>
               </Card>
-            );
-          })}
-        </div>
-      </section>
+            )}
+
+            {filteredRestaurants.map(restaurant => {
+              const metric = metricsByBranchId.get(restaurant.id);
+              const isPaused = restaurant.status === 'suspended';
+              return (
+                <Card
+                  key={restaurant.id}
+                  className="staff-restaurant-card"
+                  data-testid={`card-restaurant-${restaurant.id}`}
+                >
+                  <CardHeader>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="staff-restaurant-avatar !mb-2">
+                        {restaurant.logoUrl ? (
+                          <img src={restaurant.logoUrl} alt={`${restaurant.name} logo`} />
+                        ) : (
+                          <Building2 size={22} />
+                        )}
+                      </div>
+                      <Badge variant="outline" className="text-[11px]">
+                        {ORDERING_MODE_LABELS[restaurant.orderingMode] || restaurant.orderingMode}
+                      </Badge>
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <CardTitle className="text-lg">{restaurant.name}</CardTitle>
+                        {isPaused ? (
+                          <Badge variant="destructive" className="gap-1">
+                            <PauseCircle className="w-3 h-3" aria-hidden="true" />
+                            <span>Paused</span>
+                          </Badge>
+                        ) : restaurant.hidden ? (
+                          <Badge variant="secondary" className="gap-1">
+                            <EyeOff className="w-3 h-3" aria-hidden="true" />
+                            <span>Hidden</span>
+                          </Badge>
+                        ) : (
+                          <Badge className="bg-[#C8FF42] text-[#17132E] hover:bg-[#C8FF42] border-0 gap-1 font-bold">
+                            <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
+                            <span>Live</span>
+                          </Badge>
+                        )}
+                      </div>
+                      <CardDescription className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                        {restaurant.slug && <span className="font-mono">/v/{restaurant.slug}</span>}
+                        {restaurant.owner && <span data-restaurant-owner>{restaurant.owner.email}</span>}
+                        {restaurant.phone && (
+                          <span className="inline-flex items-center gap-1">
+                            <Phone className="w-3 h-3" /> {restaurant.phone}
+                          </span>
+                        )}
+                        {restaurant.cuisineType && (
+                          <span className="inline-flex items-center gap-1">
+                            <UtensilsCrossed className="w-3 h-3" /> {restaurant.cuisineType}
+                          </span>
+                        )}
+                      </CardDescription>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="space-y-4">
+                    <div className="grid grid-cols-3 gap-2 p-3 bg-muted/40 rounded-xl text-xs">
+                      <div>
+                        <span className="text-muted-foreground block">Live Queue</span>
+                        <strong className="font-mono text-sm">{metric?.activeTickets ?? 0}</strong>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">Orders</span>
+                        <strong className="font-mono text-sm">
+                          {metric?.totalOrders ?? 0} · {metric?.revenue || '0.00'} {restaurant.currency || 'QAR'}
+                        </strong>
+                      </div>
+                      <div>
+                        <span className="text-muted-foreground block">QR + NFC</span>
+                        <strong className="font-mono text-sm">
+                          {(metric?.qrScans ?? 0) + (metric?.nfcTaps ?? 0)}
+                        </strong>
+                      </div>
+                    </div>
+
+                    {restaurant.suspensionReason && (
+                      <div className="p-2.5 bg-destructive/10 border border-destructive/20 rounded-xl">
+                        <p className="text-xs text-destructive">
+                          <strong>Paused:</strong> {restaurant.suspensionReason}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="staff-restaurant-actions flex flex-wrap gap-2 pt-1">
+                      <OpenCafeAccount id={restaurant.id} name={restaurant.name} />
+                      <Button
+                        asChild
+                        size="sm"
+                        variant="outline"
+                        data-testid={`button-manage-${restaurant.id}`}
+                        className="min-h-11 rounded-xl cursor-pointer gap-1.5"
+                      >
+                        <Link href={`/super-admin/restaurant/${restaurant.id}`}>
+                          <Settings className="h-4 w-4" />
+                          <span>Lifecycle &amp; Offboard</span>
+                        </Link>
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setQrRestaurant(restaurant)}
+                        data-testid={`button-menu-qr-${restaurant.id}`}
+                        className="min-h-11 rounded-xl cursor-pointer gap-1.5"
+                      >
+                        <QrCode className="h-4 w-4" />
+                        <span>Menu QR</span>
+                      </Button>
+                      {isPaused ? (
+                        <Button
+                          size="sm"
+                          onClick={() => reactivateMutation.mutate(restaurant.id)}
+                          disabled={reactivateMutation.isPending}
+                          data-testid={`button-activate-${restaurant.id}`}
+                          className="min-h-11 rounded-xl bg-[#6236FF] hover:bg-[#4B1FE0] text-white cursor-pointer gap-1.5"
+                        >
+                          <PlayCircle className="h-4 w-4" />
+                          <span>Reactivate</span>
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setSuspendRestaurant(restaurant)}
+                          data-testid={`button-suspend-${restaurant.id}`}
+                          className="min-h-11 rounded-xl text-destructive hover:text-destructive cursor-pointer gap-1.5"
+                        >
+                          <PauseCircle className="h-4 w-4" />
+                          <span>Pause</span>
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="analytics">
+          <PortfolioAnalyticsPanel branches={portfolioQuery.data?.branches || []} />
+        </TabsContent>
+
+        <TabsContent value="tenants">
+          <MultiBranchTenantGroupsPanel restaurants={restaurants || []} />
+        </TabsContent>
+      </Tabs>
 
       {qrRestaurant && (
-        <Dialog open onOpenChange={open => !open && setQrRestaurant(null)}>
-          <DialogContent className="max-w-4xl max-h-[90dvh] overflow-y-auto rounded-3xl">
-            <DialogHeader>
-              <DialogTitle>{qrRestaurant.name} menu QR</DialogTitle>
-              <DialogDescription>One permanent menu link for this restaurant.</DialogDescription>
-            </DialogHeader>
+        <Dialog open={!!qrRestaurant} onOpenChange={open => !open && setQrRestaurant(null)}>
+          <DialogContent className="max-w-lg rounded-3xl">
             <PermanentMenuQR key={qrRestaurant.id} restaurant={qrRestaurant} />
           </DialogContent>
         </Dialog>
       )}
 
       {suspendRestaurant && (
-        <SuspendRestaurantDialog
+        <PauseVenueDialog
           restaurant={suspendRestaurant}
           open={!!suspendRestaurant}
           onOpenChange={open => !open && setSuspendRestaurant(null)}

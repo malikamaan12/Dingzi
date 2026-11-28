@@ -20,6 +20,7 @@ import {
   Flame,
   Monitor,
   Network,
+  Plus,
   SlidersHorizontal,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
@@ -202,12 +203,13 @@ const adminMenuItems: NavItem[] = [
 ];
 
 const superAdminMenuItems = [
-  { title: "Global Menu Library", url: "/admin/library", icon: LibraryBig },
-  { title: "Restaurants", url: "/super-admin", icon: Building2 },
-  { title: 'Accounts & Roles', url: '/super-admin/accounts', icon: Users },
-  { title: 'Platform CMS & Defaults', url: '/super-admin/settings', icon: SlidersHorizontal },
-  { title: 'Access History', url: '/super-admin/access-history', icon: History },
-  { title: 'My Account', url: '/super-admin/account', icon: Store },
+  { title: 'Venues & Network', url: '/super-admin', icon: Building2, testId: 'link-restaurants' },
+  { title: 'Onboard Venue', url: '/super-admin/restaurants/new', icon: Plus, testId: 'link-onboard-venue' },
+  { title: 'Accounts & Roles', url: '/super-admin/accounts', icon: Users, testId: 'link-accounts-&-roles' },
+  { title: 'Global Menu Library', url: '/admin/library', icon: LibraryBig, testId: 'link-global-menu-library' },
+  { title: 'Platform CMS', url: '/super-admin/settings', icon: SlidersHorizontal, testId: 'link-platform-cms' },
+  { title: 'Access History', url: '/super-admin/access-history', icon: History, testId: 'link-access-history' },
+  { title: 'My Account', url: '/super-admin/account', icon: Store, testId: 'link-my-account' },
 ];
 
 const STAFF_ROLE_LABELS: Record<EffectiveStaffRole, string> = {
@@ -263,8 +265,12 @@ export function AppSidebar({ user }: AppSidebarProps) {
             <SidebarGroupContent>
               <SidebarMenu>
                 {superAdminMenuItems.map(item => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton asChild isActive={location === item.url} data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                  <SidebarMenuItem key={item.url}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={location === item.url}
+                      data-testid={item.testId || `link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                    >
                       <Link href={item.url}>
                         <item.icon />
                         <span>{item.title}</span>

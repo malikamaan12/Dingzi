@@ -7,9 +7,11 @@ import { mountOrdersTeamAndTenantRoutes } from './hospitality/ordersTeamAndTenan
 import { mountTeamAndRbacRoutes } from './hospitality/teamAndRbacRoutes';
 import { mountTenantBranchesAndPortfolioRoutes } from './hospitality/tenantBranchesAndPortfolioRoutes';
 import { mountPlatformSettingsRoutes } from './hospitality/platformSettingsRoutes';
+import { mountSuperAdminLifecycleRoutes } from './hospitality/superAdminLifecycleRoutes';
 
 export function mountHospitalityRoutes(app: Express) {
   mountPlatformSettingsRoutes(app);
+  mountSuperAdminLifecycleRoutes(app);
   mountPublicGuestOrdersRoutes(app);
   mountPublicPagerAndTableRoutes(app);
   mountStaffPagerAndFloorRoutes(app);

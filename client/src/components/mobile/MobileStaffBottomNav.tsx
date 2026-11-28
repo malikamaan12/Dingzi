@@ -5,12 +5,13 @@ import {
   CalendarDays,
   Car,
   Flame,
-  History,
   LayoutDashboard,
   LibraryBig,
   Monitor,
   Network,
+  Plus,
   Receipt,
+  SlidersHorizontal,
   Store,
   Users,
   UtensilsCrossed,
@@ -31,9 +32,10 @@ export function MobileStaffBottomNav() {
   const mobileTabs = isPlatformSuperAdmin
     ? [
         { label: 'Venues', url: '/super-admin', icon: Building2 },
+        { label: 'Onboard', url: '/super-admin/restaurants/new', icon: Plus },
         { label: 'Accounts', url: '/super-admin/accounts', icon: Users },
         { label: 'Library', url: '/admin/library', icon: LibraryBig },
-        { label: 'Audit', url: '/super-admin/access-history', icon: History },
+        { label: 'CMS', url: '/super-admin/settings', icon: SlidersHorizontal },
       ]
     : role === 'prep_barista'
       ? [

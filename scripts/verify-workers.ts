@@ -350,6 +350,67 @@ try {
   const rotatedPinSigned = await request(first,'POST','/api/login/pin',{ venueCode:cafe, pin:'739104' });
   assert.equal(rotatedPinSigned.data.user.email,'pin-cashier@test.cafe');
   checks.push('6-digit Station PIN provisioning, rotation, and O(1) PIN login work end-to-end through the Worker password service.');
+  await request(first,'POST','/api/super-admin/onboarding/provision',{},cookie,403);
+  await request(first,'GET',`/api/super-admin/restaurants/${cafe}/lifecycle`,undefined,cookie,403);
+  await request(first,'POST',`/api/super-admin/restaurants/${cafe}/offboard`,{stage:'hide_public'},cookie,403);
+  const onboarded = (await request(first,'POST','/api/super-admin/onboarding/provision',{
+    tenantMode:'new_tenant',
+    tenantName:'Onboarded Hospitality Group',
+    maxBranches:5,
+    restaurantName:'Onboarded Roastery',
+    slug:'onboarded-roastery',
+    cuisineType:'Specialty Coffee',
+    orderingMode:'cart_pay_at_venue',
+    reservationsEnabled:true,
+    waitlistEnabled:true,
+    driveThruEnabled:true,
+    seedStarterFloor:true,
+    seedStarterSmartTags:true,
+    ownerFirstName:'Layla',
+    ownerLastName:'Nasser',
+    ownerEmail:'layla@onboarded.cafe',
+    ownerPassword:password,
+    ownerPin:'654321',
+  },platformCookie,201)).data;
+  const onboardedId = onboarded.cafe.id;
+  assert.equal(onboarded.cafe.slug,'onboarded-roastery');
+  assert.equal(onboarded.seededSummary.tablesCreated,4);
+  assert.equal(onboarded.seededSummary.baysCreated,2);
+  assert.equal(onboarded.seededSummary.smartTagsCreated,7);
+  const onboardPinLogin = await request(second,'POST','/api/login/pin',{ venueCode:'onboarded-roastery', pin:'654321' });
+  assert.equal(onboardPinLogin.data.user.email,'layla@onboarded.cafe');
+  await request(publicInstance,'GET',`/api/menu/public/${onboardedId}`);
+  const lifecycle = (await request(first,'GET',`/api/super-admin/restaurants/${onboardedId}/lifecycle`,undefined,platformCookie)).data;
+  assert.equal(lifecycle.onboarding.totalCount,6);
+  assert.equal(lifecycle.impact.tablesCount,4);
+  assert.equal(lifecycle.impact.smartTagsCount,7);
+  const archive = (await request(second,'GET',`/api/super-admin/restaurants/${onboardedId}/offboarding-archive`,undefined,platformCookie)).data;
+  assert.equal(archive.archiveVersion,1);
+  assert.equal(archive.restaurant.id,onboardedId);
+  assert.equal(archive.floorAndHardware.smartTags.length,7);
+  assert.ok(!JSON.stringify(archive).includes('"password"') && !JSON.stringify(archive).includes('pinHash'));
+  await request(first,'POST',`/api/super-admin/restaurants/${onboardedId}/offboard`,{
+    stage:'pause_venue',
+    reason:'Seasonal renovation test',
+    freezeExclusiveStaff:true,
+  },platformCookie);
+  await request(publicInstance,'GET',`/api/menu/public/${onboardedId}`,undefined,'',404);
+  await request(second,'GET','/api/auth/user',undefined,onboardPinLogin.cookie,401);
+  await request(second,'POST',`/api/super-admin/restaurants/${onboardedId}/reactivate`,{},platformCookie);
+  await request(publicInstance,'GET',`/api/menu/public/${onboardedId}`);
+  await request(first,'POST',`/api/super-admin/restaurants/${onboardedId}/offboard`,{
+    stage:'decommission',
+    confirmName:'Wrong Venue Name',
+  },platformCookie,400);
+  const decommissioned = (await request(first,'POST',`/api/super-admin/restaurants/${onboardedId}/offboard`,{
+    stage:'decommission',
+    confirmName:'Onboarded Roastery',
+  },platformCookie)).data;
+  assert.equal(decommissioned.tenantDeleted,true);
+  assert.equal(decommissioned.removedUsers,1);
+  await request(publicInstance,'GET',`/api/menu/public/${onboardedId}`,undefined,'',404);
+  assert.equal((await db.query<{n:number}>('SELECT count(*)::int AS n FROM users WHERE email=$1',['layla@onboarded.cafe'])).rows[0].n,0);
+  checks.push('Turnkey café onboarding, readiness checklist, secret-free JSON offboarding archive, reversible pause/reactivation, and exact-name permanent decommission work end-to-end.');
   for (let i=0;i<5;i++) await request(i%2 ? first : second,'PUT','/api/account/password',{currentPassword:'incorrect',newPassword:password},otherCookie,400);
   await request(second,'PUT','/api/account/password',{currentPassword:'incorrect',newPassword:password},otherCookie,429);
   for (let i=0;i<10;i++) await request(i%2 ? first : second,'POST','/api/login',{ email:'manager@test.cafe',password:'wrong-password' },'',401,{'CF-Connecting-IP':`192.0.2.${30+i}`});
