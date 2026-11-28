@@ -129,10 +129,17 @@ export function mountPublicPagerAndTableRoutes(app: Express) {
             .orderBy(asc(serviceBays.order))
         : [];
 
+      const queueAhead = Number(aheadRows[0]?.n || 0);
+      const dynamicPrepMins = Math.min(
+        60,
+        Math.max(2, Math.round((activeTicket.estimatedPrepMins || 8) + queueAhead * 2.5)),
+      );
+
       res.json({
         ticket: activeTicket,
         restaurant: toPublicCafe(restaurant),
-        queueAhead: Number(aheadRows[0]?.n || 0),
+        queueAhead,
+        dynamicPrepMins,
         order: orderRow[0] || null,
         bay: bayRow[0] || null,
         bays,

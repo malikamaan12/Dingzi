@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { CounterPagerQrModal, type IssuedPagerHandoff } from '@/components/qr-nfc/CounterPagerQrModal';
 import { GuestPhoneStatusBadge } from '@/components/hospitality/GuestPhoneStatusBadge';
+import { LiveTableServiceBanner } from '@/components/hospitality/LiveTableServiceBanner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -329,6 +330,8 @@ export default function AdminFrontDeskPage() {
           )}
         </div>
       </header>
+
+      <LiveTableServiceBanner />
 
       {/* Urgent Curbside Alert — Only visible when a car is physically waiting outside */}
       {arrivedCurbside.length > 0 && (

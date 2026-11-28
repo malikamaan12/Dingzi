@@ -6,16 +6,23 @@ import {
   Bell,
   CalendarDays,
   Car,
+  RotateCcw,
   Truck,
   Users,
-  UtensilsCrossed,
 } from 'lucide-react';
 import { apiRequest } from '@/lib/queryClient';
-import { readGuestProfile, saveGuestPass, saveGuestProfile } from '@/lib/guestSession';
+import {
+  readGuestProfile,
+  readLastGuestOrder,
+  saveGuestPass,
+  saveGuestProfile,
+  saveLastGuestOrder,
+} from '@/lib/guestSession';
 import { preArmAudioOnUserGesture } from '@/lib/lockScreenRinger';
 import { localizedEntityText, useMenuLanguage } from '@/lib/menuLanguage';
 import { GuestCheckoutAndDeliveryModals } from './GuestCheckoutAndDeliveryModals';
 import { GuestVenueServiceDialogs, type PendingDepositSession } from './GuestVenueServiceDialogs';
+import { TableCompanionBar } from './TableCompanionBar';
 import {
   computeOrderTotalsWithVenueFees,
   formatCurrencyForLocale,
@@ -392,6 +399,7 @@ export default function GuestHospitalityBar({
       return res.json();
     },
     onSuccess: data => {
+      saveLastGuestOrder(restaurant.id, cart);
       if (data.checkout?.checkoutMode === 'sandbox_interactive') {
         setPendingGateway({
           orderId: data.order.id,
@@ -456,6 +464,7 @@ export default function GuestHospitalityBar({
   const feeTotals = computeOrderTotalsWithVenueFees(subtotalCents, venueCfg);
   const totalCartAmount = feeTotals.total;
   const orderingEnabled = restaurant.orderingMode !== 'browse_and_pager';
+  const lastSavedOrder = orderingEnabled && cart.length === 0 ? readLastGuestOrder(restaurant.id) : [];
   const cartLeadSummary =
     cart.length > 0
       ? cart.length === 1
@@ -481,23 +490,25 @@ export default function GuestHospitalityBar({
 
   return (
     <>
-      {(initialTableCode || initialBayId) && (
+      {initialTableCode && (
+        <TableCompanionBar
+          restaurant={restaurant}
+          tableCode={initialTableCode}
+          language={language}
+          dir={dir}
+        />
+      )}
+
+      {!initialTableCode && initialBayId && (
         <div className="my-2 px-4 py-2.5 rounded-2xl bg-[#17132E] text-white border border-[#241E42] text-xs font-semibold flex items-center justify-between gap-3 shadow-sm">
           <span className="inline-flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#C8FF42]" aria-hidden="true" />
-            {initialTableCode ? (
-              <span className="inline-flex items-center gap-1.5">
-                <UtensilsCrossed className="w-3.5 h-3.5 text-[#C8FF42]" />
-                <span>Table {initialTableCode} Connected</span>
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5">
-                <Car className="w-3.5 h-3.5 text-[#C8FF42]" />
-                <span>Curbside Pickup Bay Connected</span>
-              </span>
-            )}
+            <span className="inline-flex items-center gap-1.5">
+              <Car className="w-3.5 h-3.5 text-[#C8FF42]" />
+              <span>Curbside Pickup Bay Connected</span>
+            </span>
           </span>
-          {!orderingEnabled && initialBayId && (
+          {!orderingEnabled && (
             <button
               type="button"
               onClick={() => setCurbsideOpen(true)}
@@ -514,6 +525,23 @@ export default function GuestHospitalityBar({
         role="region"
         aria-label="Hospitality services"
       >
+        {lastSavedOrder.length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              setCart(lastSavedOrder);
+              setCartOpen(true);
+            }}
+            data-testid="button-reorder-last-visit"
+            className="inline-flex items-center gap-1.5 px-3 min-h-10 shrink-0 snap-start whitespace-nowrap rounded-full border border-[#6236FF]/30 bg-[#EFEAFF] text-[#4B1FE0] text-xs font-semibold hover:bg-[#E4DCFF] transition-colors cursor-pointer"
+          >
+            <RotateCcw className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+            <span>
+              {language === 'ar' ? 'إعادة آخر طلب' : `Reorder (${label(lastSavedOrder[0].name)})`}
+            </span>
+          </button>
+        )}
+
         {restaurant.reservationsEnabled && (
           <button
             type="button"

@@ -31,6 +31,12 @@ export const CURRENCY_ARABIC_SYMBOLS: Readonly<Record<string, string>> = {
 export const CATEGORY_MENU_GROUPS = ['auto', 'food', 'snacks', 'drinks', 'sweets'] as const;
 export type CategoryMenuGroupSetting = (typeof CATEGORY_MENU_GROUPS)[number];
 
+export const RECEIPT_STYLES = ['editorial_brand', 'classic_thermal', 'minimal_bilingual'] as const;
+export type ReceiptStyleSetting = (typeof RECEIPT_STYLES)[number];
+
+export const RECEIPT_PAPER_WIDTHS = ['80mm', '58mm'] as const;
+export type ReceiptPaperWidthSetting = (typeof RECEIPT_PAPER_WIDTHS)[number];
+
 export const venueConfigSchema = z
   .object({
     // Queue, Pagers, Waitlist & Reservation Rules
@@ -68,6 +74,17 @@ export const venueConfigSchema = z
     taxLabelAr: z.string().trim().max(40).optional(),
     serviceChargePercent: z.number().min(0).max(30).optional(),
     currencySymbolAr: z.string().trim().max(16).optional(),
+
+    // Branded Receipt & Thermal Slip Customization
+    receiptStyle: z.enum(RECEIPT_STYLES).optional(),
+    receiptPaperWidth: z.enum(RECEIPT_PAPER_WIDTHS).optional(),
+    receiptRegNumber: z.string().trim().max(80).optional(),
+    receiptHeaderNote: z.string().trim().max(140).optional(),
+    receiptHeaderNoteAr: z.string().trim().max(140).optional(),
+    receiptFooterNote: z.string().trim().max(180).optional(),
+    receiptFooterNoteAr: z.string().trim().max(180).optional(),
+    receiptShowLogo: z.boolean().optional(),
+    receiptShowQr: z.boolean().optional(),
 
     // Catalog, Allergen & Curbside Option Presets
     defaultItemUnit: z.string().trim().min(1).max(30).optional(),
@@ -110,6 +127,15 @@ export interface ResolvedVenueConfig {
   taxLabelAr: string;
   serviceChargePercent: number;
   currencySymbolAr: string;
+  receiptStyle: ReceiptStyleSetting;
+  receiptPaperWidth: ReceiptPaperWidthSetting;
+  receiptRegNumber: string;
+  receiptHeaderNote: string;
+  receiptHeaderNoteAr: string;
+  receiptFooterNote: string;
+  receiptFooterNoteAr: string;
+  receiptShowLogo: boolean;
+  receiptShowQr: boolean;
   defaultItemUnit: string;
   dietaryTagOptions: string[];
   allergenOptions: string[];
@@ -145,6 +171,15 @@ export const DEFAULT_VENUE_CONFIG: ResolvedVenueConfig = {
   taxLabelAr: 'ضريبة القيمة المضافة',
   serviceChargePercent: 0,
   currencySymbolAr: '',
+  receiptStyle: 'editorial_brand',
+  receiptPaperWidth: '80mm',
+  receiptRegNumber: '',
+  receiptHeaderNote: '',
+  receiptHeaderNoteAr: '',
+  receiptFooterNote: 'Thank you for visiting — see you again soon.',
+  receiptFooterNoteAr: 'شكراً لزيارتكم — نسعد بلقائكم مجدداً.',
+  receiptShowLogo: true,
+  receiptShowQr: true,
   defaultItemUnit: 'serving',
   dietaryTagOptions: ['Bestseller', 'New', 'Spicy', 'Vegetarian', 'Vegan', 'Gluten-Free'],
   allergenOptions: ['Dairy', 'Gluten', 'Nuts', 'Peanuts', 'Eggs', 'Soy', 'Sesame', 'Shellfish'],
@@ -191,6 +226,15 @@ export function resolveVenueConfig(raw?: VenueConfig | null): ResolvedVenueConfi
     taxLabelAr: raw.taxLabelAr || DEFAULT_VENUE_CONFIG.taxLabelAr,
     serviceChargePercent: raw.serviceChargePercent ?? DEFAULT_VENUE_CONFIG.serviceChargePercent,
     currencySymbolAr: raw.currencySymbolAr ?? DEFAULT_VENUE_CONFIG.currencySymbolAr,
+    receiptStyle: raw.receiptStyle ?? DEFAULT_VENUE_CONFIG.receiptStyle,
+    receiptPaperWidth: raw.receiptPaperWidth ?? DEFAULT_VENUE_CONFIG.receiptPaperWidth,
+    receiptRegNumber: raw.receiptRegNumber ?? DEFAULT_VENUE_CONFIG.receiptRegNumber,
+    receiptHeaderNote: raw.receiptHeaderNote ?? DEFAULT_VENUE_CONFIG.receiptHeaderNote,
+    receiptHeaderNoteAr: raw.receiptHeaderNoteAr ?? DEFAULT_VENUE_CONFIG.receiptHeaderNoteAr,
+    receiptFooterNote: raw.receiptFooterNote || DEFAULT_VENUE_CONFIG.receiptFooterNote,
+    receiptFooterNoteAr: raw.receiptFooterNoteAr || DEFAULT_VENUE_CONFIG.receiptFooterNoteAr,
+    receiptShowLogo: raw.receiptShowLogo ?? DEFAULT_VENUE_CONFIG.receiptShowLogo,
+    receiptShowQr: raw.receiptShowQr ?? DEFAULT_VENUE_CONFIG.receiptShowQr,
     defaultItemUnit: raw.defaultItemUnit || DEFAULT_VENUE_CONFIG.defaultItemUnit,
     dietaryTagOptions: raw.dietaryTagOptions?.length
       ? raw.dietaryTagOptions

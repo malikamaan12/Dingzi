@@ -22,7 +22,10 @@ export interface RealtimePayload {
     | 'waitlist.buzzed'
     | 'reservation.updated'
     | 'curbside.arrived'
-    | 'coaster.updated';
+    | 'coaster.updated'
+    | 'table.service_requested'
+    | 'table.service_resolved'
+    | 'table.tab_settled';
   branchId: string;
   at: string;
   data: unknown;

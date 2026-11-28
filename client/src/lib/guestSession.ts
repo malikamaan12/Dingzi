@@ -14,6 +14,31 @@ export interface SavedGuestPass {
 const PASSES_STORAGE_KEY = 'dingzi-active-passes-v1';
 const PASSES_EVENT = 'dingzi:passes-updated';
 const PROFILE_STORAGE_KEY = 'dingzi-guest-profile-v1';
+const LAST_ORDER_PREFIX = 'dingzi-last-order-v1-';
+
+export function saveLastGuestOrder(restaurantId: string, items: GuestCartItem[]) {
+  if (typeof window === 'undefined' || !restaurantId || !items.length) return;
+  try {
+    localStorage.setItem(
+      `${LAST_ORDER_PREFIX}${restaurantId}`,
+      JSON.stringify({ savedAt: Date.now(), items: items.slice(0, 12) }),
+    );
+  } catch {}
+}
+
+export function readLastGuestOrder(restaurantId?: string): GuestCartItem[] {
+  if (typeof window === 'undefined' || !restaurantId) return [];
+  try {
+    const raw = JSON.parse(localStorage.getItem(`${LAST_ORDER_PREFIX}${restaurantId}`) || 'null');
+    if (!raw || !Array.isArray(raw.items)) return [];
+    return raw.items.filter(
+      (i: any): i is GuestCartItem =>
+        Boolean(i && typeof i.key === 'string' && typeof i.menuItemId === 'string' && Number(i.quantity) > 0),
+    );
+  } catch {
+    return [];
+  }
+}
 
 export interface SavedGuestProfile {
   name: string;

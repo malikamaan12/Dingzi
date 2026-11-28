@@ -817,6 +817,21 @@ export const smartTagHardwareKinds = [
 ] as const;
 export type SmartTagHardwareKind = (typeof smartTagHardwareKinds)[number];
 
+export const tableServiceRequestTypes = ['call_server', 'request_bill', 'water_napkins'] as const;
+export type TableServiceRequestType = (typeof tableServiceRequestTypes)[number];
+
+export const tableServiceRequests = pgTable("table_service_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  restaurantId: varchar("restaurant_id").notNull().references(() => restaurants.id, { onDelete: "cascade" }),
+  tableCode: varchar("table_code", { length: 40 }).notNull(),
+  requestType: varchar("request_type", { length: 32 }).notNull().default("call_server"),
+  note: text("note"),
+  status: varchar("status", { length: 24 }).notNull().default("open"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+});
+export type TableServiceRequest = typeof tableServiceRequests.$inferSelect;
+
 export const smartTags = pgTable("smart_tags", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   restaurantId: varchar("restaurant_id").notNull().references(() => restaurants.id, { onDelete: "cascade" }),

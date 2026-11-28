@@ -5,6 +5,7 @@ import {
   Clock,
   CreditCard,
   Download,
+  FileSpreadsheet,
   Minus,
   Plus,
   Printer,
@@ -23,8 +24,10 @@ import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useManagerMenu } from '@/lib/managerMenu';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
 import { useToast } from '@/hooks/use-toast';
-import { DingziMark } from '@/components/staff-brand';
+import { BrandedReceiptSheet } from '@/components/hospitality/BrandedReceiptSheet';
+import { printHtmlSlip } from '@/lib/printBrandedReceipt';
 import { CounterPagerQrModal, type IssuedPagerHandoff } from '@/components/qr-nfc/CounterPagerQrModal';
+import { publicExperienceOrigin } from '@shared/menuIdentity';
 import type { GuestOrder, PagerTicket } from '@shared/schema';
 
 export default function AdminOrdersPage() {
@@ -37,6 +40,7 @@ export default function AdminOrdersPage() {
   const [channelFilter, setChannelFilter] = useState<'all' | 'counter_pickup' | 'dine_in' | 'curbside' | 'drive_thru'>('all');
   const [search, setSearch] = useState('');
   const [receiptOrder, setReceiptOrder] = useState<GuestOrder | null>(null);
+  const [zReportOpen, setZReportOpen] = useState(false);
   const [handoffTicket, setHandoffTicket] = useState<IssuedPagerHandoff | null>(null);
 
   // Counter POS Order Modal State
@@ -52,6 +56,13 @@ export default function AdminOrdersPage() {
     queryKey: ['/api/hospitality/orders'],
     refetchInterval: 8000,
   });
+
+  const zReportQuery = useQuery<any>({
+    queryKey: ['/api/hospitality/z-report'],
+    enabled: zReportOpen,
+  });
+
+  const publicBase = publicExperienceOrigin(typeof window !== 'undefined' ? window.location.origin : '');
 
   useRealtimeStream('/api/hospitality/stream', () => {
     void queryClient.invalidateQueries({ queryKey: ['/api/hospitality/orders'] });
@@ -148,38 +159,41 @@ export default function AdminOrdersPage() {
     [orders],
   );
 
-  function downloadReceiptTxt(order: GuestOrder) {
-    const ticket = ticketsByOrderId.get(order.id);
-    const lines = [
-      `${cafe?.name || 'dingzi Hospitality'}`,
-      cafe?.address ? `${cafe.address}` : '',
-      '----------------------------------------',
-      `Order #:   ${order.orderNumber}`,
-      ticket ? `Pager #:   ${ticket.ticketCode}` : '',
-      `Date:      ${new Date(order.createdAt).toLocaleString()}`,
-      `Guest:     ${order.customerName || 'Walk-In'}`,
-      `Channel:   ${order.channel.replace('_', ' ')}`,
-      order.tableCode ? `Table:     ${order.tableCode}` : '',
-      order.licensePlate ? `Vehicle:   ${order.vehicleColor || ''} ${order.vehicleType || ''} (${order.licensePlate})` : '',
-      `Payment:   ${order.paymentStatus.toUpperCase()} (${order.paymentProvider})`,
-      order.paymentReference ? `Reference: ${order.paymentReference}` : '',
-      '----------------------------------------',
-      ...(order.lineItems || []).map(
-        li =>
-          `${li.quantity}x ${li.name}${li.variantLabel ? ` (${li.variantLabel})` : ''}  ${li.lineTotal} ${order.currency}` +
-          (li.modifiers?.length ? `\n   + ${li.modifiers.map(m => m.label).join(', ')}` : '') +
-          (li.notes ? `\n   Note: ${li.notes}` : ''),
-      ),
-      '----------------------------------------',
-      `TOTAL:     ${order.total} ${order.currency}`,
-      'Powered by dingzi',
-    ].filter(Boolean);
-
-    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+  function exportOrdersCsv() {
+    const header = [
+      'OrderNumber',
+      'CreatedAt',
+      'Customer',
+      'Channel',
+      'TableCode',
+      'PaymentStatus',
+      'PaymentProvider',
+      'Subtotal',
+      'Total',
+      'Currency',
+    ];
+    const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = orders.map(o =>
+      [
+        o.orderNumber,
+        new Date(o.createdAt).toISOString(),
+        o.customerName || 'Walk-In',
+        o.channel,
+        o.tableCode || '',
+        o.paymentStatus,
+        o.paymentProvider,
+        o.subtotal,
+        o.total,
+        o.currency,
+      ]
+        .map(esc)
+        .join(','),
+    );
+    const blob = new Blob([[header.join(','), ...rows].join('\n')], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `receipt-${order.orderNumber}.txt`;
+    a.download = `${(cafe?.slug || 'venue')}-orders-export.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -198,15 +212,27 @@ export default function AdminOrdersPage() {
             Ring up walk-in orders, collect cash or card on unpaid bills, and print receipts.
           </p>
         </div>
-        <Button
-          type="button"
-          onClick={() => setPosOpen(true)}
-          data-testid="button-open-pos-order"
-          className="w-full sm:w-auto min-h-11 px-5 rounded-xl bg-[#6236FF] hover:bg-[#4B1FE0] text-white font-semibold cursor-pointer gap-2"
-        >
-          <Plus className="w-4 h-4" />
-          <span>New Counter Order</span>
-        </Button>
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setZReportOpen(true)}
+            data-testid="button-open-z-report"
+            className="flex-1 sm:flex-none min-h-11 px-4 rounded-xl cursor-pointer gap-2"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-[#6236FF]" />
+            <span>Shift Z-Report &amp; CSV</span>
+          </Button>
+          <Button
+            type="button"
+            onClick={() => setPosOpen(true)}
+            data-testid="button-open-pos-order"
+            className="flex-1 sm:flex-none min-h-11 px-5 rounded-xl bg-[#6236FF] hover:bg-[#4B1FE0] text-white font-semibold cursor-pointer gap-2"
+          >
+            <Plus className="w-4 h-4" />
+            <span>New Counter Order</span>
+          </Button>
+        </div>
       </header>
 
       {/* Clean 3-Stat Strip */}
@@ -417,85 +443,122 @@ export default function AdminOrdersPage() {
         )}
       </div>
 
-      {/* Printable Receipt Modal */}
+      {/* Brand-Adaptive Printable Receipt & Kitchen Prep Chit Modal */}
       <Dialog open={Boolean(receiptOrder)} onOpenChange={open => !open && setReceiptOrder(null)}>
-        <DialogContent className="max-w-md rounded-3xl">
-          {receiptOrder && (
+        <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto rounded-3xl">
+          {receiptOrder && cafe && (
             <>
               <DialogHeader>
-                <DialogTitle className="flex items-center justify-between">
+                <DialogTitle className="flex items-center justify-between pe-6">
                   <span>Receipt · {receiptOrder.orderNumber}</span>
                   <Badge variant="outline" className="font-mono uppercase">{receiptOrder.paymentStatus}</Badge>
                 </DialogTitle>
                 <DialogDescription>
-                  {cafe?.name} · {new Date(receiptOrder.createdAt).toLocaleString()}
+                  Switch between your brand’s guest receipt and the 80mm kitchen prep chit.
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="rounded-2xl border bg-muted/30 p-4 space-y-3 text-sm font-mono">
-                <div className="flex items-center justify-between border-b pb-2.5">
-                  <div className="flex items-center gap-2">
-                    <DingziMark size={24} variant="thermal" />
-                    <span className="font-sans font-extrabold lowercase tracking-tight text-sm" dir="ltr" lang="en">
-                      dingzi
-                    </span>
-                  </div>
-                  <span className="text-[11px] text-muted-foreground">58mm / 80mm POS</span>
+              <BrandedReceiptSheet
+                venue={cafe}
+                order={receiptOrder}
+                ticketCode={ticketsByOrderId.get(receiptOrder.id)?.ticketCode}
+                qrUrl={
+                  ticketsByOrderId.get(receiptOrder.id)?.trackingToken
+                    ? `${publicBase}/pager/${ticketsByOrderId.get(receiptOrder.id)?.trackingToken}`
+                    : cafe.slug
+                      ? `${publicBase}/v/${cafe.slug}`
+                      : `${publicBase}/menu/${cafe.id}`
+                }
+                qrCaption={
+                  ticketsByOrderId.get(receiptOrder.id)?.trackingToken
+                    ? 'Scan for live Virtual Pager alerts'
+                    : 'Scan for digital menu'
+                }
+                showStaffPrintControls
+              />
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* End-of-Day Shift Z-Report & Accounting Export Modal */}
+      <Dialog open={zReportOpen} onOpenChange={setZReportOpen}>
+        <DialogContent className="max-w-md rounded-3xl">
+          <DialogHeader>
+            <DialogTitle>Daily Shift Z-Report</DialogTitle>
+            <DialogDescription>
+              {cafe?.name} · Daily settlement summary and CSV accounting export.
+            </DialogDescription>
+          </DialogHeader>
+          {zReportQuery.isLoading || !zReportQuery.data ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">Calculating shift closeout…</p>
+          ) : (
+            <div className="space-y-4 text-sm">
+              <div className="rounded-2xl border bg-muted/30 p-4 space-y-2 font-mono text-xs">
+                <div className="flex justify-between font-sans font-bold text-sm border-b pb-2">
+                  <span>Business Date</span>
+                  <span className="font-mono">{zReportQuery.data.date}</span>
                 </div>
-                <div className="flex justify-between text-xs">
-                  <span>Guest: {receiptOrder.customerName || 'Walk-In'}</span>
-                  <span>{receiptOrder.channel.replace('_', ' ')}</span>
+                <div className="flex justify-between">
+                  <span>Settled Orders ({zReportQuery.data.paidCount})</span>
+                  <strong>{zReportQuery.data.grossPaidTotal} {zReportQuery.data.currency}</strong>
                 </div>
-                {ticketsByOrderId.get(receiptOrder.id) && (
-                  <div className="text-xs font-bold text-primary">
-                    Virtual Pager: {ticketsByOrderId.get(receiptOrder.id)?.ticketCode}
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Net Subtotal</span>
+                  <span>{zReportQuery.data.netSubtotal} {zReportQuery.data.currency}</span>
+                </div>
+                {Number(zReportQuery.data.serviceCollected) > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Service ({zReportQuery.data.serviceChargePercent}%)</span>
+                    <span>{zReportQuery.data.serviceCollected} {zReportQuery.data.currency}</span>
                   </div>
                 )}
-                <div className="border-t border-b py-2.5 space-y-2">
-                  {(receiptOrder.lineItems || []).map((li, idx) => (
-                    <div key={idx} className="space-y-0.5">
-                      <div className="flex justify-between">
-                        <span>{li.quantity}× {li.name}{li.variantLabel ? ` (${li.variantLabel})` : ''}</span>
-                        <span>{li.lineTotal}</span>
-                      </div>
-                      {li.modifiers?.length > 0 && (
-                        <p className="text-[11px] text-muted-foreground pl-3">
-                          + {li.modifiers.map(m => m.label).join(', ')}
-                        </p>
-                      )}
-                      {li.notes && (
-                        <p className="text-[11px] text-muted-foreground pl-3">Note: {li.notes}</p>
-                      )}
-                    </div>
-                  ))}
+                {Number(zReportQuery.data.taxCollected) > 0 && (
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>{zReportQuery.data.taxLabel} ({zReportQuery.data.taxPercent}%)</span>
+                    <span>{zReportQuery.data.taxCollected} {zReportQuery.data.currency}</span>
+                  </div>
+                )}
+                <div className="flex justify-between border-t pt-2">
+                  <span>Open / Unpaid ({zReportQuery.data.unpaidCount})</span>
+                  <span>{zReportQuery.data.unpaidOpenTotal} {zReportQuery.data.currency}</span>
                 </div>
-                <div className="flex justify-between font-bold text-base">
-                  <span>TOTAL</span>
-                  <span>{receiptOrder.total} {receiptOrder.currency}</span>
+                <div className="flex justify-between">
+                  <span>Refunded ({zReportQuery.data.refundedCount})</span>
+                  <span>{zReportQuery.data.refundedTotal} {zReportQuery.data.currency}</span>
                 </div>
-                <p className="text-[11px] text-center text-muted-foreground pt-1">Powered by dingzi</p>
+                <div className="flex justify-between border-t pt-2">
+                  <span>Avg Prep SLA · Collected / No-Show</span>
+                  <span>
+                    {zReportQuery.data.avgPrepMins}m · {zReportQuery.data.collectedCount}/{zReportQuery.data.noShowCount}
+                  </span>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   type="button"
                   variant="outline"
-                  onClick={() => window.print()}
+                  onClick={() =>
+                    printHtmlSlip(
+                      `<!doctype html><html><body style="font-family:monospace;padding:16px;max-width:300px"><h2>Z-REPORT · ${zReportQuery.data.venueName}</h2><p>Date: ${zReportQuery.data.date}</p><hr/><p>Paid (${zReportQuery.data.paidCount}): <strong>${zReportQuery.data.grossPaidTotal} ${zReportQuery.data.currency}</strong></p><p>Subtotal: ${zReportQuery.data.netSubtotal}</p><p>Tax: ${zReportQuery.data.taxCollected} · Service: ${zReportQuery.data.serviceCollected}</p><p>Open Unpaid (${zReportQuery.data.unpaidCount}): ${zReportQuery.data.unpaidOpenTotal}</p><p>Refunded (${zReportQuery.data.refundedCount}): ${zReportQuery.data.refundedTotal}</p><hr/><p>Avg Prep: ${zReportQuery.data.avgPrepMins}m</p></body></html>`,
+                    )
+                  }
                   className="min-h-11 rounded-xl cursor-pointer gap-1.5"
                 >
                   <Printer className="w-4 h-4" />
-                  <span>Print</span>
+                  <span>Print Z-Slip</span>
                 </Button>
                 <Button
                   type="button"
-                  onClick={() => downloadReceiptTxt(receiptOrder)}
+                  onClick={exportOrdersCsv}
                   className="min-h-11 rounded-xl bg-[#6236FF] hover:bg-[#4B1FE0] text-white cursor-pointer gap-1.5"
                 >
                   <Download className="w-4 h-4" />
-                  <span>Download .txt</span>
+                  <span>Export CSV</span>
                 </Button>
               </div>
-            </>
+            </div>
           )}
         </DialogContent>
       </Dialog>

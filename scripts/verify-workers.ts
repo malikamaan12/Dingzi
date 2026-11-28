@@ -459,6 +459,53 @@ try {
   assert.equal(staffTicket.pushArmed,true);
   assert.ok(staffTicket.acknowledgedAt);
   checks.push('Lock-screen virtual pager lifecycle (claim, audio arm, VAPID + RFC 8291 aes128gcm Web Push encryption/decryption, Ready dispatch, and 1-tap guest On My Way acknowledgment) works end-to-end across public and management Workers.');
+  await db.query("UPDATE restaurants SET ordering_mode='cart_pay_at_venue', venue_config=$2::jsonb WHERE id=$1",[
+    cafe,
+    JSON.stringify({ receiptStyle:'minimal_bilingual', receiptRegNumber:'CR-9988', taxPercent:5, taxLabel:'VAT' }),
+  ]);
+  const reqMods = Object.fromEntries(
+    (mine.items[0].modifierGroups || [])
+      .filter((g: any) => g.minSelections > 0)
+      .map((g: any) => [g.id, g.options.slice(0, g.minSelections).map((o: any) => o.id)]),
+  );
+  const round1 = (await request(publicInstance,'POST','/api/public/orders',{
+    restaurantId:cafe,
+    channel:'dine_in',
+    tableCode:'T-04',
+    customerName:'Table Guest',
+    items:[{ menuItemId:mine.items[0].id, quantity:2, modifiers:reqMods }],
+  },'',201)).data;
+  assert.ok(round1.order.id);
+  const round2 = (await request(publicInstance,'POST','/api/public/orders',{
+    restaurantId:cafe,
+    channel:'dine_in',
+    tableCode:'t-04',
+    customerName:'Table Guest',
+    items:[{ menuItemId:mine.items[0].id, quantity:1, modifiers:reqMods }],
+  },'',201)).data;
+  assert.ok(round2.order.id);
+  const bellRes = (await request(publicInstance,'POST',`/api/public/table-service/${cafe}`,{
+    tableCode:'T-04',
+    requestType:'request_bill',
+  },'',201)).data;
+  assert.equal(bellRes.request.tableCode,'T-04');
+  const tableSession = (await request(publicInstance,'GET',`/api/public/table-session/${cafe}?table=T-04`)).data;
+  assert.equal(tableSession.tabSummary.roundsCount,2);
+  assert.equal(tableSession.tabSummary.itemsCount,3);
+  assert.equal(tableSession.restaurant.venueConfig.receiptStyle,'minimal_bilingual');
+  assert.equal(tableSession.openRequests.length,1);
+  const staffTableReqs = (await request(first,'GET','/api/hospitality/table-service',undefined,cookie)).data;
+  assert.equal(staffTableReqs.requests.length,1);
+  const settledTab = (await request(second,'POST','/api/hospitality/table-tab/settle',{ tableCode:'T-04' },cookie)).data;
+  assert.equal(settledTab.settledOrders.length,2);
+  const afterSettleSession = (await request(publicInstance,'GET',`/api/public/table-session/${cafe}?table=T-04`)).data;
+  assert.equal(afterSettleSession.tabSummary.roundsCount,0);
+  assert.equal(afterSettleSession.openRequests.length,0);
+  const zRep = (await request(first,'GET','/api/hospitality/z-report',undefined,cookie)).data;
+  assert.equal(zRep.paidCount,2);
+  assert.equal(zRep.regNumber,'CR-9988');
+  assert.ok(Number(zRep.grossPaidTotal) > 0);
+  checks.push('Dine-in multi-round running table tabs, 1-tap table service bell, atomic tab settlement, per-brand receipt configuration, and daily Shift Z-Report work end-to-end.');
   for (let i=0;i<5;i++) await request(i%2 ? first : second,'PUT','/api/account/password',{currentPassword:'incorrect',newPassword:password},otherCookie,400);
   await request(second,'PUT','/api/account/password',{currentPassword:'incorrect',newPassword:password},otherCookie,429);
   for (let i=0;i<10;i++) await request(i%2 ? first : second,'POST','/api/login',{ email:'manager@test.cafe',password:'wrong-password' },'',401,{'CF-Connecting-IP':`192.0.2.${30+i}`});

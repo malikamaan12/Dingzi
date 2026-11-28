@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { DingziMark } from '@/components/staff-brand';
 import { GuestPhoneStatusBadge } from '@/components/hospitality/GuestPhoneStatusBadge';
+import { LiveTableServiceBanner } from '@/components/hospitality/LiveTableServiceBanner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
@@ -190,6 +191,8 @@ export default function AdminStationPage() {
           </Button>
         </div>
       </header>
+
+      <LiveTableServiceBanner darkSurface />
 
       {/* Arrived Curbside Runner Alert Banner */}
       {arrivedCars.length > 0 && (

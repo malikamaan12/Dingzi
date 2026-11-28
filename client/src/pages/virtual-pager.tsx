@@ -10,18 +10,20 @@ import {
   ChevronDown,
   Clock,
   Coffee,
-  Download,
   ExternalLink,
   Gamepad2,
   MapPin,
+  Receipt,
   ShieldCheck,
   Sparkles,
   Star,
   Volume2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { BrandedReceiptSheet } from '@/components/hospitality/BrandedReceiptSheet';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { cafeThemeStyle } from '@/lib/cafeTheme';
 import { localizedEntityText, MenuLanguageProvider, MenuLanguageSwitch, useMenuLanguage } from '@/lib/menuLanguage';
@@ -127,6 +129,7 @@ function VirtualPagerContent() {
   );
   const [pushNote, setPushNote] = useState('');
   const [isRinging, setIsRinging] = useState(false);
+  const [receiptDialogOpen, setReceiptDialogOpen] = useState(false);
   const [showGame, setShowGame] = useState(false);
   const [curbsideExpanded, setCurbsideExpanded] = useState(false);
   const [rating, setRating] = useState<number>(0);
@@ -518,7 +521,10 @@ function VirtualPagerContent() {
               </span>
               <span>·</span>
               <span>
-                {t('Est. prep')}: <strong className="text-[#17132E]">~{ticket.estimatedPrepMins}m</strong>
+                {t('Est. prep')}:{' '}
+                <strong className="text-[#17132E]">
+                  ~{data.dynamicPrepMins ?? ticket.estimatedPrepMins}m
+                </strong>
               </span>
             </div>
           )}
@@ -671,34 +677,34 @@ function VirtualPagerContent() {
               type="button"
               variant="outline"
               size="sm"
-              data-testid="button-download-guest-receipt"
-              onClick={() => {
-                const lines = [
-                  restaurant.name,
-                  `Order: ${data.order.orderNumber} · Pager: ${ticket.ticketCode}`,
-                  `Date: ${new Date(data.order.createdAt).toLocaleString()}`,
-                  `Status: ${data.order.paymentStatus.toUpperCase()}`,
-                  '--------------------------------',
-                  ...orderLines.map(
-                    (l: any) =>
-                      `${l.quantity}x ${l.name}${l.variantLabel ? ` (${l.variantLabel})` : ''} - ${l.lineTotal} ${data.order.currency}`,
-                  ),
-                  '--------------------------------',
-                  `TOTAL: ${data.order.total} ${data.order.currency}`,
-                ];
-                const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
-                const u = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = u;
-                a.download = `dingzi-receipt-${data.order.orderNumber}.txt`;
-                a.click();
-                URL.revokeObjectURL(u);
-              }}
-              className="w-full min-h-11 rounded-xl text-xs cursor-pointer gap-1.5"
+              data-testid="button-open-guest-branded-receipt"
+              onClick={() => setReceiptDialogOpen(true)}
+              className="w-full min-h-11 rounded-xl text-xs cursor-pointer gap-1.5 font-semibold"
             >
-              <Download className="w-3.5 h-3.5" aria-hidden="true" />
-              <span>Download Order Receipt</span>
+              <Receipt className="w-3.5 h-3.5 text-[#6236FF]" aria-hidden="true" />
+              <span>{language === 'ar' ? 'عرض الفاتورة وتقسيم الحساب' : 'View Branded Receipt & Split Check'}</span>
             </Button>
+
+            <Dialog open={receiptDialogOpen} onOpenChange={setReceiptDialogOpen}>
+              <DialogContent dir={dir} lang={language} className="max-w-md max-h-[90vh] overflow-y-auto rounded-3xl">
+                <DialogTitle className="text-base font-bold">
+                  {localizedEntityText(language, restaurant.name, restaurant.nameAr, label)} · {data.order.orderNumber}
+                </DialogTitle>
+                <DialogDescription className="text-xs">
+                  {language === 'ar'
+                    ? 'فاتورة رقمية رسمية مع إمكانية الطباعة أو الحفظ أو تقسيم الحساب.'
+                    : 'Official digital brand receipt — split the check, print, or save.'}
+                </DialogDescription>
+                <BrandedReceiptSheet
+                  venue={restaurant}
+                  order={data.order}
+                  ticketCode={ticket.ticketCode}
+                  qrUrl={typeof window !== 'undefined' ? window.location.href : null}
+                  qrCaption={`Pager ${ticket.ticketCode} · Live Status Pass`}
+                  allowSplitCalculator
+                />
+              </DialogContent>
+            </Dialog>
           </section>
         )}
 

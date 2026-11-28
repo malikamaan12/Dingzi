@@ -16,6 +16,8 @@ import { Switch } from '@/components/ui/switch';
 import {
   CURRENCY_ARABIC_SYMBOLS,
   DEFAULT_VENUE_CONFIG,
+  RECEIPT_PAPER_WIDTHS,
+  RECEIPT_STYLES,
   resolveVenueConfig,
   type VenueConfig,
 } from '@shared/venueConfig';
@@ -299,6 +301,117 @@ export function VenueConfigStudio({ value, currency, onChange }: VenueConfigStud
               value={value.currencySymbolAr ?? ''}
               onChange={e => patch({ currencySymbolAr: e.target.value })}
               placeholder={CURRENCY_ARABIC_SYMBOLS[currency] || currency}
+              className="h-11"
+            />
+          </div>
+        </div>
+
+        {/* Branded Receipt & Thermal Slip Identity */}
+        <div className="pt-4 border-t space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-bold">Branded Digital &amp; Thermal Receipt Design</h3>
+              <p className="text-xs text-muted-foreground">
+                Customize how your brand’s digital guest receipts and 80mm/58mm counter slips look.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-4 text-xs font-medium">
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <Switch
+                  checked={resolved.receiptShowLogo}
+                  onCheckedChange={receiptShowLogo => patch({ receiptShowLogo })}
+                />
+                <span>Show Brand Logo</span>
+              </label>
+              <label className="inline-flex items-center gap-2 cursor-pointer">
+                <Switch
+                  checked={resolved.receiptShowQr}
+                  onCheckedChange={receiptShowQr => patch({ receiptShowQr })}
+                />
+                <span>Show Live QR on Receipt</span>
+              </label>
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-3 gap-4">
+            <div>
+              <Label htmlFor="vc-receipt-style">Receipt Layout Style</Label>
+              <select
+                id="vc-receipt-style"
+                className="manager-select w-full h-11 text-sm"
+                value={resolved.receiptStyle}
+                onChange={e =>
+                  patch({
+                    receiptStyle: RECEIPT_STYLES.includes(e.target.value as any)
+                      ? (e.target.value as any)
+                      : 'editorial_brand',
+                  })
+                }
+              >
+                <option value="editorial_brand">Editorial Brand Folio (Logo + Accent)</option>
+                <option value="minimal_bilingual">Bilingual Dual-Column (EN / AR)</option>
+                <option value="classic_thermal">Classic Monospace Thermal Slip</option>
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="vc-receipt-width">Thermal Paper Width</Label>
+              <select
+                id="vc-receipt-width"
+                className="manager-select w-full h-11 text-sm font-mono"
+                value={resolved.receiptPaperWidth}
+                onChange={e =>
+                  patch({
+                    receiptPaperWidth: RECEIPT_PAPER_WIDTHS.includes(e.target.value as any)
+                      ? (e.target.value as any)
+                      : '80mm',
+                  })
+                }
+              >
+                <option value="80mm">80mm Standard Counter Roll</option>
+                <option value="58mm">58mm Handheld / Compact Roll</option>
+              </select>
+            </div>
+            <div>
+              <Label htmlFor="vc-receipt-reg">CR / Tax Registration # (optional)</Label>
+              <Input
+                id="vc-receipt-reg"
+                value={value.receiptRegNumber ?? ''}
+                onChange={e => patch({ receiptRegNumber: e.target.value })}
+                placeholder="e.g. CR #148920 · Tax ID"
+                className="h-11 font-mono text-xs"
+              />
+            </div>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="vc-receipt-hdr">Receipt Brand Subheader (EN)</Label>
+              <Input
+                id="vc-receipt-hdr"
+                value={value.receiptHeaderNote ?? ''}
+                onChange={e => patch({ receiptHeaderNote: e.target.value })}
+                placeholder="e.g. Specialty Roastery · West Bay"
+                className="h-11"
+              />
+            </div>
+            <div>
+              <Label htmlFor="vc-receipt-ftr">Receipt Thank-You / Wi-Fi Footer (EN)</Label>
+              <Input
+                id="vc-receipt-ftr"
+                value={value.receiptFooterNote ?? DEFAULT_VENUE_CONFIG.receiptFooterNote}
+                onChange={e => patch({ receiptFooterNote: e.target.value })}
+                className="h-11"
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="vc-receipt-ftr-ar">Receipt Footer Message (Arabic)</Label>
+            <Input
+              id="vc-receipt-ftr-ar"
+              dir="rtl"
+              value={value.receiptFooterNoteAr ?? DEFAULT_VENUE_CONFIG.receiptFooterNoteAr}
+              onChange={e => patch({ receiptFooterNoteAr: e.target.value })}
               className="h-11"
             />
           </div>

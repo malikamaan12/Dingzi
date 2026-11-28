@@ -8,12 +8,14 @@ import { mountTeamAndRbacRoutes } from './hospitality/teamAndRbacRoutes';
 import { mountTenantBranchesAndPortfolioRoutes } from './hospitality/tenantBranchesAndPortfolioRoutes';
 import { mountPlatformSettingsRoutes } from './hospitality/platformSettingsRoutes';
 import { mountSuperAdminLifecycleRoutes } from './hospitality/superAdminLifecycleRoutes';
+import { mountTableCompanionRoutes } from './hospitality/tableCompanionRoutes';
 
 export function mountHospitalityRoutes(app: Express) {
   mountPlatformSettingsRoutes(app);
   mountSuperAdminLifecycleRoutes(app);
   mountPublicGuestOrdersRoutes(app);
   mountPublicPagerAndTableRoutes(app);
+  mountTableCompanionRoutes(app);
   mountStaffPagerAndFloorRoutes(app);
   mountSmartTagsAndAnalyticsRoutes(app);
   mountOrdersTeamAndTenantRoutes(app);

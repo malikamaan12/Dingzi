@@ -120,6 +120,13 @@
       "when": 1795983600000,
       "tag": "0016_pager_lock_screen_telemetry",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1796070000000,
+      "tag": "0017_table_service_and_receipts",
+      "breakpoints": true
     }
   ]
 }
