@@ -2,23 +2,20 @@ import { useEffect, useState } from 'react';
 import { useLocation } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
+  ArrowRight,
   Bell,
   CalendarDays,
   Car,
-  CreditCard,
   QrCode,
-  ShoppingBag,
   Truck,
   Users,
+  UtensilsCrossed,
 } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { apiRequest } from '@/lib/queryClient';
-import { saveGuestPass } from '@/lib/guestSession';
+import { readGuestProfile, saveGuestPass, saveGuestProfile } from '@/lib/guestSession';
 import { localizedEntityText, useMenuLanguage } from '@/lib/menuLanguage';
 import { GuestCheckoutAndDeliveryModals } from './GuestCheckoutAndDeliveryModals';
+import { GuestVenueServiceDialogs, type PendingDepositSession } from './GuestVenueServiceDialogs';
 import {
   computeOrderTotalsWithVenueFees,
   formatCurrencyForLocale,
@@ -63,6 +60,7 @@ export default function GuestHospitalityBar({
   const partyOptions = partySizeOptionsForVenue(venueCfg.maxPartySize);
   const currencyDisplay = formatCurrencyForLocale(restaurant.currency, language, venueCfg.currencySymbolAr);
   const cafeDisplayName = localizedEntityText(language, restaurant.name, restaurant.nameAr, label);
+  const savedProfile = readGuestProfile();
 
   const [pagerOpen, setPagerOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -72,57 +70,43 @@ export default function GuestHospitalityBar({
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
 
-  // Pager lookup state
   const [lookupCode, setLookupCode] = useState('');
   const [lookupError, setLookupError] = useState('');
 
-  // Reservation state
   const todayIso = new Date().toISOString().slice(0, 10);
   const [resDate, setResDate] = useState(todayIso);
   const [resParty, setResParty] = useState(2);
   const [resZone, setResZone] = useState('');
   const [resSlot, setResSlot] = useState('');
-  const [resName, setResName] = useState('');
-  const [resPhone, setResPhone] = useState('');
+  const [resName, setResName] = useState(savedProfile.name);
+  const [resPhone, setResPhone] = useState(savedProfile.phone);
   const [resNotes, setResNotes] = useState('');
   const [resError, setResError] = useState('');
-  const [pendingDepositGateway, setPendingDepositGateway] = useState<{
-    reservationId: string;
-    trackingToken: string;
-    tableLabel: string;
-    startAt: string;
-    amount: string;
-    provider: 'skipcash' | 'sadad';
-    paymentReference: string;
-    signatureToken: string;
-  } | null>(null);
+  const [pendingDepositGateway, setPendingDepositGateway] = useState<PendingDepositSession | null>(null);
 
-  // Waitlist state
-  const [wlName, setWlName] = useState('');
-  const [wlPhone, setWlPhone] = useState('');
+  const [wlName, setWlName] = useState(savedProfile.name);
+  const [wlPhone, setWlPhone] = useState(savedProfile.phone);
   const [wlParty, setWlParty] = useState(2);
   const [wlZone, setWlZone] = useState('');
   const [wlError, setWlError] = useState('');
 
-  // Curbside state
   const [csBayId, setCsBayId] = useState(initialBayId || '');
-  const [csName, setCsName] = useState('');
-  const [csColor, setCsColor] = useState(venueCfg.vehicleColors[0] || 'White');
-  const [csType, setCsType] = useState<string>(venueCfg.vehicleTypes[0] || 'SUV');
-  const [csPlate, setCsPlate] = useState('');
+  const [csName, setCsName] = useState(savedProfile.name);
+  const [csColor, setCsColor] = useState(savedProfile.vehicleColor || venueCfg.vehicleColors[0] || 'White');
+  const [csType, setCsType] = useState<string>(savedProfile.vehicleType || venueCfg.vehicleTypes[0] || 'SUV');
+  const [csPlate, setCsPlate] = useState(savedProfile.licensePlate);
   const [csError, setCsError] = useState('');
 
-  // Cart checkout state
   const [channel, setChannel] = useState<'dine_in' | 'counter_pickup' | 'curbside' | 'drive_thru'>(
     initialBayId ? 'curbside' : initialTableCode ? 'dine_in' : 'counter_pickup',
   );
-  const [custName, setCustName] = useState('');
-  const [custPhone, setCustPhone] = useState('');
+  const [custName, setCustName] = useState(savedProfile.name);
+  const [custPhone, setCustPhone] = useState(savedProfile.phone);
   const [tableCode, setTableCode] = useState(initialTableCode || '');
   const [bayId, setBayId] = useState(initialBayId || '');
-  const [vehColor, setVehColor] = useState(venueCfg.vehicleColors[0] || 'White');
-  const [vehType, setVehType] = useState<string>(venueCfg.vehicleTypes[0] || 'SUV');
-  const [plate, setPlate] = useState('');
+  const [vehColor, setVehColor] = useState(savedProfile.vehicleColor || venueCfg.vehicleColors[0] || 'White');
+  const [vehType, setVehType] = useState<string>(savedProfile.vehicleType || venueCfg.vehicleTypes[0] || 'SUV');
+  const [plate, setPlate] = useState(savedProfile.licensePlate);
   const [orderNotes, setOrderNotes] = useState('');
   const [orderError, setOrderError] = useState('');
   const [pendingGateway, setPendingGateway] = useState<{
@@ -154,7 +138,13 @@ export default function GuestHospitalityBar({
     else if (initialAction === 'curbside' && restaurant.driveThruEnabled) setCurbsideOpen(true);
     else if (initialAction === 'delivery') setDeliveryOpen(true);
     else if (initialAction === 'cart' && restaurant.orderingMode !== 'browse_and_pager') setCartOpen(true);
-  }, [initialAction, restaurant.waitlistEnabled, restaurant.reservationsEnabled, restaurant.driveThruEnabled, restaurant.orderingMode]);
+  }, [
+    initialAction,
+    restaurant.waitlistEnabled,
+    restaurant.reservationsEnabled,
+    restaurant.driveThruEnabled,
+    restaurant.orderingMode,
+  ]);
 
   const hospitalityQuery = useQuery<PublicHospitalityConfig>({
     queryKey: ['/api/public/hospitality', restaurant.id],
@@ -217,6 +207,9 @@ export default function GuestHospitalityBar({
   const reserveMutation = useMutation({
     mutationFn: async () => {
       setResError('');
+      saveGuestProfile({ name: resName, phone: resPhone });
+      setCustName(prev => prev || resName.trim());
+      setCustPhone(prev => prev || resPhone.trim());
       const res = await apiRequest('POST', `/api/public/reservations/${restaurant.id}`, {
         guestName: resName.trim(),
         guestPhone: resPhone.trim(),
@@ -230,7 +223,7 @@ export default function GuestHospitalityBar({
     onSuccess: data => {
       const tableCodes =
         data.combinedTables && data.combinedTables.length > 1
-          ? `Tables ${data.combinedTables.map((t: any) => t.tableCode).join('+')}`
+          ? `Tables ${data.combinedTables.map((tb: any) => tb.tableCode).join('+')}`
           : data.table?.tableCode
             ? `Table ${data.table.tableCode}`
             : 'Reserved';
@@ -303,6 +296,8 @@ export default function GuestHospitalityBar({
   const waitlistMutation = useMutation({
     mutationFn: async () => {
       setWlError('');
+      saveGuestProfile({ name: wlName, ...(wlPhone.trim() ? { phone: wlPhone } : {}) });
+      setCustName(prev => prev || wlName.trim());
       const res = await apiRequest('POST', `/api/public/waitlist/${restaurant.id}`, {
         guestName: wlName.trim(),
         guestPhone: wlPhone.trim() || null,
@@ -328,6 +323,12 @@ export default function GuestHospitalityBar({
   const curbsideMutation = useMutation({
     mutationFn: async () => {
       setCsError('');
+      saveGuestProfile({
+        ...(csName.trim() ? { name: csName } : {}),
+        vehicleColor: csColor,
+        vehicleType: csType,
+        licensePlate: csPlate,
+      });
       const res = await apiRequest('POST', '/api/public/curbside/checkin', {
         restaurantId: restaurant.id,
         bayId: csBayId,
@@ -356,6 +357,17 @@ export default function GuestHospitalityBar({
   const orderMutation = useMutation({
     mutationFn: async () => {
       setOrderError('');
+      saveGuestProfile({
+        name: custName,
+        ...(custPhone.trim() ? { phone: custPhone } : {}),
+        ...(channel === 'curbside' || channel === 'drive_thru'
+          ? {
+              vehicleColor: vehColor,
+              vehicleType: vehType,
+              ...(plate.trim() ? { licensePlate: plate } : {}),
+            }
+          : {}),
+      });
       const res = await apiRequest('POST', '/api/public/orders', {
         restaurantId: restaurant.id,
         channel,
@@ -442,6 +454,12 @@ export default function GuestHospitalityBar({
   const feeTotals = computeOrderTotalsWithVenueFees(subtotalCents, venueCfg);
   const totalCartAmount = feeTotals.total;
   const orderingEnabled = restaurant.orderingMode !== 'browse_and_pager';
+  const cartLeadSummary =
+    cart.length > 0
+      ? cart.length === 1
+        ? label(cart[0].name)
+        : `${label(cart[0].name)} +${cart.length - 1}`
+      : '';
 
   async function handleAggregatorClick(agg: any) {
     try {
@@ -461,19 +479,27 @@ export default function GuestHospitalityBar({
 
   return (
     <>
-      {/* Context Pill for Pre-filled Table or Parking Bay QR */}
       {(initialTableCode || initialBayId) && (
-        <div className="my-2 px-3.5 py-2 rounded-2xl bg-[#EFEAFF] text-[#4B1FE0] border border-[#E5E2F2] text-xs font-semibold flex items-center justify-between">
-          <span>
-            {initialTableCode
-              ? `Dine-In Table ${initialTableCode} connected`
-              : `Curbside Bay connected`}
+        <div className="my-2 px-4 py-2.5 rounded-2xl bg-[#17132E] text-white border border-[#241E42] text-xs font-semibold flex items-center justify-between gap-3 shadow-sm">
+          <span className="inline-flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#C8FF42]" aria-hidden="true" />
+            {initialTableCode ? (
+              <span className="inline-flex items-center gap-1.5">
+                <UtensilsCrossed className="w-3.5 h-3.5 text-[#C8FF42]" />
+                <span>Table {initialTableCode} Connected</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5">
+                <Car className="w-3.5 h-3.5 text-[#C8FF42]" />
+                <span>Curbside Pickup Bay Connected</span>
+              </span>
+            )}
           </span>
           {!orderingEnabled && initialBayId && (
             <button
               type="button"
               onClick={() => setCurbsideOpen(true)}
-              className="underline font-bold cursor-pointer text-[#4B1FE0]"
+              className="px-2.5 py-1 rounded-lg bg-[#C8FF42] text-[#17132E] font-extrabold cursor-pointer"
             >
               Check In Car →
             </button>
@@ -481,38 +507,17 @@ export default function GuestHospitalityBar({
         </div>
       )}
 
-      {/* Hospitality Quick-Action Strip — Single-row thumb scroll on phones, wraps on sm+ */}
       <div
-        className="flex flex-nowrap sm:flex-wrap overflow-x-auto no-scrollbar -mx-1 px-1 py-1 gap-2 my-2.5 snap-x"
+        className="flex flex-nowrap sm:flex-wrap overflow-x-auto no-scrollbar -mx-1 px-1 py-1 gap-2 my-2 snap-x"
         role="region"
         aria-label="Hospitality services"
       >
-        <button
-          type="button"
-          onClick={() => setPagerOpen(true)}
-          data-testid="button-open-pager-lookup"
-          className="inline-flex items-center gap-1.5 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border bg-card/95 text-foreground text-xs font-semibold shadow-sm hover:shadow active:scale-[0.99] transition-all cursor-pointer"
-        >
-          <Bell className="w-4 h-4 text-primary shrink-0" />
-          <span>{t('Virtual Pager')}</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setScannerOpen(true)}
-          data-testid="button-open-qr-nfc-scanner"
-          className="inline-flex items-center gap-1.5 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border bg-card/95 text-foreground text-xs font-semibold shadow-sm hover:shadow active:scale-[0.99] transition-all cursor-pointer"
-        >
-          <QrCode className="w-4 h-4 text-primary shrink-0" />
-          <span>{t('Scan QR / NFC')}</span>
-        </button>
-
         {restaurant.reservationsEnabled && (
           <button
             type="button"
             onClick={() => setReserveOpen(true)}
             data-testid="button-open-reservations"
-            className="inline-flex items-center gap-1.5 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border bg-card/95 text-foreground text-xs font-semibold shadow-sm hover:shadow active:scale-[0.99] transition-all cursor-pointer"
+            className="inline-flex items-center gap-2 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border border-[#E5E2F2] bg-white/95 text-[#17132E] text-xs font-semibold shadow-sm hover:border-[#6236FF]/40 hover:bg-[#EFEAFF]/40 active:scale-[0.98] transition-all cursor-pointer"
           >
             <CalendarDays className="w-4 h-4 text-primary shrink-0" />
             <span>{t('Book Table')}</span>
@@ -524,7 +529,7 @@ export default function GuestHospitalityBar({
             type="button"
             onClick={() => setWaitlistOpen(true)}
             data-testid="button-open-waitlist"
-            className="inline-flex items-center gap-1.5 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border bg-card/95 text-foreground text-xs font-semibold shadow-sm hover:shadow active:scale-[0.99] transition-all cursor-pointer"
+            className="inline-flex items-center gap-2 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border border-[#E5E2F2] bg-white/95 text-[#17132E] text-xs font-semibold shadow-sm hover:border-[#6236FF]/40 hover:bg-[#EFEAFF]/40 active:scale-[0.98] transition-all cursor-pointer"
           >
             <Users className="w-4 h-4 text-primary shrink-0" />
             <span>{t('Walk-In Waitlist')}</span>
@@ -536,27 +541,46 @@ export default function GuestHospitalityBar({
             type="button"
             onClick={() => setCurbsideOpen(true)}
             data-testid="button-open-curbside"
-            className="inline-flex items-center gap-1.5 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border bg-card/95 text-foreground text-xs font-semibold shadow-sm hover:shadow active:scale-[0.99] transition-all cursor-pointer"
+            className="inline-flex items-center gap-2 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border border-[#E5E2F2] bg-white/95 text-[#17132E] text-xs font-semibold shadow-sm hover:border-[#6236FF]/40 hover:bg-[#EFEAFF]/40 active:scale-[0.98] transition-all cursor-pointer"
           >
             <Car className="w-4 h-4 text-primary shrink-0" />
             <span>{t('Curbside & Drive-Thru')}</span>
           </button>
         )}
 
+        <button
+          type="button"
+          onClick={() => setPagerOpen(true)}
+          data-testid="button-open-pager-lookup"
+          className="inline-flex items-center gap-2 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border border-[#E5E2F2] bg-white/95 text-[#17132E] text-xs font-semibold shadow-sm hover:border-[#6236FF]/40 hover:bg-[#EFEAFF]/40 active:scale-[0.98] transition-all cursor-pointer"
+        >
+          <Bell className="w-4 h-4 text-primary shrink-0" />
+          <span>{t('Virtual Pager')}</span>
+        </button>
+
         {aggregators.length > 0 && (
           <button
             type="button"
             onClick={() => setDeliveryOpen(true)}
             data-testid="button-open-delivery"
-            className="inline-flex items-center gap-1.5 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border bg-card/95 text-foreground text-xs font-semibold shadow-sm hover:shadow active:scale-[0.99] transition-all cursor-pointer"
+            className="inline-flex items-center gap-2 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border border-[#E5E2F2] bg-white/95 text-[#17132E] text-xs font-semibold shadow-sm hover:border-[#6236FF]/40 hover:bg-[#EFEAFF]/40 active:scale-[0.98] transition-all cursor-pointer"
           >
             <Truck className="w-4 h-4 text-primary shrink-0" />
             <span>{t('Get Delivery')}</span>
           </button>
         )}
+
+        <button
+          type="button"
+          onClick={() => setScannerOpen(true)}
+          data-testid="button-open-qr-nfc-scanner"
+          className="inline-flex items-center gap-2 px-3.5 min-h-11 shrink-0 snap-start whitespace-nowrap rounded-2xl border border-[#E5E2F2] bg-white/95 text-[#17132E] text-xs font-semibold shadow-sm hover:border-[#6236FF]/40 hover:bg-[#EFEAFF]/40 active:scale-[0.98] transition-all cursor-pointer"
+        >
+          <QrCode className="w-4 h-4 text-primary shrink-0" />
+          <span>{t('Scan QR / NFC')}</span>
+        </button>
       </div>
 
-      {/* Floating Cart Bar when Branch Ordering Mode is Active */}
       {orderingEnabled && totalCartItems > 0 && (
         <div
           style={{ bottom: 'max(1rem, calc(env(safe-area-inset-bottom, 0px) + 0.5rem))' }}
@@ -566,303 +590,98 @@ export default function GuestHospitalityBar({
             type="button"
             onClick={() => setCartOpen(true)}
             data-testid="button-open-cart"
-            className="w-full min-h-14 px-5 rounded-2xl bg-primary text-primary-foreground shadow-xl flex items-center justify-between font-semibold transition-transform hover:-translate-y-0.5 cursor-pointer"
+            className="w-full min-h-14 px-4 py-2.5 rounded-2xl bg-[#17132E] text-white border border-[#241E42] shadow-2xl flex items-center justify-between gap-3 transition-transform duration-150 hover:-translate-y-0.5 active:scale-[0.99] cursor-pointer"
           >
-            <span className="inline-flex items-center gap-2.5" role="status" aria-atomic="true">
-              <ShoppingBag className="w-5 h-5" />
-              <span>
-                {t('View Cart')} ({totalCartItems})
+            <span className="inline-flex items-center gap-3 min-w-0" role="status" aria-atomic="true">
+              <span className="min-w-8 h-8 px-2 rounded-xl bg-[#C8FF42] text-[#17132E] font-mono text-xs font-extrabold grid place-items-center shrink-0">
+                {totalCartItems}
+              </span>
+              <span className="text-start min-w-0">
+                <strong className="block text-sm font-bold leading-tight">{t('View Cart')}</strong>
+                <small className="block text-[11px] text-white/70 truncate">{cartLeadSummary}</small>
               </span>
             </span>
-            <span className="font-mono font-bold">
-              {totalCartAmount} {currencyDisplay}
+            <span className="inline-flex items-center gap-2 font-mono font-extrabold text-sm bg-[#6236FF] text-white px-3.5 py-2 rounded-xl shrink-0">
+              <span>
+                <bdi dir="ltr">{totalCartAmount}</bdi> {currencyDisplay}
+              </span>
+              <ArrowRight className="w-4 h-4 rtl:rotate-180" aria-hidden="true" />
             </span>
           </button>
         </div>
       )}
 
-      {/* 1. Virtual Pager Lookup Dialog */}
-      <Dialog open={pagerOpen} onOpenChange={setPagerOpen}>
-        <DialogContent dir={dir} lang={language} className="max-w-sm rounded-3xl">
-          <DialogTitle className="flex items-center gap-2">
-            <Bell className="w-5 h-5 text-primary" />
-            {t('Track Pager')}
-          </DialogTitle>
-          <DialogDescription>
-            Enter the pager code from the cashier or your POS receipt number to receive instant sound & vibration alerts.
-          </DialogDescription>
-          <form
-            onSubmit={e => {
-              e.preventDefault();
-              if (lookupCode.trim()) lookupMutation.mutate();
-            }}
-            className="space-y-3 mt-2"
-          >
-            <Input
-              value={lookupCode}
-              onChange={e => setLookupCode(e.target.value)}
-              placeholder={`${venueCfg.pagerTicketPrefix}-001`}
-              className="h-12 font-mono text-base uppercase placeholder:font-sans placeholder:normal-case"
-              required
-            />
-            {lookupError && <p className="text-xs text-destructive font-medium">{lookupError}</p>}
-            <Button type="submit" className="w-full min-h-11 cursor-pointer" disabled={lookupMutation.isPending}>
-              {lookupMutation.isPending ? 'Checking…' : t('Track Pager')}
-            </Button>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* 2. Advance Table Reservation Dialog */}
-      <Dialog open={reserveOpen} onOpenChange={open => { setReserveOpen(open); if (!open) setPendingDepositGateway(null); }}>
-        <DialogContent dir={dir} lang={language} className="max-w-md rounded-3xl max-h-[90vh] overflow-y-auto">
-          <DialogTitle className="flex items-center gap-2">
-            <CalendarDays className="w-5 h-5 text-primary" />
-            {t('Reserve a Table')}
-          </DialogTitle>
-          <DialogDescription>
-            Conflict-free instant table allocation for {cafeDisplayName}.
-          </DialogDescription>
-          {pendingDepositGateway ? (
-            <div className="mt-3 rounded-2xl border-2 border-primary/30 bg-card p-5 space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold uppercase px-2.5 py-1 rounded-lg bg-[#EFEAFF] text-[#4B1FE0]">
-                  {pendingDepositGateway.provider.toUpperCase()} Deposit Hold
-                </span>
-                <span className="font-mono text-xs text-muted-foreground">{pendingDepositGateway.tableLabel}</span>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground">Refundable / deductible table deposit</p>
-                <p className="text-2xl font-black mt-1">
-                  {pendingDepositGateway.amount} {restaurant.currency}
-                </p>
-              </div>
-              {resError && <p className="text-xs text-destructive font-medium">{resError}</p>}
-              <Button
-                type="button"
-                data-testid="button-confirm-reservation-deposit"
-                onClick={() => confirmDepositMutation.mutate()}
-                disabled={confirmDepositMutation.isPending}
-                className="w-full min-h-12 cursor-pointer gap-2"
-              >
-                <CreditCard className="w-4 h-4" />
-                <span>
-                  {confirmDepositMutation.isPending
-                    ? 'Verifying Deposit…'
-                    : `Authorize ${pendingDepositGateway.amount} ${restaurant.currency} Deposit`}
-                </span>
-              </Button>
-            </div>
-          ) : (
-          <form
-            onSubmit={e => {
-              e.preventDefault();
-              reserveMutation.mutate();
-            }}
-            className="space-y-3 mt-2"
-          >
-            <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">Date</Label>
-                <Input type="date" min={todayIso} value={resDate} onChange={e => { setResDate(e.target.value); setResSlot(''); }} className="h-11" required />
-              </div>
-              <div>
-                <Label className="text-xs">{t('Party Size')}</Label>
-                <select className="manager-select w-full h-11" value={resParty} onChange={e => { setResParty(Number(e.target.value)); setResSlot(''); }}>
-                  {partyOptions.map(n => (
-                    <option key={n} value={n}>{n} {n === 1 ? 'Guest' : 'Guests'}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {zones.length > 0 && (
-              <div>
-                <Label className="text-xs">{t('Dining Zone')}</Label>
-                <select className="manager-select w-full h-11" value={resZone} onChange={e => { setResZone(e.target.value); setResSlot(''); }}>
-                  <option value="">{t('Any Zone')}</option>
-                  {zones.map(z => (
-                    <option key={z.id} value={z.id}>{language === 'ar' && z.nameAr ? z.nameAr : z.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            <div>
-              <Label className="text-xs">{t('Available Times')}</Label>
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-1 max-h-40 overflow-y-auto p-1">
-                {availabilityQuery.isLoading ? (
-                  <p className="col-span-full text-xs text-muted-foreground">Checking tables…</p>
-                ) : (availabilityQuery.data?.slots || []).length === 0 ? (
-                  <p className="col-span-full text-xs text-muted-foreground">No open tables for this filter.</p>
-                ) : (
-                  (availabilityQuery.data?.slots || []).map(slot => (
-                    <button
-                      key={slot.startIso}
-                      type="button"
-                      onClick={() => setResSlot(slot.startIso)}
-                      className={`min-h-11 py-2 px-2 rounded-xl border text-xs font-semibold cursor-pointer transition-colors ${
-                        resSlot === slot.startIso
-                          ? 'bg-[#EFEAFF] text-[#4B1FE0] border-[#6236FF] ring-1 ring-[#6236FF]'
-                          : 'bg-[#F6F5FC] border-[#E5E2F2] text-[#17132E] hover:bg-[#EFEAFF] hover:text-[#4B1FE0]'
-                      }`}
-                    >
-                      <span className="block">{slot.time}</span>
-                      {slot.requiresCombination && (
-                        <span className="block text-xs uppercase tracking-tight text-[#4B1FE0]">Joined</span>
-                      )}
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-3">
-              <div>
-                <Label className="text-xs">{t('Your Name')} *</Label>
-                <Input value={resName} onChange={e => setResName(e.target.value)} required className="h-11" />
-              </div>
-              <div>
-                <Label className="text-xs">Mobile Phone *</Label>
-                <Input type="tel" value={resPhone} onChange={e => setResPhone(e.target.value)} placeholder="+974 …" required className="h-11" />
-              </div>
-            </div>
-
-            <Input value={resNotes} onChange={e => setResNotes(e.target.value)} placeholder="Special requests (high chair, celebration…)" className="h-11" />
-            {restaurant.orderingMode === 'full_online_checkout' && Number(restaurant.reservationDepositAmount || 0) > 0 && (
-              <p className="rounded-xl bg-[#EFEAFF] text-[#4B1FE0] px-3 py-2 text-xs font-semibold">
-                Table deposit applied at confirmation: {Number(restaurant.reservationDepositAmount).toFixed(2)} {restaurant.currency}
-              </p>
-            )}
-            {resError && <p className="text-xs text-destructive font-medium">{resError}</p>}
-
-            <Button
-              type="submit"
-              className="w-full min-h-11 cursor-pointer"
-              disabled={!resSlot || !resName.trim() || !resPhone.trim() || reserveMutation.isPending}
-            >
-              {reserveMutation.isPending ? 'Booking…' : t('Confirm Reservation')}
-            </Button>
-          </form>
-          )}
-        </DialogContent>
-      </Dialog>
-
-      {/* 3. Live Walk-In Virtual Waitlist Dialog */}
-      <Dialog open={waitlistOpen} onOpenChange={setWaitlistOpen}>
-        <DialogContent dir={dir} lang={language} className="max-w-sm rounded-3xl">
-          <DialogTitle className="flex items-center gap-2">
-            <Users className="w-5 h-5 text-primary" />
-            {t('Join Live Waitlist')}
-          </DialogTitle>
-          <DialogDescription>
-            Receive a live browser pager ticket — your phone rings as soon as your table is ready.
-          </DialogDescription>
-          <form
-            onSubmit={e => {
-              e.preventDefault();
-              waitlistMutation.mutate();
-            }}
-            className="space-y-3 mt-2"
-          >
-            <div>
-              <Label className="text-xs">{t('Your Name')} *</Label>
-              <Input value={wlName} onChange={e => setWlName(e.target.value)} required className="h-11" />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-xs">{t('Party Size')}</Label>
-                <select className="manager-select w-full h-11" value={wlParty} onChange={e => setWlParty(Number(e.target.value))}>
-                  {partyOptions.map(n => (
-                    <option key={n} value={n}>{n}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <Label className="text-xs">{t('Phone (Optional)')}</Label>
-                <Input type="tel" value={wlPhone} onChange={e => setWlPhone(e.target.value)} className="h-11" />
-              </div>
-            </div>
-            {zones.length > 0 && (
-              <div>
-                <Label className="text-xs">{t('Dining Zone')}</Label>
-                <select className="manager-select w-full h-11" value={wlZone} onChange={e => setWlZone(e.target.value)}>
-                  <option value="">{t('Any Zone')}</option>
-                  {zones.map(z => (
-                    <option key={z.id} value={z.id}>{language === 'ar' && z.nameAr ? z.nameAr : z.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-            {wlError && <p className="text-xs text-destructive">{wlError}</p>}
-            <Button type="submit" className="w-full min-h-11 cursor-pointer" disabled={!wlName.trim() || waitlistMutation.isPending}>
-              {waitlistMutation.isPending ? 'Joining…' : t('Join Waitlist')}
-            </Button>
-          </form>
-        </DialogContent>
-      </Dialog>
-
-      {/* 4. Curbside / Drive-Thru Car-Side Check-In Dialog */}
-      <Dialog open={curbsideOpen} onOpenChange={setCurbsideOpen}>
-        <DialogContent dir={dir} lang={language} className="max-w-sm rounded-3xl">
-          <DialogTitle className="flex items-center gap-2">
-            <Car className="w-5 h-5 text-primary" />
-            {t('Curbside & Drive-Thru')}
-          </DialogTitle>
-          <DialogDescription>
-            Check in with your bay and car details to alert our runner screen immediately.
-          </DialogDescription>
-          <form
-            onSubmit={e => {
-              e.preventDefault();
-              curbsideMutation.mutate();
-            }}
-            className="space-y-3 mt-2"
-          >
-            <div>
-              <Label className="text-xs">{t('Select Parking Bay')} *</Label>
-              <select className="manager-select w-full h-11" value={csBayId} onChange={e => setCsBayId(e.target.value)} required>
-                <option value="">Choose bay or lane…</option>
-                {bays.map(b => (
-                  <option key={b.id} value={b.id}>{b.code} — {b.label}</option>
-                ))}
-              </select>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-xs">{t('Vehicle Color')}</Label>
-                <select className="manager-select w-full h-11" value={csColor} onChange={e => setCsColor(e.target.value)}>
-                  {venueCfg.vehicleColors.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <Label className="text-xs">{t('Vehicle Type')}</Label>
-                <select className="manager-select w-full h-11" value={csType} onChange={e => setCsType(e.target.value)}>
-                  {venueCfg.vehicleTypes.map(v => (
-                    <option key={v} value={v}>{v}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-xs">{t('License Plate')} *</Label>
-                <Input value={csPlate} onChange={e => setCsPlate(e.target.value)} placeholder="QAT 49120" required className="h-11" />
-              </div>
-              <div>
-                <Label className="text-xs">{t('Your Name')}</Label>
-                <Input value={csName} onChange={e => setCsName(e.target.value)} placeholder="Guest" className="h-11" />
-              </div>
-            </div>
-            {csError && <p className="text-xs text-destructive">{csError}</p>}
-            <Button type="submit" className="w-full min-h-11 cursor-pointer" disabled={!csBayId || !csPlate.trim() || curbsideMutation.isPending}>
-              {curbsideMutation.isPending ? 'Checking in…' : t("I'm Here — Check In")}
-            </Button>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <GuestVenueServiceDialogs
+        restaurant={restaurant}
+        cafeDisplayName={cafeDisplayName}
+        language={language}
+        dir={dir}
+        t={t}
+        partyOptions={partyOptions}
+        zones={zones}
+        bays={bays}
+        pagerOpen={pagerOpen}
+        setPagerOpen={setPagerOpen}
+        lookupCode={lookupCode}
+        setLookupCode={setLookupCode}
+        lookupError={lookupError}
+        lookupPending={lookupMutation.isPending}
+        onSubmitLookup={() => lookupMutation.mutate()}
+        reserveOpen={reserveOpen}
+        setReserveOpen={setReserveOpen}
+        todayIso={todayIso}
+        resDate={resDate}
+        setResDate={setResDate}
+        resParty={resParty}
+        setResParty={setResParty}
+        resZone={resZone}
+        setResZone={setResZone}
+        resSlot={resSlot}
+        setResSlot={setResSlot}
+        resName={resName}
+        setResName={setResName}
+        resPhone={resPhone}
+        setResPhone={setResPhone}
+        resNotes={resNotes}
+        setResNotes={setResNotes}
+        resError={resError}
+        availabilityLoading={availabilityQuery.isLoading}
+        availabilitySlots={availabilityQuery.data?.slots || []}
+        reservePending={reserveMutation.isPending}
+        onSubmitReserve={() => reserveMutation.mutate()}
+        pendingDepositGateway={pendingDepositGateway}
+        setPendingDepositGateway={setPendingDepositGateway}
+        confirmDepositPending={confirmDepositMutation.isPending}
+        onConfirmDeposit={() => confirmDepositMutation.mutate()}
+        waitlistOpen={waitlistOpen}
+        setWaitlistOpen={setWaitlistOpen}
+        wlName={wlName}
+        setWlName={setWlName}
+        wlPhone={wlPhone}
+        setWlPhone={setWlPhone}
+        wlParty={wlParty}
+        setWlParty={setWlParty}
+        wlZone={wlZone}
+        setWlZone={setWlZone}
+        wlError={wlError}
+        waitlistPending={waitlistMutation.isPending}
+        onSubmitWaitlist={() => waitlistMutation.mutate()}
+        curbsideOpen={curbsideOpen}
+        setCurbsideOpen={setCurbsideOpen}
+        csBayId={csBayId}
+        setCsBayId={setCsBayId}
+        csName={csName}
+        setCsName={setCsName}
+        csColor={csColor}
+        setCsColor={setCsColor}
+        csType={csType}
+        setCsType={setCsType}
+        csPlate={csPlate}
+        setCsPlate={setCsPlate}
+        csError={csError}
+        curbsidePending={curbsideMutation.isPending}
+        onSubmitCurbside={() => curbsideMutation.mutate()}
+      />
 
       <GuestCheckoutAndDeliveryModals
         restaurant={restaurant}

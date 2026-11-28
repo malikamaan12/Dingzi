@@ -1,5 +1,18 @@
 import type { Dispatch, SetStateAction } from 'react';
-import { Check, CreditCard, ExternalLink, Minus, Plus, Trash2, Truck } from 'lucide-react';
+import {
+  Car,
+  Check,
+  CreditCard,
+  ExternalLink,
+  Minus,
+  Navigation,
+  Plus,
+  ShoppingBag,
+  Store,
+  Trash2,
+  Truck,
+  UtensilsCrossed,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -121,7 +134,7 @@ export function GuestCheckoutAndDeliveryModals({
         <DialogContent dir={dir} lang={language} className="max-w-sm rounded-3xl">
           <DialogTitle className="flex items-center gap-2">
             <Truck className="w-5 h-5 text-primary" />
-            {t('Order Delivery via Partner')}
+            <span>{t('Order Delivery via Partner')}</span>
           </DialogTitle>
           <DialogDescription>
             Choose your preferred delivery partner for {cafeDisplayName}.
@@ -141,10 +154,14 @@ export function GuestCheckoutAndDeliveryModals({
                   type="button"
                   data-testid={`button-aggregator-${agg.platform}`}
                   onClick={() => onAggregatorClick(agg)}
-                  className="w-full min-h-14 p-3.5 rounded-2xl border bg-card hover:bg-muted/60 flex items-center justify-between gap-3 transition-all cursor-pointer text-left"
+                  className="w-full min-h-14 p-3.5 rounded-2xl border bg-card hover:bg-muted/60 flex items-center justify-between gap-3 transition-all cursor-pointer text-start"
                 >
                   <div className="flex items-center gap-3 min-w-0">
-                    <span className={`px-2.5 py-1 rounded-xl text-xs font-black uppercase shrink-0 ${brandColors[agg.platform] || brandColors.custom}`}>
+                    <span
+                      className={`px-2.5 py-1 rounded-xl text-xs font-black uppercase shrink-0 ${
+                        brandColors[agg.platform] || brandColors.custom
+                      }`}
+                    >
                       {agg.platform}
                     </span>
                     <div className="min-w-0">
@@ -168,11 +185,22 @@ export function GuestCheckoutAndDeliveryModals({
           className="w-full sm:max-w-md overflow-y-auto"
         >
           <SheetHeader>
-            <SheetTitle>{t('Your Order')}</SheetTitle>
+            <div className="flex items-center justify-between pe-8">
+              <SheetTitle>{t('Your Order')}</SheetTitle>
+              {cart.length > 0 && !pendingGateway && (
+                <button
+                  type="button"
+                  onClick={() => setCart([])}
+                  className="text-xs font-semibold text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
+                >
+                  Clear bag
+                </button>
+              )}
+            </div>
             <SheetDescription>
               {restaurant.orderingMode === 'full_online_checkout'
                 ? `Secure online payment via ${(restaurant.paymentGateway || 'skipcash').toUpperCase()}`
-                : 'Sent straight to the barista prep queue — pay when you pick up or at your table.'}
+                : 'Sent straight to the kitchen — your phone rings as soon as your order is ready.'}
             </SheetDescription>
           </SheetHeader>
 
@@ -186,7 +214,7 @@ export function GuestCheckoutAndDeliveryModals({
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Order {pendingGateway.orderNumber}</p>
-                <p className="text-2xl font-black mt-1">
+                <p className="text-2xl font-black mt-1 font-mono">
                   {pendingGateway.total} {restaurant.currency}
                 </p>
               </div>
@@ -197,14 +225,34 @@ export function GuestCheckoutAndDeliveryModals({
               <Button
                 type="button"
                 data-testid="button-confirm-online-payment"
-                className="w-full min-h-12 cursor-pointer gap-2"
+                className="w-full min-h-12 rounded-xl cursor-pointer gap-2"
                 disabled={confirmGatewayPending}
                 onClick={onConfirmGateway}
               >
                 <CreditCard className="w-4 h-4" />
-                {confirmGatewayPending
-                  ? 'Verifying Payment…'
-                  : `Authorize ${pendingGateway.total} ${restaurant.currency}`}
+                <span>
+                  {confirmGatewayPending
+                    ? 'Verifying Payment…'
+                    : `Authorize ${pendingGateway.total} ${restaurant.currency}`}
+                </span>
+              </Button>
+            </div>
+          ) : cart.length === 0 ? (
+            <div className="mt-10 rounded-3xl border bg-muted/20 p-8 text-center space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-[#EFEAFF] text-[#4B1FE0] grid place-items-center mx-auto">
+                <ShoppingBag className="w-6 h-6" aria-hidden="true" />
+              </div>
+              <p className="font-bold text-base">Your bag is empty</p>
+              <p className="text-xs text-muted-foreground">
+                Tap + on any dish in the menu to add it in one tap.
+              </p>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setCartOpen(false)}
+                className="min-h-11 rounded-xl cursor-pointer"
+              >
+                Back to Menu
               </Button>
             </div>
           ) : (
@@ -217,21 +265,24 @@ export function GuestCheckoutAndDeliveryModals({
             >
               <div className="space-y-2">
                 {cart.map(item => (
-                  <div key={item.key} className="rounded-2xl border p-3 flex items-start justify-between gap-2 text-sm">
+                  <div
+                    key={item.key}
+                    className="rounded-2xl border bg-card p-3.5 flex items-start justify-between gap-3 text-sm"
+                  >
                     <div className="min-w-0">
                       <strong className="block truncate">{label(item.name)}</strong>
-                      {item.variantLabel && <span className="text-xs text-muted-foreground block">{item.variantLabel}</span>}
+                      {item.variantLabel && (
+                        <span className="text-xs text-muted-foreground block">{item.variantLabel}</span>
+                      )}
                       {item.modifierSummary.length > 0 && (
                         <span className="text-xs text-muted-foreground block">{item.modifierSummary.join(', ')}</span>
                       )}
-                      {item.notes && (
-                        <span className="text-xs italic text-[#57507A] block">“{item.notes}”</span>
-                      )}
-                      <span className="text-xs font-semibold text-primary mt-1 block">
-                        {(Number(item.unitTotal) * item.quantity).toFixed(2)} {restaurant.currency}
+                      {item.notes && <span className="text-xs italic text-[#57507A] block">“{item.notes}”</span>}
+                      <span className="text-xs font-bold font-mono text-primary mt-1 block">
+                        <bdi dir="ltr">{(Number(item.unitTotal) * item.quantity).toFixed(2)}</bdi> {currencyDisplay}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="inline-flex items-center gap-1 rounded-xl border bg-muted/30 p-0.5 shrink-0">
                       <button
                         type="button"
                         aria-label="Decrease quantity"
@@ -242,18 +293,24 @@ export function GuestCheckoutAndDeliveryModals({
                               : prev.map(i => (i.key === item.key ? { ...i, quantity: i.quantity - 1 } : i)),
                           )
                         }
-                        className="w-11 h-11 rounded-xl border grid place-items-center cursor-pointer"
+                        className="w-10 h-10 rounded-lg bg-background grid place-items-center cursor-pointer"
                       >
-                        {item.quantity <= 1 ? <Trash2 className="w-4 h-4 text-destructive" /> : <Minus className="w-4 h-4" />}
+                        {item.quantity <= 1 ? (
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        ) : (
+                          <Minus className="w-4 h-4" />
+                        )}
                       </button>
-                      <span className="w-6 text-center font-semibold font-mono text-xs">{item.quantity}</span>
+                      <span className="w-6 text-center font-bold font-mono text-xs">{item.quantity}</span>
                       <button
                         type="button"
                         aria-label="Increase quantity"
                         onClick={() =>
-                          setCart(prev => prev.map(i => (i.key === item.key ? { ...i, quantity: i.quantity + 1 } : i)))
+                          setCart(prev =>
+                            prev.map(i => (i.key === item.key ? { ...i, quantity: i.quantity + 1 } : i)),
+                          )
                         }
-                        className="w-11 h-11 rounded-xl border grid place-items-center cursor-pointer"
+                        className="w-10 h-10 rounded-lg bg-background grid place-items-center cursor-pointer"
                       >
                         <Plus className="w-4 h-4" />
                       </button>
@@ -263,103 +320,168 @@ export function GuestCheckoutAndDeliveryModals({
               </div>
 
               <div>
-                <Label className="text-xs">{t('Order Channel')}</Label>
-                <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-2 mt-1">
+                <Label className="text-xs font-semibold">{t('Order Channel')}</Label>
+                <div className="grid grid-cols-1 min-[360px]:grid-cols-2 gap-2 mt-1.5">
                   {[
-                    { id: 'counter_pickup', label: t('Counter Pickup') },
-                    { id: 'dine_in', label: t('Dine-In Table') },
+                    { id: 'counter_pickup', label: t('Counter Pickup'), icon: Store },
+                    { id: 'dine_in', label: t('Dine-In Table'), icon: UtensilsCrossed },
                     ...(restaurant.driveThruEnabled
                       ? [
-                          { id: 'curbside', label: t('Curbside Bay') },
-                          { id: 'drive_thru', label: t('Drive-Thru') },
+                          { id: 'curbside', label: t('Curbside Bay'), icon: Car },
+                          { id: 'drive_thru', label: t('Drive-Thru'), icon: Navigation },
                         ]
                       : []),
-                  ].map(opt => (
-                    <button
-                      key={opt.id}
-                      type="button"
-                      onClick={() => setChannel(opt.id as any)}
-                      className={`min-h-11 px-3 rounded-xl border text-xs font-semibold flex items-center justify-between cursor-pointer ${
-                        channel === opt.id ? 'border-primary bg-primary/10 text-primary' : 'bg-card'
-                      }`}
-                    >
-                      <span>{opt.label}</span>
-                      {channel === opt.id && <Check className="w-3.5 h-3.5" />}
-                    </button>
-                  ))}
+                  ].map(opt => {
+                    const Icon = opt.icon;
+                    const active = channel === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setChannel(opt.id as any)}
+                        className={`min-h-11 px-3 rounded-xl border text-xs font-semibold flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                          active
+                            ? 'border-[#6236FF] bg-[#EFEAFF] text-[#4B1FE0]'
+                            : 'bg-card hover:bg-muted/40'
+                        }`}
+                      >
+                        <span className="inline-flex items-center gap-1.5 truncate">
+                          <Icon className="w-3.5 h-3.5 shrink-0" />
+                          <span className="truncate">{opt.label}</span>
+                        </span>
+                        {active && <Check className="w-3.5 h-3.5 shrink-0" />}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
               <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-2.5">
                 <div>
                   <Label className="text-xs">{t('Your Name')} *</Label>
-                  <Input value={custName} onChange={e => setCustName(e.target.value)} required className="h-11" data-testid="input-order-customer-name" />
+                  <Input
+                    value={custName}
+                    onChange={e => setCustName(e.target.value)}
+                    required
+                    className="h-11 rounded-xl"
+                    data-testid="input-order-customer-name"
+                  />
                 </div>
                 <div>
                   <Label className="text-xs">{t('Phone (Optional)')}</Label>
-                  <Input type="tel" value={custPhone} onChange={e => setCustPhone(e.target.value)} className="h-11" />
+                  <Input
+                    type="tel"
+                    value={custPhone}
+                    onChange={e => setCustPhone(e.target.value)}
+                    className="h-11 rounded-xl"
+                  />
                 </div>
               </div>
 
               {channel === 'dine_in' && (
                 <div>
                   <Label className="text-xs">{t('Table Code')}</Label>
-                  <Input value={tableCode} onChange={e => setTableCode(e.target.value)} placeholder="e.g. T-04" className="h-11" />
+                  <Input
+                    value={tableCode}
+                    onChange={e => setTableCode(e.target.value)}
+                    placeholder="e.g. T-04"
+                    className="h-11 rounded-xl font-mono"
+                  />
                 </div>
               )}
 
               {(channel === 'curbside' || channel === 'drive_thru') && (
-                <div className="space-y-2 rounded-2xl border p-3 bg-muted/30">
+                <div className="space-y-2.5 rounded-2xl border p-3.5 bg-muted/30">
                   {bays.length > 0 && (
                     <div>
                       <Label className="text-xs">{t('Select Parking Bay')}</Label>
-                      <select className="manager-select w-full h-11" value={bayId} onChange={e => setBayId(e.target.value)}>
+                      <select
+                        className="manager-select w-full h-11"
+                        value={bayId}
+                        onChange={e => setBayId(e.target.value)}
+                      >
                         <option value="">Will select upon arrival</option>
                         {bays.map(b => (
-                          <option key={b.id} value={b.id}>{b.code} — {b.label}</option>
+                          <option key={b.id} value={b.id}>
+                            {b.code} — {b.label}
+                          </option>
                         ))}
                       </select>
                     </div>
                   )}
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    <select className="manager-select h-11 text-xs" value={vehColor} onChange={e => setVehColor(e.target.value)}>
-                      {venueCfg.vehicleColors.map(c => <option key={c} value={c}>{c}</option>)}
+                    <select
+                      className="manager-select h-11 text-xs"
+                      value={vehColor}
+                      onChange={e => setVehColor(e.target.value)}
+                    >
+                      {venueCfg.vehicleColors.map(c => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
                     </select>
-                    <select className="manager-select h-11 text-xs" value={vehType} onChange={e => setVehType(e.target.value)}>
-                      {venueCfg.vehicleTypes.map(v => <option key={v} value={v}>{v}</option>)}
+                    <select
+                      className="manager-select h-11 text-xs"
+                      value={vehType}
+                      onChange={e => setVehType(e.target.value)}
+                    >
+                      {venueCfg.vehicleTypes.map(v => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
                     </select>
-                    <Input value={plate} onChange={e => setPlate(e.target.value)} placeholder="Plate #" className="h-11 text-xs col-span-2 sm:col-span-1" />
+                    <Input
+                      value={plate}
+                      onChange={e => setPlate(e.target.value)}
+                      placeholder="Plate #"
+                      className="h-11 text-xs font-mono uppercase col-span-2 sm:col-span-1 rounded-xl"
+                    />
                   </div>
                 </div>
               )}
 
-              <Input value={orderNotes} onChange={e => setOrderNotes(e.target.value)} placeholder={t('Order Notes')} className="h-11" />
+              <Input
+                value={orderNotes}
+                onChange={e => setOrderNotes(e.target.value)}
+                placeholder={t('Order Notes')}
+                className="h-11 rounded-xl"
+              />
 
-              <div className="space-y-1.5 pt-2 border-t text-sm">
+              <div className="rounded-2xl bg-muted/40 p-3.5 space-y-1.5 text-sm">
                 {(venueCfg.taxPercent > 0 || venueCfg.serviceChargePercent > 0) && (
                   <>
                     <div className="flex items-center justify-between text-xs text-muted-foreground">
                       <span>Subtotal</span>
-                      <span className="font-mono">{feeBreakdown.subtotal} {currencyDisplay}</span>
+                      <span className="font-mono">
+                        {feeBreakdown.subtotal} {currencyDisplay}
+                      </span>
                     </div>
                     {venueCfg.serviceChargePercent > 0 && (
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span>Service ({venueCfg.serviceChargePercent}%)</span>
-                        <span className="font-mono">{feeBreakdown.serviceChargeAmount} {currencyDisplay}</span>
+                        <span className="font-mono">
+                          {feeBreakdown.serviceChargeAmount} {currencyDisplay}
+                        </span>
                       </div>
                     )}
                     {venueCfg.taxPercent > 0 && (
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
-                        <span>{lang === 'ar' ? venueCfg.taxLabelAr : venueCfg.taxLabel} ({venueCfg.taxPercent}%)</span>
-                        <span className="font-mono">{feeBreakdown.taxAmount} {currencyDisplay}</span>
+                        <span>
+                          {lang === 'ar' ? venueCfg.taxLabelAr : venueCfg.taxLabel} ({venueCfg.taxPercent}%)
+                        </span>
+                        <span className="font-mono">
+                          {feeBreakdown.taxAmount} {currencyDisplay}
+                        </span>
                       </div>
                     )}
                   </>
                 )}
-                <div className="flex items-center justify-between font-bold text-base">
+                <div className="flex items-center justify-between font-bold text-base pt-0.5">
                   <span>{t('Estimated total')}</span>
                   <span className="font-mono">
-                    {totalCartAmount} {currencyDisplay}
+                    <bdi dir="ltr">{totalCartAmount}</bdi> {currencyDisplay}
                   </span>
                 </div>
               </div>
@@ -369,19 +491,25 @@ export function GuestCheckoutAndDeliveryModals({
               <Button
                 type="submit"
                 data-testid="button-submit-guest-order"
-                className="w-full min-h-12 rounded-2xl cursor-pointer font-semibold"
+                className="w-full min-h-12 rounded-2xl cursor-pointer font-bold text-sm flex items-center justify-between px-5"
                 disabled={!cart.length || !custName.trim() || orderPending}
               >
-                {orderPending
-                  ? 'Submitting…'
-                  : restaurant.orderingMode === 'full_online_checkout'
-                    ? t('Pay Online & Place Order')
-                    : t('Place Order (Pay at Venue)')}
+                <span>
+                  {orderPending
+                    ? 'Sending Order…'
+                    : restaurant.orderingMode === 'full_online_checkout'
+                      ? t('Pay Online & Place Order')
+                      : t('Place Order (Pay at Venue)')}
+                </span>
+                <span className="font-mono">
+                  <bdi dir="ltr">{totalCartAmount}</bdi> {currencyDisplay}
+                </span>
               </Button>
             </form>
           )}
         </SheetContent>
       </Sheet>
+
       <QrNfcScannerModal
         open={scannerOpen}
         onOpenChange={setScannerOpen}

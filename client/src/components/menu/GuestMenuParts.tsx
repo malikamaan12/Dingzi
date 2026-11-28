@@ -1,5 +1,5 @@
 import { useEffect, useRef, type CSSProperties, type RefObject } from 'react';
-import { Pause, Play } from 'lucide-react';
+import { Check, Pause, Play } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { CategoryVectorIcon } from '@/components/menu/CategoryVectorIcon';
 import { MENU_GROUPS, type MenuGroup } from '@/lib/menuDiscovery';
@@ -122,6 +122,10 @@ export function GuestMenuFiltersDialog({
   onReset: () => void;
 }) {
   const { t, label } = useMenuLanguage();
+  const visibleGroups = MENU_GROUPS.filter(
+    g => g.id === 'all' || available.some(item => categoryGroups.get(item.categoryId) === g.id),
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
@@ -141,63 +145,131 @@ export function GuestMenuFiltersDialog({
           <DialogTitle ref={filterTitleRef} tabIndex={-1}>
             {t('Filters')}
           </DialogTitle>
-          <DialogDescription className="sr-only">{t('Choose a menu type, category or saved items.')}</DialogDescription>
+          <DialogDescription className="sr-only">
+            {t('Choose a menu type, category or saved items.')}
+          </DialogDescription>
         </div>
-        <div className="guest-filter-scroll" role="region" aria-label={t('Filter options')} tabIndex={0}>
-          <label>
-            {t('Menu type')}
-            <select
-              aria-label={t('Menu type')}
-              value={group}
-              onChange={e => {
-                setGroup(e.target.value as MenuGroup);
-                setCategory(null);
-              }}
-            >
-              {MENU_GROUPS.filter(g => g.id === 'all' || available.some(item => categoryGroups.get(item.categoryId) === g.id)).map(g => (
-                <option key={g.id} value={g.id}>
-                  {t(g.id === 'all' ? 'Everything' : g.label)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            {t('Category')}
-            <select aria-label={t('Category')} value={category || ''} onChange={e => setCategory(e.target.value || null)}>
-              <option value="">{t('All categories')}</option>
-              {groupCategories.map(c => (
-                <option key={c.id} value={c.id}>
-                  {language === 'ar' && c.titleAr?.trim() ? c.titleAr : label(c.title)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label>
-            {t('Show')}
-            <select
-              aria-label={t('Show items')}
-              value={filter}
-              onChange={e => setFilter(e.target.value as 'all' | 'specials' | 'saved')}
-            >
-              <option value="all">{t('All menu items')}</option>
-              <option value="specials">{t("Today's specials")}</option>
-              <option value="saved">{t('Saved items')}</option>
-            </select>
-          </label>
+
+        <div className="guest-filter-scroll space-y-4" role="region" aria-label={t('Filter options')} tabIndex={0}>
+          <div className="space-y-2">
+            <span className="block text-xs font-bold text-foreground/75">{t('Show')}</span>
+            <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-[#F6F5FC] border border-[#E5E2F2]">
+              {(
+                [
+                  ['all', t('All menu items')],
+                  ['specials', t("Today's specials")],
+                  ['saved', t('Saved')],
+                ] as const
+              ).map(([val, title]) => {
+                const active = filter === val;
+                return (
+                  <button
+                    key={val}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setFilter(val)}
+                    className={`min-h-11 px-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                      active
+                        ? 'bg-primary text-primary-foreground shadow-sm'
+                        : 'text-[#17132E] hover:bg-white'
+                    }`}
+                  >
+                    {title}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <span className="block text-xs font-bold text-foreground/75">{t('Menu type')}</span>
+            <div className="flex flex-wrap gap-2">
+              {visibleGroups.map(g => {
+                const active = group === g.id;
+                return (
+                  <button
+                    key={g.id}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => {
+                      setGroup(g.id as MenuGroup);
+                      setCategory(null);
+                    }}
+                    className={`min-h-11 px-3.5 rounded-xl text-xs font-semibold border transition-colors cursor-pointer inline-flex items-center gap-1.5 ${
+                      active
+                        ? 'bg-primary text-primary-foreground border-primary shadow-sm'
+                        : 'bg-white text-[#17132E] border-[#E5E2F2] hover:bg-[#EFEAFF]'
+                    }`}
+                  >
+                    {active && <Check size={13} />}
+                    <span>{t(g.id === 'all' ? 'Everything' : g.label)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {groupCategories.length > 0 && (
+            <div className="space-y-2">
+              <span className="block text-xs font-bold text-foreground/75">{t('Category')}</span>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  aria-pressed={!category}
+                  onClick={() => setCategory(null)}
+                  className={`min-h-11 px-3 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
+                    !category
+                      ? 'bg-[#EFEAFF] text-[#4B1FE0] border-[#6236FF]'
+                      : 'bg-white text-[#17132E] border-[#E5E2F2]'
+                  }`}
+                >
+                  {t('All categories')}
+                </button>
+                {groupCategories.map(c => {
+                  const active = category === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => setCategory(c.id)}
+                      className={`min-h-11 px-3 rounded-xl text-xs font-semibold border transition-colors cursor-pointer ${
+                        active
+                          ? 'bg-[#EFEAFF] text-[#4B1FE0] border-[#6236FF]'
+                          : 'bg-white text-[#17132E] border-[#E5E2F2]'
+                      }`}
+                    >
+                      {language === 'ar' && c.titleAr?.trim() ? c.titleAr : label(c.title)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           <button
-            className="guest-panel-motion"
+            type="button"
+            className="guest-panel-motion cursor-pointer"
             onClick={motion.toggle}
             disabled={motion.reduced}
             aria-label={t(
-              motion.reduced ? 'Motion reduced by your device settings' : motion.paused ? 'Resume animations' : 'Pause animations',
+              motion.reduced
+                ? 'Motion reduced by your device settings'
+                : motion.paused
+                  ? 'Resume animations'
+                  : 'Pause animations',
             )}
           >
-            {motion.enabled ? <Pause size={15} /> : <Play size={15} />} {t(motion.enabled ? 'Animations on' : 'Animations off')}
+            {motion.enabled ? <Pause size={15} /> : <Play size={15} />}{' '}
+            {t(motion.enabled ? 'Animations on' : 'Animations off')}
           </button>
         </div>
+
         <div className="guest-panel-actions">
-          <button onClick={onReset}>{t('Reset')}</button>
-          <button onClick={() => onOpenChange(false)}>
+          <button type="button" onClick={onReset} className="cursor-pointer">
+            {t('Reset')}
+          </button>
+          <button type="button" onClick={() => onOpenChange(false)} className="cursor-pointer">
             {t(filteredCount === 1 ? 'Show {count} item' : 'Show {count} items', { count: filteredCount })}
           </button>
         </div>

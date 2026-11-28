@@ -13,6 +13,56 @@ export interface SavedGuestPass {
 
 const PASSES_STORAGE_KEY = 'dingzi-active-passes-v1';
 const PASSES_EVENT = 'dingzi:passes-updated';
+const PROFILE_STORAGE_KEY = 'dingzi-guest-profile-v1';
+
+export interface SavedGuestProfile {
+  name: string;
+  phone: string;
+  vehicleColor: string;
+  vehicleType: string;
+  licensePlate: string;
+}
+
+export function readGuestProfile(): SavedGuestProfile {
+  const empty: SavedGuestProfile = {
+    name: '',
+    phone: '',
+    vehicleColor: '',
+    vehicleType: '',
+    licensePlate: '',
+  };
+  if (typeof window === 'undefined') return empty;
+  try {
+    const raw = JSON.parse(localStorage.getItem(PROFILE_STORAGE_KEY) || '{}');
+    if (!raw || typeof raw !== 'object') return empty;
+    return {
+      name: typeof raw.name === 'string' ? raw.name : '',
+      phone: typeof raw.phone === 'string' ? raw.phone : '',
+      vehicleColor: typeof raw.vehicleColor === 'string' ? raw.vehicleColor : '',
+      vehicleType: typeof raw.vehicleType === 'string' ? raw.vehicleType : '',
+      licensePlate: typeof raw.licensePlate === 'string' ? raw.licensePlate : '',
+    };
+  } catch {
+    return empty;
+  }
+}
+
+export function saveGuestProfile(patch: Partial<SavedGuestProfile>) {
+  if (typeof window === 'undefined') return;
+  try {
+    const prev = readGuestProfile();
+    const next: SavedGuestProfile = {
+      name: patch.name !== undefined ? patch.name.trim() : prev.name,
+      phone: patch.phone !== undefined ? patch.phone.trim() : prev.phone,
+      vehicleColor: patch.vehicleColor !== undefined ? patch.vehicleColor : prev.vehicleColor,
+      vehicleType: patch.vehicleType !== undefined ? patch.vehicleType : prev.vehicleType,
+      licensePlate: patch.licensePlate !== undefined ? patch.licensePlate.trim() : prev.licensePlate,
+    };
+    localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    /* Private browsing works without storage */
+  }
+}
 
 function readAllPasses(): SavedGuestPass[] {
   if (typeof window === 'undefined') return [];

@@ -136,26 +136,30 @@ export function GuestItemDetailDialog({
                 <MenuImage item={activeItem} category={activeCategoryTitle} priority />
               </div>
               <div className="guest-detail-heading-copy">
-                <p className="guest-kicker">{activeCategoryLabel}</p>
-                <DialogTitle ref={detailTitleRef} tabIndex={-1} className="guest-detail-title">
+                <DialogTitle ref={detailTitleRef} tabIndex={-1} className="guest-detail-title !mt-0">
                   <bdi>{localizedEntityText(language, activeItem.name, activeItem.nameAr, label)}</bdi>
                 </DialogTitle>
-                <div className="guest-detail-price">
-                  {activeItem.hasMultiplePricing ? (
-                    activeVariant ? (
-                      <Price
-                        price={activeVariant.price}
-                        discount={activeVariant.discount}
-                        currency={restaurant.currency}
-                        unit={activeVariant.unit}
-                        currencySymbolAr={currencySymbolAr}
-                      />
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="guest-detail-price">
+                    {activeItem.hasMultiplePricing ? (
+                      activeVariant ? (
+                        <Price
+                          price={activeVariant.price}
+                          discount={activeVariant.discount}
+                          currency={restaurant.currency}
+                          unit={activeVariant.unit}
+                          currencySymbolAr={currencySymbolAr}
+                        />
+                      ) : (
+                        <span>{t('Ask our team for pricing')}</span>
+                      )
                     ) : (
-                      <span>{t('Ask our team for pricing')}</span>
-                    )
-                  ) : (
-                    renderItemPricing(activeItem)
-                  )}
+                      renderItemPricing(activeItem)
+                    )}
+                  </div>
+                  <span className="px-2 py-0.5 rounded-md bg-[#F6F5FC] border border-[#E5E2F2] text-[10px] font-semibold text-[#57507A]">
+                    <bdi>{activeCategoryLabel}</bdi>
+                  </span>
                 </div>
               </div>
             </div>
@@ -171,7 +175,12 @@ export function GuestItemDetailDialog({
               >
                 <bdi>
                   {activeItem.description || activeItem.descriptionAr
-                    ? localizedEntityText(language, activeItem.description || activeItem.descriptionAr, activeItem.descriptionAr, label)
+                    ? localizedEntityText(
+                        language,
+                        activeItem.description || activeItem.descriptionAr,
+                        activeItem.descriptionAr,
+                        label,
+                      )
                     : t('Menu item details and pricing.')}
                 </bdi>
               </DialogDescription>
@@ -195,7 +204,7 @@ export function GuestItemDetailDialog({
                 <fieldset className="guest-option-picker">
                   <legend>{t('CHOOSE YOUR OPTION')}</legend>
                   {activeOptions.map(option => (
-                    <label key={option.id} className={activeVariant?.id === option.id ? 'selected' : ''}>
+                    <label key={option.id} className={'cursor-pointer ' + (activeVariant?.id === option.id ? 'selected' : '')}>
                       <input
                         type="radio"
                         name="menu-price-option"
@@ -245,33 +254,7 @@ export function GuestItemDetailDialog({
               )}
 
               {orderingEnabled && (
-                <div className="mt-4 space-y-3 pt-3 border-t border-[#E5E2F2]">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs font-semibold text-[#17132E]">{t('Quantity')}</span>
-                    <div className="inline-flex items-center gap-2 rounded-xl border border-[#E5E2F2] bg-[#F6F5FC] p-1">
-                      <button
-                        type="button"
-                        aria-label="Decrease item quantity"
-                        disabled={itemQty <= 1}
-                        onClick={() => setItemQty(q => Math.max(1, q - 1))}
-                        className="w-11 h-11 rounded-xl bg-white border border-[#E5E2F2] grid place-items-center disabled:opacity-40 cursor-pointer"
-                      >
-                        <Minus size={15} />
-                      </button>
-                      <span className="w-8 text-center font-mono font-bold text-sm" data-testid="text-customizer-qty">
-                        {itemQty}
-                      </span>
-                      <button
-                        type="button"
-                        aria-label="Increase item quantity"
-                        disabled={itemQty >= 25}
-                        onClick={() => setItemQty(q => Math.min(25, q + 1))}
-                        className="w-11 h-11 rounded-xl bg-white border border-[#E5E2F2] grid place-items-center disabled:opacity-40 cursor-pointer"
-                      >
-                        <Plus size={15} />
-                      </button>
-                    </div>
-                  </div>
+                <div className="mt-4 space-y-2.5 pt-3 border-t border-[#E5E2F2]">
                   <input
                     type="text"
                     maxLength={240}
@@ -325,93 +308,154 @@ export function GuestItemDetailDialog({
             </div>
 
             <footer className="guest-selection-footer">
-              <div className="guest-selection-heading">
-                <span>{t('Your selection')}</span>
-                <button
-                  type="button"
-                  className={'guest-detail-save ' + (saved.includes(activeItem.id) ? 'is-saved' : '')}
-                  aria-label={t(saved.includes(activeItem.id) ? 'Saved to favorites' : 'Save to favorites')}
-                  aria-pressed={saved.includes(activeItem.id)}
-                  onClick={() => toggleSaved(activeItem.id)}
+              {(activeItem.hasMultiplePricing || activeGroups.length > 0) && (
+                <div
+                  className="guest-selected-choices"
+                  role="region"
+                  aria-label={t('Selected variant and toppings')}
+                  tabIndex={0}
                 >
-                  <Heart size={19} />
-                </button>
-              </div>
-              <div className="guest-selected-choices" role="region" aria-label={t('Selected variant and toppings')} tabIndex={0}>
-                {activeItem.hasMultiplePricing && activeVariant && (
-                  <span className="guest-selected-variant">
-                    <Check size={12} />
-                    <bdi>{localizedEntityText(language, activeVariant.label, activeVariant.labelAr, label)}</bdi>
-                  </span>
-                )}
-                {selectedExtras.map(option => (
-                  <span className="guest-selected-extra" key={option.id}>
-                    <bdi>{language === 'ar' && option.labelAr?.trim() ? option.labelAr : label(option.label)}</bdi>
-                    {Number(option.price) > 0 && (
-                      <small>
-                        <bdi dir="ltr">+{Number(option.price).toFixed(2)}</bdi>
-                      </small>
-                    )}
-                  </span>
-                ))}
-                {!selectedExtras.length && !!activeGroups.length && <span className="guest-no-extras">{t('No extras selected')}</span>}
-                {!activeItem.hasMultiplePricing && !activeGroups.length && <span className="guest-no-extras">{label(activeItem.unit)}</span>}
-              </div>
+                  {activeItem.hasMultiplePricing && activeVariant && (
+                    <span className="guest-selected-variant">
+                      <Check size={12} />
+                      <bdi>{localizedEntityText(language, activeVariant.label, activeVariant.labelAr, label)}</bdi>
+                    </span>
+                  )}
+                  {selectedExtras.map(option => (
+                    <span className="guest-selected-extra" key={option.id}>
+                      <bdi>{language === 'ar' && option.labelAr?.trim() ? option.labelAr : label(option.label)}</bdi>
+                      {Number(option.price) > 0 && (
+                        <small>
+                          <bdi dir="ltr">+{Number(option.price).toFixed(2)}</bdi>
+                        </small>
+                      )}
+                    </span>
+                  ))}
+                  {!selectedExtras.length && !!activeGroups.length && (
+                    <span className="guest-no-extras">{t('No extras selected')}</span>
+                  )}
+                </div>
+              )}
+
               {missingChoices.length > 0 && (
-                <p className="guest-selection-required" role="status">
+                <p className="guest-selection-required font-semibold" role="status">
                   {t('Choose required options.')}
                 </p>
               )}
-              <div className="guest-selection-total" role="status" aria-live="polite" aria-atomic="true">
-                <span>{t('Estimated total')}</span>
-                {!activeItem.hasMultiplePricing || activeVariant ? (
-                  <strong>
-                    <bdi dir="ltr">{orderingEnabled ? activeMultipliedTotal : activeUnitTotal}</bdi> <small>{currencyLabel}</small>
-                  </strong>
-                ) : (
-                  <strong className="guest-selection-no-price">{t('Ask our team for pricing')}</strong>
-                )}
-              </div>
 
-              {orderingEnabled && (!activeItem.hasMultiplePricing || activeVariant) && (
-                <button
-                  type="button"
-                  disabled={missingChoices.length > 0 || unavailableRequired}
-                  data-testid="button-add-item-to-cart"
-                  onClick={() => {
-                    const trimmedNote = itemNote.trim();
-                    const key = `${activeItem.id}:${activeVariant?.id || 'base'}:${selectedExtras
-                      .map(e => e.id)
-                      .sort()
-                      .join(',')}:${trimmedNote}`;
-                    setCart(prev => {
-                      const existing = prev.find(i => i.key === key);
-                      if (existing) {
-                        return prev.map(i => (i.key === key ? { ...i, quantity: i.quantity + itemQty } : i));
-                      }
-                      return [
-                        ...prev,
-                        {
-                          key,
-                          menuItemId: activeItem.id,
-                          name: activeItem.name,
-                          quantity: itemQty,
-                          variantId: activeVariant?.id || null,
-                          variantLabel: activeVariant?.label || null,
-                          modifiers: selectedModifiers,
-                          modifierSummary: selectedExtras.map(o => (language === 'ar' && o.labelAr ? o.labelAr : o.label)),
-                          unitTotal: activeUnitTotal,
-                          ...(trimmedNote ? { notes: trimmedNote } : {}),
-                        },
-                      ];
-                    });
-                    onOpenChange(false);
-                  }}
-                  className="mt-3 w-full min-h-11 rounded-xl bg-primary hover:bg-[#4B1FE0] text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer transition-colors"
-                >
-                  <ShoppingBag size={16} />
-                  <span>{itemQty > 1 ? t('Add {qty} to Order', { qty: itemQty }) : t('Add to Order')}</span>
-                </button>
+              {orderingEnabled && (!activeItem.hasMultiplePricing || activeVariant) ? (
+                <div className="flex items-center gap-2.5 pt-1.5">
+                  <button
+                    type="button"
+                    className={'guest-detail-save shrink-0 cursor-pointer ' + (saved.includes(activeItem.id) ? 'is-saved' : '')}
+                    aria-label={t(saved.includes(activeItem.id) ? 'Saved to favorites' : 'Save to favorites')}
+                    aria-pressed={saved.includes(activeItem.id)}
+                    onClick={() => toggleSaved(activeItem.id)}
+                  >
+                    <Heart size={18} />
+                  </button>
+
+                  {/* Unified Quantity Stepper */}
+                  <div className="inline-flex items-center gap-1 rounded-2xl border border-[#E5E2F2] bg-[#F6F5FC] p-1 shrink-0">
+                    <button
+                      type="button"
+                      aria-label="Decrease item quantity"
+                      disabled={itemQty <= 1}
+                      onClick={() => setItemQty(q => Math.max(1, q - 1))}
+                      className="w-10 h-10 rounded-xl bg-white border border-[#E5E2F2] grid place-items-center disabled:opacity-40 cursor-pointer"
+                    >
+                      <Minus size={15} />
+                    </button>
+                    <span className="w-7 text-center font-mono font-bold text-sm" data-testid="text-customizer-qty">
+                      {itemQty}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label="Increase item quantity"
+                      disabled={itemQty >= 25}
+                      onClick={() => setItemQty(q => Math.min(25, q + 1))}
+                      className="w-10 h-10 rounded-xl bg-white border border-[#E5E2F2] grid place-items-center disabled:opacity-40 cursor-pointer"
+                    >
+                      <Plus size={15} />
+                    </button>
+                  </div>
+
+                  {/* Single High-Craft Primary Add-to-Bag Button with Live Total */}
+                  <button
+                    type="button"
+                    disabled={missingChoices.length > 0 || unavailableRequired}
+                    data-testid="button-add-item-to-cart"
+                    onClick={() => {
+                      const trimmedNote = itemNote.trim();
+                      const key = `${activeItem.id}:${activeVariant?.id || 'base'}:${selectedExtras
+                        .map(e => e.id)
+                        .sort()
+                        .join(',')}:${trimmedNote}`;
+                      setCart(prev => {
+                        const existing = prev.find(i => i.key === key);
+                        if (existing) {
+                          return prev.map(i => (i.key === key ? { ...i, quantity: i.quantity + itemQty } : i));
+                        }
+                        return [
+                          ...prev,
+                          {
+                            key,
+                            menuItemId: activeItem.id,
+                            name: activeItem.name,
+                            quantity: itemQty,
+                            variantId: activeVariant?.id || null,
+                            variantLabel: activeVariant?.label || null,
+                            modifiers: selectedModifiers,
+                            modifierSummary: selectedExtras.map(o =>
+                              language === 'ar' && o.labelAr ? o.labelAr : o.label,
+                            ),
+                            unitTotal: activeUnitTotal,
+                            ...(trimmedNote ? { notes: trimmedNote } : {}),
+                          },
+                        ];
+                      });
+                      onOpenChange(false);
+                    }}
+                    className="flex-1 min-h-12 px-4 rounded-2xl bg-primary hover:bg-[#4B1FE0] text-primary-foreground font-bold text-sm flex items-center justify-between gap-2 shadow-md disabled:opacity-50 cursor-pointer transition-all active:scale-[0.99]"
+                  >
+                    <span className="inline-flex items-center gap-1.5 truncate">
+                      <ShoppingBag size={16} className="shrink-0" />
+                      <span className="truncate">
+                        {itemQty > 1 ? t('Add {qty} to Order', { qty: itemQty }) : t('Add to Order')}
+                      </span>
+                    </span>
+                    <span
+                      className="font-mono font-extrabold shrink-0"
+                      role="status"
+                      aria-live="polite"
+                      aria-atomic="true"
+                    >
+                      <bdi dir="ltr">{activeMultipliedTotal}</bdi> {currencyLabel}
+                    </span>
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    className={'guest-detail-save shrink-0 cursor-pointer ' + (saved.includes(activeItem.id) ? 'is-saved' : '')}
+                    aria-label={t(saved.includes(activeItem.id) ? 'Saved to favorites' : 'Save to favorites')}
+                    aria-pressed={saved.includes(activeItem.id)}
+                    onClick={() => toggleSaved(activeItem.id)}
+                  >
+                    <Heart size={18} />
+                  </button>
+                  <div className="guest-selection-total flex-1 !mt-0" role="status" aria-live="polite" aria-atomic="true">
+                    <span>{t('Estimated total')}</span>
+                    {!activeItem.hasMultiplePricing || activeVariant ? (
+                      <strong>
+                        <bdi dir="ltr">{activeUnitTotal}</bdi> <small>{currencyLabel}</small>
+                      </strong>
+                    ) : (
+                      <strong className="guest-selection-no-price">{t('Ask our team for pricing')}</strong>
+                    )}
+                  </div>
+                </div>
               )}
             </footer>
           </>

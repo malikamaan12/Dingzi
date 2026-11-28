@@ -72,7 +72,7 @@ export function VenueBySlugEntry() {
     return (
       <EntryShell
         errorTitle="Venue Link Not Found"
-        errorBody="This venue link may have changed or is currently offline. Explore active Dingzi venues below."
+        errorBody="This venue link may have changed or is currently offline. Explore active dingzi venues below."
       />
     );
   }

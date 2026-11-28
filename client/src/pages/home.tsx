@@ -2,14 +2,14 @@ import { useMemo, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
-  ArrowUpRight,
+  ArrowRight,
   Bell,
   CalendarDays,
   Car,
   Coffee,
   QrCode,
   Search,
-  Truck,
+  ShoppingBag,
   Users,
   X,
 } from 'lucide-react';
@@ -125,6 +125,16 @@ function HomeDirectoryContent() {
             <DingziWordmark tone="light" />
           </Link>
           <div className="flex items-center gap-2 shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setScannerOpen(true)}
+              className="min-h-11 rounded-xl border-[#E5E2F2] bg-[#F6F5FC] text-[#17132E] hover:bg-[#EFEAFF] hover:text-[#4B1FE0] font-semibold cursor-pointer gap-1.5"
+            >
+              <QrCode className="w-4 h-4 text-[#6236FF]" />
+              <span className="hidden min-[400px]:inline">{t('Scan QR / NFC')}</span>
+            </Button>
             <MenuLanguageSwitch />
             {showStaffLink && (
               <Link
@@ -138,19 +148,15 @@ function HomeDirectoryContent() {
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-4 sm:px-6 py-6 sm:py-10 md:py-14 space-y-7 sm:space-y-8">
+      <main className="mx-auto max-w-6xl px-4 sm:px-6 py-6 sm:py-10 space-y-8">
         <ActiveGuestPassesBar />
-        <PwaInstallBanner compact />
 
-        {/* Hero + Instant Virtual Pager Lookup */}
-        <section className="grid lg:grid-cols-12 gap-5 sm:gap-6 items-center">
-          <div className="lg:col-span-7 space-y-3.5 sm:space-y-4">
-            <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#EFEAFF] text-[#4B1FE0] text-xs font-bold">
-              {language === 'ar' ? platformCfg.directoryBadgeAr : platformCfg.directoryBadgeEn}
-            </span>
+        {/* Clean Hero + Midnight Indigo Live Pager Dock */}
+        <section className="grid lg:grid-cols-12 gap-6 items-center">
+          <div className="lg:col-span-7 space-y-3.5">
             <h1
-              style={{ letterSpacing: dir === 'rtl' ? '0' : '-0.025em' }}
-              className="text-3xl min-[400px]:text-4xl sm:text-6xl font-display font-extrabold leading-[1.12] text-balance text-[#17132E]"
+              style={{ letterSpacing: dir === 'rtl' ? '0' : '-0.03em' }}
+              className="text-3xl min-[400px]:text-4xl sm:text-5xl lg:text-6xl font-display font-extrabold leading-[1.1] text-balance text-[#17132E]"
             >
               {language === 'ar' ? platformCfg.heroTitleLine1Ar : platformCfg.heroTitleLine1En}
               <br />
@@ -161,6 +167,12 @@ function HomeDirectoryContent() {
             <p className="text-[#57507A] text-sm sm:text-lg leading-relaxed max-w-xl">
               {language === 'ar' ? platformCfg.heroSubtitleAr : platformCfg.heroSubtitleEn}
             </p>
+            <div className="pt-1">
+              <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-[#E5E2F2] text-[#4B1FE0] text-xs font-bold">
+                <span className="w-2 h-2 rounded-full bg-[#6236FF]" aria-hidden="true" />
+                <span>{language === 'ar' ? platformCfg.directoryBadgeAr : platformCfg.directoryBadgeEn}</span>
+              </span>
+            </div>
           </div>
 
           {cafes && cafes.length > 0 && (
@@ -170,17 +182,17 @@ function HomeDirectoryContent() {
                 if (pagerCode.trim()) lookupPager.mutate();
               }}
               data-testid="form-home-pager-lookup"
-              className="lg:col-span-5 rounded-3xl border border-[#E5E2F2] bg-white p-4 sm:p-6 shadow-sm space-y-3"
+              className="lg:col-span-5 rounded-3xl bg-[#17132E] text-white border border-[#241E42] p-5 sm:p-6 shadow-xl space-y-3.5"
             >
-              <div className="flex items-center gap-2.5">
-                <span className="w-10 h-10 rounded-xl bg-[#EFEAFF] text-[#6236FF] grid place-items-center shrink-0">
+              <div className="flex items-center gap-3">
+                <span className="w-10 h-10 rounded-xl bg-[#C8FF42] text-[#17132E] grid place-items-center shrink-0">
                   <Bell className="w-5 h-5" aria-hidden="true" />
                 </span>
                 <div className="min-w-0">
-                  <h2 className="font-bold text-base text-[#17132E]">
+                  <h2 className="font-bold text-base text-white">
                     {language === 'ar' ? platformCfg.pagerCardTitleAr : platformCfg.pagerCardTitleEn}
                   </h2>
-                  <p className="text-xs text-[#57507A]">
+                  <p className="text-xs text-white/70">
                     {language === 'ar' ? platformCfg.pagerCardSubtitleAr : platformCfg.pagerCardSubtitleEn}
                   </p>
                 </div>
@@ -191,7 +203,7 @@ function HomeDirectoryContent() {
                   aria-label={t('Select venue')}
                   value={selectedVenueId || cafes[0]?.id || ''}
                   onChange={e => setSelectedVenueId(e.target.value)}
-                  className="min-h-11 rounded-xl border border-[#E5E2F2] bg-[#F6F5FC] px-3 text-base sm:text-sm font-medium text-[#17132E]"
+                  className="min-h-11 rounded-xl border border-white/15 bg-[#241E42] px-3 text-base sm:text-sm font-medium text-white"
                 >
                   {cafes.map(c => (
                     <option key={c.id} value={c.id}>
@@ -204,12 +216,12 @@ function HomeDirectoryContent() {
                   onChange={e => setPagerCode(e.target.value)}
                   placeholder={t('Enter receipt or pager # (e.g. A-001)')}
                   data-testid="input-home-pager-code"
-                  className="min-h-11 rounded-xl border-[#E5E2F2] bg-[#F6F5FC] font-mono uppercase placeholder:font-sans placeholder:normal-case"
+                  className="min-h-11 rounded-xl border-white/15 bg-[#241E42] text-white font-mono uppercase placeholder:text-white/55 placeholder:font-sans placeholder:normal-case"
                   required
                 />
               </div>
 
-              {pagerError && <p className="text-xs text-destructive font-medium">{pagerError}</p>}
+              {pagerError && <p className="text-xs text-[#FF4D6D] font-semibold">{pagerError}</p>}
 
               <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-2">
                 <Button
@@ -225,9 +237,9 @@ function HomeDirectoryContent() {
                   variant="outline"
                   onClick={() => setScannerOpen(true)}
                   data-testid="button-home-scan-qr-nfc"
-                  className="w-full min-h-11 rounded-xl border-[#E5E2F2] text-[#4B1FE0] hover:bg-[#EFEAFF] font-semibold cursor-pointer gap-2"
+                  className="w-full min-h-11 rounded-xl border-white/20 bg-[#241E42] text-white hover:bg-[#312959] font-semibold cursor-pointer gap-2"
                 >
-                  <QrCode className="w-4 h-4" />
+                  <QrCode className="w-4 h-4 text-[#C8FF42]" />
                   <span>{t('Scan QR / NFC')}</span>
                 </Button>
               </div>
@@ -236,10 +248,13 @@ function HomeDirectoryContent() {
         </section>
 
         {/* Search & Capability Filter Bar */}
-        <section className="space-y-3">
+        <section className="space-y-4">
           <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
             <div className="relative flex-1 sm:max-w-md">
-              <Search className="w-4 h-4 text-[#57507A] absolute top-3.5 start-3.5 pointer-events-none" aria-hidden="true" />
+              <Search
+                className="w-4 h-4 text-[#57507A] absolute top-3.5 start-3.5 pointer-events-none"
+                aria-hidden="true"
+              />
               <input
                 type="search"
                 value={search}
@@ -261,7 +276,11 @@ function HomeDirectoryContent() {
               )}
             </div>
 
-            <div className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 pb-1 snap-x" role="group" aria-label="Filter venues by capability">
+            <div
+              className="flex gap-2 overflow-x-auto no-scrollbar -mx-4 px-4 sm:mx-0 sm:px-0 pb-1 snap-x"
+              role="group"
+              aria-label="Filter venues by capability"
+            >
               {filterOptions.map(opt => {
                 const active = capability === opt.id;
                 return (
@@ -283,72 +302,113 @@ function HomeDirectoryContent() {
             </div>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 pt-1 sm:pt-2">
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {isLoading ? (
-              <p role="status" className="text-sm text-[#57507A]">Loading venues…</p>
+              <p role="status" className="text-sm text-[#57507A]">
+                Loading venues…
+              </p>
             ) : isError ? (
-              <p role="alert" className="text-sm text-destructive">Could not load venues. Please refresh.</p>
+              <p role="alert" className="text-sm text-destructive">
+                Could not load venues. Please refresh.
+              </p>
             ) : filteredCafes.length ? (
-              filteredCafes.map(cafe => (
-                <Link
-                  key={cafe.id}
-                  href={cafe.slug ? `/v/${cafe.slug}` : `/menu/${cafe.id}`}
-                  style={cafeThemeStyle(cafe.theme, cafe.brandAccentHex)}
-                  className="group block rounded-3xl border border-[#E5E2F2] bg-white text-[#17132E] p-5 sm:p-7 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl active:scale-[0.99] cursor-pointer"
-                >
-                  <div className="flex justify-between items-start">
-                    {cafe.logoUrl ? (
-                      <img src={cafe.logoUrl} alt={`${label(cafe.name)} logo`} className="h-14 w-28 rounded-xl object-contain" />
-                    ) : (
-                      <span className="w-12 h-12 rounded-2xl bg-primary/10 text-primary grid place-items-center">
-                        <Coffee className="h-6 w-6" aria-hidden="true" />
-                      </span>
-                    )}
-                    <ArrowUpRight className="text-primary transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" aria-hidden="true" />
-                  </div>
+              filteredCafes.map(cafe => {
+                const baseHref = cafe.slug ? `/v/${cafe.slug}` : `/menu/${cafe.id}`;
+                const orderAhead = Boolean(cafe.orderingMode && cafe.orderingMode !== 'browse_and_pager');
+                return (
+                  <article
+                    key={cafe.id}
+                    style={cafeThemeStyle(cafe.theme, cafe.brandAccentHex)}
+                    className="group rounded-3xl border border-[#E5E2F2] bg-white text-[#17132E] overflow-hidden flex flex-col justify-between transition-all duration-200 hover:-translate-y-0.5 hover:shadow-xl"
+                  >
+                    <Link href={baseHref} className="block p-5 sm:p-6 cursor-pointer flex-1">
+                      <div className="flex items-start justify-between gap-3">
+                        {cafe.logoUrl ? (
+                          <img
+                            src={cafe.logoUrl}
+                            alt={`${label(cafe.name)} logo`}
+                            className="h-12 w-24 rounded-xl object-contain object-left rtl:object-right"
+                          />
+                        ) : (
+                          <span className="w-12 h-12 rounded-2xl bg-primary/12 text-primary grid place-items-center">
+                            <Coffee className="h-6 w-6" aria-hidden="true" />
+                          </span>
+                        )}
 
-                  <h2 className="text-2xl font-display font-bold mt-5 text-[#17132E]">
-                    {localizedEntityText(language, cafe.name, cafe.nameAr, label)}
-                  </h2>
-                  <p className="text-[#57507A] text-sm mt-1">
-                    {localizedEntityText(
-                      language,
-                      cafe.cuisineType || (language === 'ar' ? 'قهوة مختصة وضيافة عصرية' : 'Specialty coffee & hospitality'),
-                      cafe.cuisineTypeAr,
-                    )}
-                  </p>
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#EFEAFF] text-[#4B1FE0]">
+                          {orderAhead ? (
+                            <>
+                              <ShoppingBag className="w-3 h-3" aria-hidden="true" />
+                              <span>{t('Order Ahead')}</span>
+                            </>
+                          ) : (
+                            <>
+                              <Bell className="w-3 h-3" aria-hidden="true" />
+                              <span>{t('Virtual Pager')}</span>
+                            </>
+                          )}
+                        </span>
+                      </div>
 
-                  <div className="flex flex-wrap gap-1.5 mt-5 text-[11px] font-semibold">
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F6F5FC] text-[#17132E] border border-[#E5E2F2]">
-                      <Bell className="w-3 h-3 text-primary" aria-hidden="true" /> {t('Virtual Pager')}
-                    </span>
-                    {cafe.reservationsEnabled && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F6F5FC] text-[#17132E] border border-[#E5E2F2]">
-                        <CalendarDays className="w-3 h-3 text-primary" aria-hidden="true" /> {t('Tables')}
-                      </span>
-                    )}
-                    {cafe.waitlistEnabled && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F6F5FC] text-[#17132E] border border-[#E5E2F2]">
-                        <Users className="w-3 h-3 text-primary" aria-hidden="true" /> {t('Walk-In Waitlist')}
-                      </span>
-                    )}
-                    {cafe.driveThruEnabled && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F6F5FC] text-[#17132E] border border-[#E5E2F2]">
-                        <Car className="w-3 h-3 text-primary" aria-hidden="true" /> {t('Curbside')}
-                      </span>
-                    )}
-                    {cafe.orderingMode && cafe.orderingMode !== 'browse_and_pager' && (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#EFEAFF] text-[#4B1FE0]">
-                        <Truck className="w-3 h-3" aria-hidden="true" /> {t('Order Ahead')}
-                      </span>
-                    )}
-                  </div>
+                      <h2 className="text-xl sm:text-2xl font-display font-bold mt-4 text-[#17132E] group-hover:text-[#4B1FE0] transition-colors">
+                        {localizedEntityText(language, cafe.name, cafe.nameAr, label)}
+                      </h2>
+                      <p className="text-[#57507A] text-sm mt-1 line-clamp-2">
+                        {localizedEntityText(
+                          language,
+                          cafe.cuisineType ||
+                            (language === 'ar' ? 'قهوة مختصة وضيافة عصرية' : 'Specialty coffee & hospitality'),
+                          cafe.cuisineTypeAr,
+                        )}
+                      </p>
 
-                  <span className="inline-block mt-6 text-sm font-semibold text-[#4B1FE0] group-hover:underline">
-                    {t('Open venue menu →')}
-                  </span>
-                </Link>
-              ))
+                      <div className="flex flex-wrap gap-1.5 mt-4 text-[11px] font-medium text-[#57507A]">
+                        {cafe.reservationsEnabled && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F6F5FC] border border-[#E5E2F2]">
+                            <CalendarDays className="w-3 h-3 text-primary" aria-hidden="true" />
+                            <span>{t('Tables')}</span>
+                          </span>
+                        )}
+                        {cafe.waitlistEnabled && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F6F5FC] border border-[#E5E2F2]">
+                            <Users className="w-3 h-3 text-primary" aria-hidden="true" />
+                            <span>{t('Walk-In Waitlist')}</span>
+                          </span>
+                        )}
+                        {cafe.driveThruEnabled && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#F6F5FC] border border-[#E5E2F2]">
+                            <Car className="w-3 h-3 text-primary" aria-hidden="true" />
+                            <span>{t('Curbside')}</span>
+                          </span>
+                        )}
+                      </div>
+                    </Link>
+
+                    <div className="px-5 sm:px-6 pb-5 pt-3 border-t border-[#E5E2F2]/70 flex items-center justify-between gap-2">
+                      <Link
+                        href={baseHref}
+                        className="inline-flex items-center gap-1.5 min-h-11 px-4 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:opacity-95 transition-opacity cursor-pointer"
+                      >
+                        <span>{t('Explore the menu')}</span>
+                        <ArrowRight className="w-3.5 h-3.5 rtl:rotate-180" aria-hidden="true" />
+                      </Link>
+
+                      <div className="flex items-center gap-1.5">
+                        {cafe.reservationsEnabled && (
+                          <Link
+                            href={`${baseHref}?action=reserve`}
+                            aria-label={`Book table at ${cafe.name}`}
+                            className="min-h-11 px-3 rounded-xl border border-[#E5E2F2] bg-[#F6F5FC] text-[#17132E] hover:bg-[#EFEAFF] hover:text-[#4B1FE0] text-xs font-semibold inline-flex items-center gap-1 transition-colors cursor-pointer"
+                          >
+                            <CalendarDays className="w-3.5 h-3.5" aria-hidden="true" />
+                            <span>Book</span>
+                          </Link>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })
             ) : (
               <div className="col-span-full rounded-2xl border border-[#E5E2F2] bg-white p-8 text-sm text-[#57507A] flex items-center justify-between gap-4">
                 <span>No venues match your current search or filter.</span>
@@ -360,7 +420,7 @@ function HomeDirectoryContent() {
                       setSearch('');
                       setCapability('all');
                     }}
-                    className="cursor-pointer"
+                    className="cursor-pointer rounded-xl"
                   >
                     {t('Reset')}
                   </Button>
@@ -369,6 +429,8 @@ function HomeDirectoryContent() {
             )}
           </div>
         </section>
+
+        <PwaInstallBanner compact />
       </main>
 
       <footer
@@ -377,11 +439,15 @@ function HomeDirectoryContent() {
       >
         <span>{language === 'ar' ? platformCfg.footerTextAr : platformCfg.footerTextEn}</span>
         {showStaffLink && (
-          <Link href="/login" className="min-h-11 inline-flex items-center text-[#4B1FE0] font-semibold hover:underline cursor-pointer">
+          <Link
+            href="/login"
+            className="min-h-11 inline-flex items-center text-[#4B1FE0] font-semibold hover:underline cursor-pointer"
+          >
             Staff &amp; Super-Admin Sign In
           </Link>
         )}
       </footer>
+
       <QrNfcScannerModal
         open={scannerOpen}
         onOpenChange={setScannerOpen}

@@ -7,6 +7,7 @@ import {
   BellRing,
   Car,
   CheckCircle2,
+  ChevronDown,
   Clock,
   Coffee,
   Download,
@@ -32,7 +33,7 @@ import {
   subscribeRingingState,
 } from '@/lib/lockScreenRinger';
 import { subscribeGuestLockScreenPush } from '@/lib/mobileBridge';
-import { dismissGuestPass, saveGuestPass } from '@/lib/guestSession';
+import { dismissGuestPass, readGuestProfile, saveGuestPass, saveGuestProfile } from '@/lib/guestSession';
 import { PwaInstallBanner } from '@/components/mobile/PwaInstallBanner';
 import { DingziMark } from '@/components/staff-brand';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
@@ -55,7 +56,11 @@ function BeanCatcherMiniGame() {
           <Gamepad2 className="w-4 h-4 text-primary" aria-hidden="true" />
           <span>Barista Reflex Mini-Game</span>
         </div>
-        <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-primary/10 text-primary" role="status" aria-atomic="true">
+        <span
+          className="text-xs font-bold px-2.5 py-1 rounded-full bg-primary/10 text-primary"
+          role="status"
+          aria-atomic="true"
+        >
           Score: {score}
         </span>
       </div>
@@ -85,7 +90,7 @@ function BeanCatcherMiniGame() {
         })}
       </div>
       <p className="text-xs text-center text-muted-foreground mt-2">
-        Tap the espresso cup while your order brews — lock-screen ringing stays armed!
+        Tap the espresso cup while your order brews — lock-screen ringing stays armed.
       </p>
     </div>
   );
@@ -105,6 +110,7 @@ function VirtualPagerContent() {
   const { language, dir, t, label } = useMenuLanguage();
   const isSilentPreview =
     typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('preview') === '1';
+  const savedProfile = readGuestProfile();
 
   const [alertsArmed, setAlertsArmed] = useState(false);
   const [claimedOnce, setClaimedOnce] = useState(false);
@@ -112,15 +118,24 @@ function VirtualPagerContent() {
   const [pushNote, setPushNote] = useState('');
   const [isRinging, setIsRinging] = useState(false);
   const [showGame, setShowGame] = useState(false);
+  const [curbsideExpanded, setCurbsideExpanded] = useState(false);
   const [rating, setRating] = useState<number>(0);
   const [comment, setComment] = useState('');
-  const [feedbackSaved, setFeedbackSaved] = useState<{ promptGoogleReview: boolean; googleMapsReviewUrl: string | null } | null>(null);
+  const [feedbackSaved, setFeedbackSaved] = useState<{
+    promptGoogleReview: boolean;
+    googleMapsReviewUrl: string | null;
+  } | null>(null);
   const [bayId, setBayId] = useState('');
-  const [vehicleColor, setVehicleColor] = useState('White');
-  const [vehicleType, setVehicleType] = useState<string>('SUV');
-  const [licensePlate, setLicensePlate] = useState('');
+  const [vehicleColor, setVehicleColor] = useState(savedProfile.vehicleColor || 'White');
+  const [vehicleType, setVehicleType] = useState<string>(savedProfile.vehicleType || 'SUV');
+  const [licensePlate, setLicensePlate] = useState(savedProfile.licensePlate);
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => subscribeRingingState(setIsRinging), []);
+  useEffect(() => {
+    const id = window.setInterval(() => setNowMs(Date.now()), 15_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const pagerQuery = useQuery<any>({
     enabled: Boolean(token),
@@ -211,9 +226,14 @@ function VirtualPagerContent() {
 
   const checkinMutation = useMutation({
     mutationFn: async (etaStatus: '5_mins_away' | 'arrived') => {
+      saveGuestProfile({
+        vehicleColor,
+        vehicleType,
+        ...(licensePlate.trim() ? { licensePlate } : {}),
+      });
       const res = await apiRequest('POST', '/api/public/curbside/checkin', {
         trackingToken: token,
-        bayId,
+        bayId: bayId || ticket?.bayId,
         etaStatus,
         vehicleColor,
         vehicleType,
@@ -237,10 +257,10 @@ function VirtualPagerContent() {
 
   if (pagerQuery.isLoading) {
     return (
-      <div className="min-h-screen grid place-items-center bg-background text-foreground p-6">
+      <div className="min-h-screen grid place-items-center bg-[#F6F5FC] text-[#17132E] p-6" role="status">
         <div className="text-center space-y-3">
-          <Coffee className="w-10 h-10 mx-auto text-primary animate-pulse" aria-hidden="true" />
-          <p className="font-medium">Connecting to live virtual pager…</p>
+          <DingziMark size={44} />
+          <p className="font-semibold text-sm">Connecting to live virtual pager…</p>
         </div>
       </div>
     );
@@ -248,12 +268,13 @@ function VirtualPagerContent() {
 
   if (!ticket || !restaurant) {
     return (
-      <div className="min-h-screen grid place-items-center bg-background text-foreground p-6">
-        <div className="max-w-sm text-center space-y-4">
-          <h1 className="text-2xl font-bold">Pager not found</h1>
+      <div className="min-h-screen grid place-items-center bg-[#F6F5FC] text-[#17132E] p-6">
+        <div className="max-w-sm rounded-3xl border bg-white p-7 text-center space-y-4 shadow-sm">
+          <DingziMark size={42} />
+          <h1 className="text-xl font-bold">Pager not found</h1>
           <p className="text-muted-foreground text-sm">Scan the QR code from the counter or receipt again.</p>
           <Link href="/">
-            <Button className="cursor-pointer min-h-11">Browse cafés</Button>
+            <Button className="w-full cursor-pointer min-h-11 rounded-xl">Browse venues</Button>
           </Link>
         </div>
       </div>
@@ -269,6 +290,16 @@ function VirtualPagerContent() {
     { id: 'collected', label: t('Order Collected') },
   ];
   const currentIdx = steps.findIndex(s => s.id === ticket.status);
+  const elapsedMins = ticket.createdAt
+    ? Math.max(0, Math.floor((nowMs - new Date(ticket.createdAt).getTime()) / 60_000))
+    : 0;
+  const orderLines: any[] = data.order?.lineItems || [];
+  const doneCount = orderLines.filter(l => Boolean(l.prepared)).length;
+  const isCurbsideContext =
+    Boolean(ticket.bayId) ||
+    data.order?.channel === 'curbside' ||
+    data.order?.channel === 'drive_thru' ||
+    curbsideExpanded;
 
   return (
     <div
@@ -279,45 +310,44 @@ function VirtualPagerContent() {
         paddingTop: 'max(1rem, env(safe-area-inset-top, 0px))',
         paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))',
       }}
-      className={`min-h-screen bg-background text-foreground transition-colors duration-300 ${
+      className={`min-h-dvh bg-[#F6F5FC] text-[#17132E] transition-colors duration-300 ${
         isRinging ? 'ring-8 ring-inset ring-[#C8FF42]' : ''
       }`}
     >
       <div className="max-w-lg mx-auto px-4 space-y-4">
-        <header className="flex items-center justify-between gap-3">
+        <header className="flex items-center justify-between gap-3 py-1">
           <div className="flex items-center gap-3 min-w-0">
-            <DingziMark size={42} />
+            <DingziMark size={40} />
             <div className="min-w-0">
-              <p className="text-xs tracking-wide text-muted-foreground font-semibold">
-                <span className="lowercase font-display font-extrabold text-[#6236FF]" dir="ltr" lang="en">dingzi</span> · {t('Virtual Pager')}
-              </p>
-              <h1 className="font-bold text-lg truncate">
+              <h1 className="font-bold text-base sm:text-lg truncate leading-tight">
                 {localizedEntityText(language, restaurant.name, restaurant.nameAr, label)}
               </h1>
+              <p className="text-xs text-[#57507A] font-medium">
+                <span className="lowercase font-display font-extrabold text-[#6236FF]" dir="ltr" lang="en">
+                  dingzi
+                </span>{' '}
+                · {t('Virtual Pager')}
+              </p>
             </div>
           </div>
           <MenuLanguageSwitch />
         </header>
 
-        <PwaInstallBanner compact />
-
         {/* Continuous Acknowledgeable Lock-Screen Alarm Banner — Volt Lime (#C8FF42) + Midnight Indigo (#17132E) 15.3:1 AAA */}
         {isRinging && (
           <div
             role="alert"
-            className="rounded-3xl bg-[#C8FF42] text-[#17132E] p-5 shadow-dz-volt space-y-3 border-2 border-[#17132E]"
+            className="rounded-3xl bg-[#C8FF42] text-[#17132E] p-5 shadow-xl space-y-3 border-2 border-[#17132E]"
           >
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <BellRing className="w-7 h-7 motion-safe:animate-bell-swing shrink-0 text-[#17132E]" aria-hidden="true" />
-                <div>
-                  <strong className="block text-lg font-display font-extrabold leading-tight">
-                    {t('Ding! Your food is ready.')} ({ticket.ticketCode})
-                  </strong>
-                  <span className="text-xs font-medium text-[#17132E]/85">
-                    Head to the pickup counter — tap below to silence alarm.
-                  </span>
-                </div>
+            <div className="flex items-center gap-3">
+              <BellRing className="w-7 h-7 motion-safe:animate-bell-swing shrink-0 text-[#17132E]" aria-hidden="true" />
+              <div>
+                <strong className="block text-lg font-display font-extrabold leading-tight">
+                  {t('Ding! Your food is ready.')} ({ticket.ticketCode})
+                </strong>
+                <span className="text-xs font-medium text-[#17132E]/85">
+                  Show this screen at the pickup counter — tap below to silence alarm.
+                </span>
               </div>
             </div>
             <Button
@@ -336,47 +366,59 @@ function VirtualPagerContent() {
           </div>
         )}
 
-        {/* Primary Ticket Card */}
+        {/* Primary Live Telemetry Cockpit Card */}
         <section
           className={`rounded-3xl border-2 p-6 text-center shadow-lg transition-colors duration-300 ${
-            isReady
-              ? 'border-[#C8FF42] bg-[#17132E] text-white'
-              : 'border-border bg-card'
+            isReady ? 'border-[#C8FF42] bg-[#17132E] text-white' : 'border-[#E5E2F2] bg-white'
           }`}
           role="status"
           aria-live="polite"
           aria-atomic="true"
         >
-          <div
-            className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold mb-3 ${
-              isReady
-                ? 'bg-[#C8FF42] text-[#17132E]'
-                : 'bg-[#EFEAFF] text-[#4B1FE0]'
-            }`}
-          >
-            {isReady ? <BellRing className="w-4 h-4 motion-safe:animate-pulse" aria-hidden="true" /> : <Clock className="w-4 h-4" aria-hidden="true" />}
-            <span>
-              {isReady
-                ? t('Ready for Pickup!')
-                : isCollected
-                  ? t('Order Collected')
-                  : ticket.status === 'preparing'
-                    ? t('Preparing Now')
-                    : t('Waiting in Queue')}
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <span
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
+                isReady ? 'bg-[#C8FF42] text-[#17132E]' : 'bg-[#EFEAFF] text-[#4B1FE0]'
+              }`}
+            >
+              {isReady ? (
+                <BellRing className="w-3.5 h-3.5 motion-safe:animate-pulse" aria-hidden="true" />
+              ) : (
+                <Clock className="w-3.5 h-3.5" aria-hidden="true" />
+              )}
+              <span>
+                {isReady
+                  ? t('Ready for Pickup!')
+                  : isCollected
+                    ? t('Order Collected')
+                    : ticket.status === 'preparing'
+                      ? t('Preparing Now')
+                      : t('Waiting in Queue')}
+              </span>
             </span>
+
+            {!isCollected && (
+              <span className={`text-xs font-mono ${isReady ? 'text-white/75' : 'text-[#57507A]'}`}>
+                {elapsedMins === 0 ? 'Just now' : `${elapsedMins}m elapsed`}
+              </span>
+            )}
           </div>
 
           <div
-            className={`text-5xl font-black tracking-tight my-2 font-mono ${
-              isReady ? 'text-[#C8FF42]' : 'text-foreground'
+            className={`text-6xl font-black tracking-tight my-2 font-mono ${
+              isReady ? 'text-[#C8FF42]' : 'text-[#17132E]'
             }`}
             data-testid="text-pager-code"
           >
             {ticket.ticketCode}
           </div>
+
           {ticket.customerName && (
-            <p className={`text-sm font-medium ${isReady ? 'text-white/80' : 'text-muted-foreground'}`}>{ticket.customerName}</p>
+            <p className={`text-sm font-semibold ${isReady ? 'text-white/85' : 'text-[#57507A]'}`}>
+              {ticket.customerName}
+            </p>
           )}
+
           <div className="mt-2.5 flex justify-center">
             <span
               data-testid="badge-private-1to1-pager"
@@ -394,23 +436,27 @@ function VirtualPagerContent() {
           </div>
 
           {!isReady && !isCollected && (
-            <div className="mt-4 space-y-2.5">
+            <div className="mt-4 space-y-3">
               <p className="text-xs font-semibold text-[#57507A]">
                 {t("Sit easy. We'll ding your phone when it's hot.")}
               </p>
-              <div className="flex items-center justify-center gap-4 text-xs text-muted-foreground font-mono">
-                <span className="px-3 py-1.5 rounded-xl bg-muted font-medium">
-                  {t('Queue ahead')}: <strong className="text-foreground">{data.queueAhead}</strong>
-                </span>
-                <span className="px-3 py-1.5 rounded-xl bg-muted font-medium">
-                  {t('Est. prep')}: <strong className="text-foreground">~{ticket.estimatedPrepMins} min</strong>
-                </span>
+              <div className="grid grid-cols-2 gap-2.5 text-xs font-mono max-w-xs mx-auto">
+                <div className="p-2.5 rounded-2xl bg-[#F6F5FC] border border-[#E5E2F2]">
+                  <span className="block text-[11px] font-sans text-[#57507A]">{t('Queue ahead')}</span>
+                  <strong className="text-base text-[#17132E]">
+                    {data.queueAhead === 0 ? 'Up next' : data.queueAhead}
+                  </strong>
+                </div>
+                <div className="p-2.5 rounded-2xl bg-[#F6F5FC] border border-[#E5E2F2]">
+                  <span className="block text-[11px] font-sans text-[#57507A]">{t('Est. prep')}</span>
+                  <strong className="text-base text-[#17132E]">~{ticket.estimatedPrepMins}m</strong>
+                </div>
               </div>
             </div>
           )}
 
           {isReady && (
-            <div className="mt-4 p-3.5 rounded-2xl bg-[#C8FF42] text-[#17132E] font-display font-extrabold text-sm shadow-dz-volt">
+            <div className="mt-4 p-3.5 rounded-2xl bg-[#C8FF42] text-[#17132E] font-display font-extrabold text-sm">
               {readySubtitle} · {ticket.ticketCode}
             </div>
           )}
@@ -422,7 +468,7 @@ function VirtualPagerContent() {
                 <li key={step.id} className="space-y-1.5 min-w-0">
                   <div
                     className={`h-2 rounded-full transition-colors ${
-                      done ? (isReady ? 'bg-[#C8FF42]' : 'bg-[#6236FF]') : isReady ? 'bg-[#241E42]' : 'bg-muted'
+                      done ? (isReady ? 'bg-[#C8FF42]' : 'bg-[#6236FF]') : isReady ? 'bg-[#241E42]' : 'bg-[#E5E2F2]'
                     }`}
                   />
                   <span
@@ -430,10 +476,10 @@ function VirtualPagerContent() {
                       done
                         ? isReady
                           ? 'font-semibold text-white'
-                          : 'font-semibold text-foreground'
+                          : 'font-semibold text-[#17132E]'
                         : isReady
                           ? 'text-white/60'
-                          : 'text-muted-foreground'
+                          : 'text-[#57507A]'
                     }`}
                   >
                     {step.label}
@@ -442,16 +488,16 @@ function VirtualPagerContent() {
               );
             })}
           </ol>
-        </section>
 
-        {/* Lock-Screen Push + Audio Keep-Alive Arming Panel */}
-        {!isCollected && (
-          <section className="rounded-2xl border bg-card p-4 space-y-2.5">
-            <div className="flex flex-col min-[390px]:flex-row gap-2">
+          {/* Integrated 1-Tap Sound & Lock-Screen Bar */}
+          {!isCollected && (
+            <div className="mt-5 pt-4 border-t border-current/10 flex flex-col min-[390px]:flex-row gap-2 text-start">
               <Button
                 type="button"
                 variant={alertsArmed ? 'secondary' : 'default'}
-                className="flex-1 min-h-12 rounded-2xl font-semibold cursor-pointer gap-2"
+                className={`flex-1 min-h-12 rounded-2xl font-semibold cursor-pointer gap-2 ${
+                  !alertsArmed && !isReady ? 'bg-[#6236FF] hover:bg-[#4B1FE0] text-white' : ''
+                }`}
                 onClick={handleArmLockScreen}
                 data-testid="button-enable-pager-alerts"
               >
@@ -461,9 +507,7 @@ function VirtualPagerContent() {
                   <Bell className="w-5 h-5 shrink-0" aria-hidden="true" />
                 )}
                 <span className="truncate">
-                  {alertsArmed
-                    ? 'Lock-Screen Push & Ringer Armed'
-                    : 'Arm Lock-Screen Ringing & Push'}
+                  {alertsArmed ? 'Lock-Screen Sound Armed' : 'Arm Lock-Screen Sound & Push'}
                 </span>
               </Button>
               <Button
@@ -472,31 +516,30 @@ function VirtualPagerContent() {
                 onClick={() => testPushMutation.mutate()}
                 disabled={testPushMutation.isPending}
                 data-testid="button-test-pager-ring"
-                className="min-h-12 px-3.5 rounded-2xl font-semibold cursor-pointer gap-1.5 shrink-0"
+                className={`min-h-12 px-3.5 rounded-2xl font-semibold cursor-pointer gap-1.5 shrink-0 ${
+                  isReady ? 'border-white/25 bg-[#241E42] text-white hover:bg-[#312959]' : ''
+                }`}
               >
                 <Volume2 className="w-4 h-4" aria-hidden="true" />
                 <span>Test Ring</span>
               </Button>
             </div>
-            {alertsArmed && (
-              <p className="text-xs text-muted-foreground px-1">
-                {pushMode === 'web_push' || pushMode === 'native_push'
-                  ? 'Encrypted background Push + Lock-Screen Audio Keep-Alive active — safe to lock your phone.'
-                  : pushNote || 'Lock-Screen Audio Keep-Alive + Wake Lock active.'}
-              </p>
-            )}
-          </section>
-        )}
+          )}
+          {alertsArmed && !isCollected && (
+            <p className={`text-[11px] mt-2 ${isReady ? 'text-white/75' : 'text-[#57507A]'}`}>
+              {pushMode === 'web_push' || pushMode === 'native_push'
+                ? 'Background Push + Audio Keep-Alive active — safe to lock your phone.'
+                : pushNote || 'Audio Keep-Alive + Wake Lock active.'}
+            </p>
+          )}
+        </section>
 
-        {/* Order Summary */}
-        {data.order && (() => {
-          const orderLines: any[] = data.order.lineItems || [];
-          const doneCount = orderLines.filter(l => Boolean(l.prepared)).length;
-          return (
-          <section className="rounded-2xl border bg-card p-4 space-y-2.5 text-sm">
+        {/* Live Kitchen Order Receipt */}
+        {data.order && (
+          <section className="rounded-2xl border border-[#E5E2F2] bg-white p-4 space-y-3 text-sm">
             <div className="flex flex-wrap items-center justify-between gap-2 font-semibold">
               <div className="flex items-center gap-2">
-                <span>{data.order.orderNumber}</span>
+                <span className="font-mono font-bold">{data.order.orderNumber}</span>
                 {orderLines.length > 0 && doneCount > 0 && (
                   <span
                     data-testid="badge-guest-items-prepared"
@@ -510,25 +553,38 @@ function VirtualPagerContent() {
                   </span>
                 )}
               </div>
-              <span className="px-2.5 py-0.5 rounded-full text-xs bg-muted">
-                {data.order.paymentStatus === 'paid' ? 'Paid' : 'Pay at Venue'} · {data.order.total} {data.order.currency}
+              <span className="px-2.5 py-0.5 rounded-full text-xs bg-[#F6F5FC] border border-[#E5E2F2] font-mono">
+                {data.order.paymentStatus === 'paid' ? 'Paid' : 'Pay at Venue'} · {data.order.total}{' '}
+                {data.order.currency}
               </span>
             </div>
-            <ul className="divide-y text-xs text-muted-foreground">
+
+            {orderLines.length > 0 && (
+              <div className="h-1.5 w-full rounded-full bg-[#F6F5FC] overflow-hidden">
+                <div
+                  className="h-full bg-[#6236FF] transition-all duration-300"
+                  style={{ width: `${Math.round((doneCount / orderLines.length) * 100)}%` }}
+                />
+              </div>
+            )}
+
+            <ul className="divide-y divide-[#E5E2F2] text-xs text-[#57507A]">
               {orderLines.map((line: any, i: number) => (
-                <li key={i} className="py-1.5 flex justify-between items-start gap-2">
+                <li key={i} className="py-2 flex justify-between items-start gap-2">
                   <span className="inline-flex items-start gap-1.5">
                     {line.prepared && (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-[#6236FF] shrink-0 mt-0.5" aria-hidden="true" />
+                      <CheckCircle2 className="w-4 h-4 text-[#6236FF] shrink-0 mt-0.5" aria-hidden="true" />
                     )}
                     <span>
-                      <strong className="text-foreground">{line.quantity}× {label(line.name)}</strong>
+                      <strong className="text-[#17132E]">
+                        {line.quantity}× {label(line.name)}
+                      </strong>
                       {line.variantLabel ? ` (${line.variantLabel})` : ''}
                       {line.modifiers?.length ? ` · ${line.modifiers.map((m: any) => m.label).join(', ')}` : ''}
                       {line.notes ? ` · “${line.notes}”` : ''}
                     </span>
                   </span>
-                  <span className="font-medium text-foreground shrink-0">{line.lineTotal}</span>
+                  <span className="font-mono font-semibold text-[#17132E] shrink-0">{line.lineTotal}</span>
                 </li>
               ))}
             </ul>
@@ -545,7 +601,8 @@ function VirtualPagerContent() {
                   `Status: ${data.order.paymentStatus.toUpperCase()}`,
                   '--------------------------------',
                   ...orderLines.map(
-                    (l: any) => `${l.quantity}x ${l.name}${l.variantLabel ? ` (${l.variantLabel})` : ''} - ${l.lineTotal} ${data.order.currency}`,
+                    (l: any) =>
+                      `${l.quantity}x ${l.name}${l.variantLabel ? ` (${l.variantLabel})` : ''} - ${l.lineTotal} ${data.order.currency}`,
                   ),
                   '--------------------------------',
                   `TOTAL: ${data.order.total} ${data.order.currency}`,
@@ -558,121 +615,150 @@ function VirtualPagerContent() {
                 a.click();
                 URL.revokeObjectURL(u);
               }}
-              className="w-full min-h-10 rounded-xl text-xs cursor-pointer gap-1.5"
+              className="w-full min-h-11 rounded-xl text-xs cursor-pointer gap-1.5"
             >
               <Download className="w-3.5 h-3.5" aria-hidden="true" />
               <span>Download Order Receipt</span>
             </Button>
           </section>
-          );
-        })()}
+        )}
 
-        {/* Curbside / Drive-Thru Bay Arrival Check-in */}
+        {/* Progressive-Disclosure Curbside / Drive-Thru Bay Arrival Check-in */}
         {restaurant.driveThruEnabled && !isCollected && data.bays?.length > 0 && (
-          <section className="rounded-2xl border bg-card p-4 space-y-3">
-            <div className="space-y-1">
-              <div className="flex flex-wrap items-center gap-2 font-semibold text-sm">
-                <Car className="w-4 h-4 text-[#6236FF]" aria-hidden="true" />
-                <span>{t('Curbside & Drive-Thru')}</span>
-                {data.bay && (
-                  <span className="ms-auto text-xs px-2.5 py-0.5 rounded-full bg-[#C8FF42] text-[#17132E] font-mono font-bold">
-                    {data.bay.code}
+          <section className="rounded-2xl border border-[#E5E2F2] bg-white p-4 space-y-3">
+            {!isCurbsideContext ? (
+              <button
+                type="button"
+                onClick={() => setCurbsideExpanded(true)}
+                className="w-full min-h-11 flex items-center justify-between gap-3 text-start cursor-pointer"
+              >
+                <span className="inline-flex items-center gap-2.5 text-sm font-semibold text-[#17132E]">
+                  <span className="w-9 h-9 rounded-xl bg-[#EFEAFF] text-[#6236FF] grid place-items-center shrink-0">
+                    <Car className="w-4 h-4" aria-hidden="true" />
                   </span>
-                )}
-              </div>
-              <p className="text-xs text-[#57507A]">
-                {t("Park easy. Scan your bay and we'll bring it out.")}
-              </p>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-              <div>
-                <Label className="text-xs">{t('Select Parking Bay')}</Label>
-                <select
-                  className="manager-select w-full h-11 text-sm"
-                  value={bayId || ticket.bayId || ''}
-                  onChange={e => setBayId(e.target.value)}
-                >
-                  <option value="">Select bay…</option>
-                  {data.bays.map((b: any) => (
-                    <option key={b.id} value={b.id}>{b.code} — {b.label}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <Label className="text-xs">{t('Vehicle Color')}</Label>
-                <select
-                  className="manager-select w-full h-11 text-sm"
-                  value={vehicleColor}
-                  onChange={e => setVehicleColor(e.target.value)}
-                >
-                  {venueCfg.vehicleColors.map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <Label className="text-xs">{t('Vehicle Type')}</Label>
-                <select
-                  className="manager-select w-full h-11 text-sm"
-                  value={vehicleType}
-                  onChange={e => setVehicleType(e.target.value)}
-                >
-                  {venueCfg.vehicleTypes.map(v => (
-                    <option key={v} value={v}>{v}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <Label className="text-xs">{t('License Plate')}</Label>
-                <Input
-                  value={licensePlate}
-                  onChange={e => setLicensePlate(e.target.value)}
-                  placeholder="QAT 48291"
-                  className="h-11"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                className="min-h-11 cursor-pointer"
-                disabled={!(bayId || ticket.bayId) || !licensePlate.trim() || checkinMutation.isPending}
-                onClick={() => checkinMutation.mutate('5_mins_away')}
-              >
-                {t('5 Mins Away')}
-              </Button>
-              <Button
-                type="button"
-                className="min-h-11 cursor-pointer"
-                disabled={!(bayId || ticket.bayId) || !licensePlate.trim() || checkinMutation.isPending}
-                onClick={() => checkinMutation.mutate('arrived')}
-              >
-                <MapPin className="w-4 h-4 mr-1.5" aria-hidden="true" />
-                {t("I'm Here — Check In")}
-              </Button>
-            </div>
+                  <span>
+                    <strong className="block text-sm">{t('Curbside & Drive-Thru')}</strong>
+                    <small className="text-xs text-[#57507A] font-normal">
+                      Parked outside? Check in your car so we bring it out.
+                    </small>
+                  </span>
+                </span>
+                <ChevronDown className="w-4 h-4 text-[#57507A] shrink-0" />
+              </button>
+            ) : (
+              <>
+                <div className="space-y-1">
+                  <div className="flex flex-wrap items-center gap-2 font-semibold text-sm">
+                    <Car className="w-4 h-4 text-[#6236FF]" aria-hidden="true" />
+                    <span>{t('Curbside & Drive-Thru')}</span>
+                    {data.bay && (
+                      <span className="ms-auto text-xs px-2.5 py-0.5 rounded-full bg-[#C8FF42] text-[#17132E] font-mono font-bold">
+                        {data.bay.code}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-[#57507A]">
+                    {t("Park easy. Scan your bay and we'll bring it out.")}
+                  </p>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div>
+                    <Label className="text-xs">{t('Select Parking Bay')}</Label>
+                    <select
+                      className="manager-select w-full h-11 text-sm"
+                      value={bayId || ticket.bayId || ''}
+                      onChange={e => setBayId(e.target.value)}
+                    >
+                      <option value="">Select bay…</option>
+                      {data.bays.map((b: any) => (
+                        <option key={b.id} value={b.id}>
+                          {b.code} — {b.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">{t('Vehicle Color')}</Label>
+                    <select
+                      className="manager-select w-full h-11 text-sm"
+                      value={vehicleColor}
+                      onChange={e => setVehicleColor(e.target.value)}
+                    >
+                      {venueCfg.vehicleColors.map(c => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">{t('Vehicle Type')}</Label>
+                    <select
+                      className="manager-select w-full h-11 text-sm"
+                      value={vehicleType}
+                      onChange={e => setVehicleType(e.target.value)}
+                    >
+                      {venueCfg.vehicleTypes.map(v => (
+                        <option key={v} value={v}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">{t('License Plate')}</Label>
+                    <Input
+                      value={licensePlate}
+                      onChange={e => setLicensePlate(e.target.value)}
+                      placeholder="QAT 48291"
+                      className="h-11 rounded-xl font-mono uppercase"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="min-h-11 rounded-xl cursor-pointer"
+                    disabled={!(bayId || ticket.bayId) || !licensePlate.trim() || checkinMutation.isPending}
+                    onClick={() => checkinMutation.mutate('5_mins_away')}
+                  >
+                    {t('5 Mins Away')}
+                  </Button>
+                  <Button
+                    type="button"
+                    className="min-h-11 rounded-xl cursor-pointer gap-1.5"
+                    disabled={!(bayId || ticket.bayId) || !licensePlate.trim() || checkinMutation.isPending}
+                    onClick={() => checkinMutation.mutate('arrived')}
+                  >
+                    <MapPin className="w-4 h-4" aria-hidden="true" />
+                    <span>{t("I'm Here — Check In")}</span>
+                  </Button>
+                </div>
+              </>
+            )}
           </section>
         )}
 
         {/* Post-Pickup Reputation Loop */}
         {(isCollected || isReady) && (
-          <section className="rounded-2xl border bg-card p-5 space-y-3 text-center">
-            <h2 className="font-semibold text-base">{t('Rate your experience')}</h2>
+          <section className="rounded-2xl border border-[#E5E2F2] bg-white p-5 space-y-3 text-center">
+            <h2 className="font-bold text-base">{t('Rate your experience')}</h2>
             {ticket.rating || feedbackSaved ? (
               <div className="space-y-3">
                 <div className="inline-flex items-center gap-1.5 text-emerald-700 font-semibold text-sm">
                   <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
                   <span>Thank you for your {ticket.rating || rating}-star feedback!</span>
                 </div>
-                {(feedbackSaved?.googleMapsReviewUrl || ((ticket.rating || rating) >= venueCfg.reviewPromptMinStars && restaurant.googleMapsReviewUrl)) && (
+                {(feedbackSaved?.googleMapsReviewUrl ||
+                  ((ticket.rating || rating) >= venueCfg.reviewPromptMinStars && restaurant.googleMapsReviewUrl)) && (
                   <div>
                     <a
                       href={feedbackSaved?.googleMapsReviewUrl || restaurant.googleMapsReviewUrl}
                       target="_blank"
                       rel="noopener noreferrer"
                     >
-                      <Button className="w-full min-h-11 cursor-pointer gap-2">
+                      <Button className="w-full min-h-11 rounded-xl cursor-pointer gap-2">
                         <Star className="w-4 h-4 fill-current" aria-hidden="true" />
                         <span>{t('Leave a Google Maps Review')}</span>
                         <ExternalLink className="w-4 h-4" aria-hidden="true" />
@@ -690,7 +776,7 @@ function VirtualPagerContent() {
                       type="button"
                       aria-label={`Rate ${star} stars`}
                       onClick={() => setRating(star)}
-                      className="w-11 h-11 rounded-xl border grid place-items-center cursor-pointer transition-colors hover:bg-muted"
+                      className="w-11 h-11 rounded-xl border border-[#E5E2F2] grid place-items-center cursor-pointer transition-colors hover:bg-[#EFEAFF]/50"
                     >
                       <Star
                         className={`w-6 h-6 ${
@@ -706,10 +792,11 @@ function VirtualPagerContent() {
                       value={comment}
                       onChange={e => setComment(e.target.value)}
                       placeholder="Any quick note for our barista team? (optional)"
+                      className="rounded-xl"
                     />
                     <Button
                       type="button"
-                      className="w-full min-h-11 cursor-pointer"
+                      className="w-full min-h-11 rounded-xl cursor-pointer"
                       disabled={feedbackMutation.isPending}
                       onClick={() => feedbackMutation.mutate()}
                     >
@@ -726,17 +813,20 @@ function VirtualPagerContent() {
         {!isCollected && (
           <div className="space-y-3">
             {data.specials?.length > 0 && (
-              <section className="rounded-2xl border bg-card p-4 space-y-2">
-                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+              <section className="rounded-2xl border border-[#E5E2F2] bg-white p-4 space-y-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-[#4B1FE0]">
                   <Sparkles className="w-3.5 h-3.5" aria-hidden="true" />
                   <span>{t("Today's specials")}</span>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   {data.specials.map((item: any) => (
-                    <div key={item.id} className="rounded-xl border p-2.5 text-xs space-y-1">
-                      <strong className="block truncate">{localizedEntityText(language, item.name, item.nameAr, label)}</strong>
-                      <span className="text-muted-foreground">
-                        {Number(item.price).toFixed(2)} {formatCurrencyForLocale(restaurant.currency, language, venueCfg.currencySymbolAr)}
+                    <div key={item.id} className="rounded-xl border border-[#E5E2F2] bg-[#F6F5FC] p-2.5 text-xs space-y-1">
+                      <strong className="block truncate">
+                        {localizedEntityText(language, item.name, item.nameAr, label)}
+                      </strong>
+                      <span className="font-mono text-[#57507A]">
+                        {Number(item.price).toFixed(2)}{' '}
+                        {formatCurrencyForLocale(restaurant.currency, language, venueCfg.currencySymbolAr)}
                       </span>
                     </div>
                   ))}
@@ -752,10 +842,10 @@ function VirtualPagerContent() {
                   <Button
                     type="button"
                     variant="outline"
-                    className="w-full min-h-11 rounded-2xl cursor-pointer gap-2"
+                    className="w-full min-h-11 rounded-2xl bg-white border-[#E5E2F2] cursor-pointer gap-2"
                     onClick={() => setShowGame(true)}
                   >
-                    <Gamepad2 className="w-4 h-4" aria-hidden="true" />
+                    <Gamepad2 className="w-4 h-4 text-[#6236FF]" aria-hidden="true" />
                     <span>Play Barista Reflex Game while waiting</span>
                   </Button>
                 )}
@@ -764,16 +854,18 @@ function VirtualPagerContent() {
           </div>
         )}
 
-        <footer className="flex flex-wrap items-center justify-center gap-2 pt-2">
+        <PwaInstallBanner compact />
+
+        <footer className="flex flex-wrap items-center justify-center gap-2 pt-1">
           <Link href={`/menu/${restaurant.id}`}>
-            <Button variant="ghost" className="cursor-pointer min-h-11 text-sm">
+            <Button variant="ghost" className="cursor-pointer min-h-11 text-sm rounded-xl">
               Back to {label(restaurant.name)} Menu
             </Button>
           </Link>
           <Button
             type="button"
             variant="outline"
-            className="cursor-pointer min-h-11 text-xs rounded-xl"
+            className="cursor-pointer min-h-11 text-xs rounded-xl bg-white border-[#E5E2F2]"
             onClick={async () => {
               try {
                 await navigator.clipboard.writeText(window.location.href);
