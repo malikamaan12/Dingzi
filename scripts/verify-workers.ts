@@ -12,6 +12,7 @@ import nativeBcrypt from 'bcrypt';
 import { createPasswordHandler } from '../supabase/functions/cafe-passwords/handler';
 import { permanentMenuUrl } from '../shared/menuIdentity';
 import { secureWorkerResponse, safeError } from '../server/securityHeaders';
+import { bytesToBase64Url, decryptWebPushAes128GcmForTest } from '../server/webPushCrypto';
 import { modifierFixture } from './modifier-fixture';
 
 const db = await PGlite.create();
@@ -26,6 +27,7 @@ for (const [id,owner,name] of [[cafe,manager,'Worker Café'],[otherCafe,other,'O
 const socket = new PGLiteSocketServer({ db, port: 0, host: '127.0.0.1', maxConnections: 10 });
 await socket.start();
 const secret = 'a'.repeat(64), media = new Map<string,{body: Uint8Array; mime: string}>();
+const capturedPushes: { headers: Headers; body: Uint8Array }[] = [];
 const privatePasswords = createPasswordHandler(bcrypt, secret);
 const instances: Miniflare[] = [];
 const options: any = {
@@ -36,6 +38,10 @@ const options: any = {
   serviceBindings: { ASSETS: (request: Request) => new Response('test assets', {headers:{'Content-Type':new URL(request.url).pathname.startsWith('/assets/') ? 'text/javascript' : 'text/html', 'Cache-Control':'public, max-age=3600','Content-Security-Policy':"default-src 'self'; frame-ancestors 'none'"}}) },
   outboundService: async (request: Request) => {
     const url = new URL(request.url);
+    if (url.host === 'push-mock.dingzi.test') {
+      capturedPushes.push({ headers: new Headers(request.headers), body: new Uint8Array(await request.arrayBuffer()) });
+      return new Response('', { status: 201 });
+    }
     assert.equal(url.host, 'local-test.supabase.co', 'Tests must never call an external service');
     if (url.pathname === '/functions/v1/cafe-passwords') return privatePasswords(request);
     assert.equal(request.headers.get('Authorization'), 'Bearer test-service-key');
@@ -411,6 +417,48 @@ try {
   await request(publicInstance,'GET',`/api/menu/public/${onboardedId}`,undefined,'',404);
   assert.equal((await db.query<{n:number}>('SELECT count(*)::int AS n FROM users WHERE email=$1',['layla@onboarded.cafe'])).rows[0].n,0);
   checks.push('Turnkey café onboarding, readiness checklist, secret-free JSON offboarding archive, reversible pause/reactivation, and exact-name permanent decommission work end-to-end.');
+  const issuedPager = (await request(first,'POST','/api/hospitality/pagers/issue',{
+    mode:'auto_number',
+    customerName:'LockScreen Guest',
+    estimatedPrepMins:6,
+  },cookie,201)).data.ticket;
+  const claimedPager = (await request(publicInstance,'GET',`/api/public/pager/${issuedPager.trackingToken}?claim=1`)).data;
+  assert.ok(claimedPager.ticket.deviceClaimedAt);
+  const armedPager = (await request(publicInstance,'POST',`/api/public/pager/${issuedPager.trackingToken}/arm`,{mode:'audio_keepalive'})).data;
+  assert.equal(armedPager.armed,true);
+  const uaKeyPair = await globalThis.crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveBits']);
+  const uaPubBytes = new Uint8Array(await globalThis.crypto.subtle.exportKey('raw',uaKeyPair.publicKey));
+  const uaAuthBytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  const subEndpoint = `https://push-mock.dingzi.test/wpush/v1/${randomUUID()}`;
+  await request(publicInstance,'POST','/api/public/push/subscribe',{
+    scope:`pager:${issuedPager.trackingToken}`,
+    subscription:{
+      platform:'web_push',
+      endpoint:subEndpoint,
+      keys:{ p256dh:bytesToBase64Url(uaPubBytes), auth:bytesToBase64Url(uaAuthBytes) },
+    },
+  },'',201);
+  const pushTestRes = (await request(publicInstance,'POST','/api/public/push/test',{scope:`pager:${issuedPager.trackingToken}`})).data;
+  assert.equal(pushTestRes.delivered,1);
+  assert.equal(capturedPushes.length,1);
+  assert.ok(capturedPushes[0].headers.get('Authorization')?.startsWith('vapid t='));
+  assert.equal(capturedPushes[0].headers.get('Content-Encoding'),'aes128gcm');
+  assert.equal(capturedPushes[0].headers.get('Urgency'),'high');
+  const decryptedTest = JSON.parse(await decryptWebPushAes128GcmForTest(capturedPushes[0].body,uaKeyPair.privateKey,uaPubBytes,uaAuthBytes));
+  assert.equal(decryptedTest.ticketCode,issuedPager.ticketCode);
+  await request(first,'POST',`/api/hospitality/pagers/${issuedPager.id}/transition`,{action:'ready'},cookie);
+  assert.equal(capturedPushes.length,2);
+  const decryptedReady = JSON.parse(await decryptWebPushAes128GcmForTest(capturedPushes[1].body,uaKeyPair.privateKey,uaPubBytes,uaAuthBytes));
+  assert.equal(decryptedReady.ticketCode,issuedPager.ticketCode);
+  assert.equal(decryptedReady.urgent,true);
+  const acked = (await request(publicInstance,'POST',`/api/public/pager/${issuedPager.trackingToken}/ack`,{})).data;
+  assert.equal(acked.acknowledged,true);
+  assert.ok(acked.ticket.acknowledgedAt);
+  const staffQueueAfterAck = (await request(second,'GET','/api/hospitality/pagers',undefined,cookie)).data;
+  const staffTicket = staffQueueAfterAck.tickets.find((t:any)=>t.id===issuedPager.id);
+  assert.equal(staffTicket.pushArmed,true);
+  assert.ok(staffTicket.acknowledgedAt);
+  checks.push('Lock-screen virtual pager lifecycle (claim, audio arm, VAPID + RFC 8291 aes128gcm Web Push encryption/decryption, Ready dispatch, and 1-tap guest On My Way acknowledgment) works end-to-end across public and management Workers.');
   for (let i=0;i<5;i++) await request(i%2 ? first : second,'PUT','/api/account/password',{currentPassword:'incorrect',newPassword:password},otherCookie,400);
   await request(second,'PUT','/api/account/password',{currentPassword:'incorrect',newPassword:password},otherCookie,429);
   for (let i=0;i<10;i++) await request(i%2 ? first : second,'POST','/api/login',{ email:'manager@test.cafe',password:'wrong-password' },'',401,{'CF-Connecting-IP':`192.0.2.${30+i}`});

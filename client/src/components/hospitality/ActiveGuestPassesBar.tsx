@@ -24,6 +24,7 @@ function SinglePassChip({ pass, showVenueName }: { pass: SavedGuestPass; showVen
       return res.json();
     },
     refetchInterval: pass.kind === 'booking' ? 20_000 : 4_000,
+    refetchIntervalInBackground: pass.kind !== 'booking',
   });
 
   const payload = statusQuery.data;

@@ -60,9 +60,9 @@ export interface PushAlertPayload {
 export async function dispatchPushAlertToScopes(
   scopes: string[],
   payload: PushAlertPayload,
-): Promise<{ attempted: number; delivered: number; pruned: number }> {
+): Promise<{ attempted: number; delivered: number; pruned: number; statuses: number[] }> {
   const uniqueScopes = Array.from(new Set(scopes));
-  if (!uniqueScopes.length) return { attempted: 0, delivered: 0, pruned: 0 };
+  if (!uniqueScopes.length) return { attempted: 0, delivered: 0, pruned: 0, statuses: [] };
 
   const allSubs = [];
   for (const scope of uniqueScopes) {
@@ -73,7 +73,7 @@ export async function dispatchPushAlertToScopes(
     allSubs.push(...rows);
   }
 
-  if (!allSubs.length) return { attempted: 0, delivered: 0, pruned: 0 };
+  if (!allSubs.length) return { attempted: 0, delivered: 0, pruned: 0, statuses: [] };
 
   const vapid = await getOrCreateVapidKeys();
   const jsonBody = JSON.stringify({
@@ -84,6 +84,7 @@ export async function dispatchPushAlertToScopes(
 
   let delivered = 0;
   let pruned = 0;
+  const statuses: number[] = [];
 
   await Promise.allSettled(
     allSubs.map(async sub => {
@@ -105,6 +106,7 @@ export async function dispatchPushAlertToScopes(
             body: encrypted as unknown as BodyInit,
             signal: AbortSignal.timeout(10_000),
           });
+          statuses.push(response.status);
           if (response.status >= 200 && response.status < 300) {
             delivered++;
             await db
@@ -140,13 +142,14 @@ export async function dispatchPushAlertToScopes(
             }),
             signal: AbortSignal.timeout(10_000),
           });
+          statuses.push(response.status);
           if (response.ok) delivered++;
         }
       } catch {
-        // Network failures to push endpoints never break pager queue transitions.
+        statuses.push(0);
       }
     }),
   );
 
-  return { attempted: allSubs.length, delivered, pruned };
+  return { attempted: allSubs.length, delivered, pruned, statuses };
 }

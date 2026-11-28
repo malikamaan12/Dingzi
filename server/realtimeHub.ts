@@ -12,6 +12,8 @@ export interface RealtimePayload {
   type:
     | 'pager.created'
     | 'pager.claimed'
+    | 'pager.armed'
+    | 'pager.acknowledged'
     | 'pager.updated'
     | 'pager.buzzed'
     | 'order.created'

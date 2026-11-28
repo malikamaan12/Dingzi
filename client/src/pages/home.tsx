@@ -13,6 +13,7 @@ import { isPublicMenuOrigin } from '@shared/menuIdentity';
 import { DingziWordmark } from '@/components/staff-brand';
 import { ActiveGuestPassesBar } from '@/components/hospitality/ActiveGuestPassesBar';
 import { QrNfcScannerModal } from '@/components/qr-nfc/QrNfcScannerModal';
+import { preArmAudioOnUserGesture } from '@/lib/lockScreenRinger';
 
 type Cafe = {
   id: string;
@@ -58,6 +59,7 @@ function HomeDirectoryContent() {
 
   const lookupPager = useMutation({
     mutationFn: async () => {
+      void preArmAudioOnUserGesture({ cafeName: 'dingzi', ticketCode: pagerCode.trim() || 'PAGER' });
       setPagerError('');
       const venueId = selectedVenueId || cafes?.[0]?.id;
       if (!venueId) throw new Error('Select a venue first');

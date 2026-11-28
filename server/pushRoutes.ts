@@ -7,6 +7,7 @@ import { isAuthenticated } from './localAuth';
 import { getManagedCafe } from './accessControl';
 import { rateLimit } from './httpSecurity';
 import { pagerTickets, pushSubscriptions, waitlistEntries } from '@shared/schema';
+import { publishRealtimeEvent } from './realtimeHub';
 import { dispatchPushAlertToScopes, getOrCreateVapidKeys, isAllowedPushEndpoint } from './pushService';
 
 const subscriptionInputSchema = z
@@ -94,6 +95,43 @@ export function mountPushRoutes(app: Express) {
             nativeToken: sub.nativeToken || null,
           },
         });
+
+      const now = new Date();
+      if (normalizedScope.startsWith('pager:')) {
+        const trackingToken = normalizedScope.slice('pager:'.length);
+        const [updatedTicket] = await db
+          .update(pagerTickets)
+          .set({
+            pushArmed: true,
+            deviceClaimedAt: now,
+          })
+          .where(eq(pagerTickets.trackingToken, trackingToken))
+          .returning();
+        if (updatedTicket) {
+          publishRealtimeEvent([`branch:${resolved.restaurantId}`, `pager:${trackingToken}`], {
+            type: 'pager.armed',
+            branchId: resolved.restaurantId,
+            data: { ticket: updatedTicket, mode: sub.platform },
+          });
+        }
+      } else if (normalizedScope.startsWith('waitlist:')) {
+        const trackingToken = normalizedScope.slice('waitlist:'.length);
+        const [updatedEntry] = await db
+          .update(waitlistEntries)
+          .set({
+            pushArmed: true,
+            deviceClaimedAt: now,
+          })
+          .where(eq(waitlistEntries.trackingToken, trackingToken))
+          .returning();
+        if (updatedEntry) {
+          publishRealtimeEvent([`branch:${resolved.restaurantId}`, `waitlist:${trackingToken}`], {
+            type: 'waitlist.updated',
+            branchId: resolved.restaurantId,
+            data: { entry: updatedEntry, mode: sub.platform },
+          });
+        }
+      }
 
       res.status(201).json({ subscribed: true, scope: normalizedScope });
     } catch (e) {

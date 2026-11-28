@@ -5,6 +5,7 @@ import { ArrowLeft, QrCode, RefreshCw, UtensilsCrossed, Wifi } from 'lucide-reac
 import { Button } from '@/components/ui/button';
 import { DingziWordmark } from '@/components/staff-brand';
 import { saveGuestPass } from '@/lib/guestSession';
+import { preArmAudioOnUserGesture } from '@/lib/lockScreenRinger';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
 import { queryClient } from '@/lib/queryClient';
 import { MenuLanguageProvider, MenuLanguageSwitch, useMenuLanguage } from '@/lib/menuLanguage';
@@ -202,7 +203,19 @@ function SmartTagEntryContent() {
       return res.json();
     },
     refetchInterval: q => (q.state.data?.coasterStatus === 'idle' && pairingArmed ? 3500 : false),
+    refetchIntervalInBackground: true,
   });
+
+  useEffect(() => {
+    if (query.data?.coasterStatus !== 'idle') return;
+    const cafeName = query.data.restaurant.name;
+    const code = query.data.tag.tagCode;
+    const armOnce = () => {
+      void preArmAudioOnUserGesture({ cafeName, ticketCode: code });
+    };
+    window.addEventListener('pointerdown', armOnce, { once: true, passive: true });
+    return () => window.removeEventListener('pointerdown', armOnce);
+  }, [query.data?.coasterStatus, query.data?.restaurant?.name, query.data?.tag?.tagCode]);
 
   useEffect(() => {
     if (query.data?.coasterStatus !== 'idle' || !pairingArmed) return;

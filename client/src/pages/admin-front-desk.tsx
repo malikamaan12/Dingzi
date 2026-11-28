@@ -16,6 +16,7 @@ import {
   X,
 } from 'lucide-react';
 import { CounterPagerQrModal, type IssuedPagerHandoff } from '@/components/qr-nfc/CounterPagerQrModal';
+import { GuestPhoneStatusBadge } from '@/components/hospitality/GuestPhoneStatusBadge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -499,7 +500,7 @@ export default function AdminFrontDeskPage() {
                         <strong className="block text-sm font-semibold">
                           {ticket.customerName || 'Walk-In Guest'}
                         </strong>
-                        <span className="text-xs text-white/70">Guest’s phone has been rung</span>
+                        <GuestPhoneStatusBadge ticket={ticket} darkSurface showUnclaimed />
                       </div>
                     </div>
 

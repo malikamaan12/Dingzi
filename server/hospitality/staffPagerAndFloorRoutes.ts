@@ -358,7 +358,7 @@ export function mountStaffPagerAndFloorRoutes(app: Express) {
         }
         const [buzzed] = await db
           .update(pagerTickets)
-          .set({ buzzCount: existing.buzzCount + 1, lastBuzzedAt: now })
+          .set({ buzzCount: existing.buzzCount + 1, lastBuzzedAt: now, acknowledgedAt: null })
           .where(eq(pagerTickets.id, existing.id))
           .returning();
         publishRealtimeEvent([`branch:${cafe.id}`, `pager:${buzzed.trackingToken}`], {
@@ -386,6 +386,7 @@ export function mountStaffPagerAndFloorRoutes(app: Express) {
         patch.readyAt = existing.readyAt || now;
         patch.buzzCount = existing.buzzCount + 1;
         patch.lastBuzzedAt = now;
+        patch.acknowledgedAt = null;
       }
       if (action === 'collected' || action === 'no_show') {
         patch.collectedAt = now;
@@ -646,6 +647,7 @@ export function mountStaffPagerAndFloorRoutes(app: Express) {
               holdExpiresAt: new Date(now.getTime() + cfg.waitlistHoldMins * 60_000),
               buzzCount: existing.buzzCount + 1,
               lastBuzzedAt: now,
+              acknowledgedAt: null,
             }
           : action === 'seated'
             ? { status: 'seated', seatedAt: now, closedAt: now }

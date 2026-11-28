@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { apiRequest } from '@/lib/queryClient';
 import { readGuestProfile, saveGuestPass, saveGuestProfile } from '@/lib/guestSession';
+import { preArmAudioOnUserGesture } from '@/lib/lockScreenRinger';
 import { localizedEntityText, useMenuLanguage } from '@/lib/menuLanguage';
 import { GuestCheckoutAndDeliveryModals } from './GuestCheckoutAndDeliveryModals';
 import { GuestVenueServiceDialogs, type PendingDepositSession } from './GuestVenueServiceDialogs';
@@ -618,7 +619,10 @@ export default function GuestHospitalityBar({
         setLookupCode={setLookupCode}
         lookupError={lookupError}
         lookupPending={lookupMutation.isPending}
-        onSubmitLookup={() => lookupMutation.mutate()}
+        onSubmitLookup={() => {
+          void preArmAudioOnUserGesture({ cafeName: restaurant.name, ticketCode: lookupCode.trim() || 'PAGER' });
+          lookupMutation.mutate();
+        }}
         reserveOpen={reserveOpen}
         setReserveOpen={setReserveOpen}
         todayIso={todayIso}
@@ -657,7 +661,10 @@ export default function GuestHospitalityBar({
         setWlZone={setWlZone}
         wlError={wlError}
         waitlistPending={waitlistMutation.isPending}
-        onSubmitWaitlist={() => waitlistMutation.mutate()}
+        onSubmitWaitlist={() => {
+          void preArmAudioOnUserGesture({ cafeName: restaurant.name, ticketCode: 'WAITLIST' });
+          waitlistMutation.mutate();
+        }}
         curbsideOpen={curbsideOpen}
         setCurbsideOpen={setCurbsideOpen}
         csBayId={csBayId}
@@ -672,7 +679,10 @@ export default function GuestHospitalityBar({
         setCsPlate={setCsPlate}
         csError={csError}
         curbsidePending={curbsideMutation.isPending}
-        onSubmitCurbside={() => curbsideMutation.mutate()}
+        onSubmitCurbside={() => {
+          void preArmAudioOnUserGesture({ cafeName: restaurant.name, ticketCode: 'CURBSIDE' });
+          curbsideMutation.mutate();
+        }}
       />
 
       <GuestCheckoutAndDeliveryModals
@@ -711,10 +721,16 @@ export default function GuestHospitalityBar({
         totalCartAmount={totalCartAmount}
         orderError={orderError}
         orderPending={orderMutation.isPending}
-        onSubmitOrder={() => orderMutation.mutate()}
+        onSubmitOrder={() => {
+          void preArmAudioOnUserGesture({ cafeName: restaurant.name, ticketCode: 'ORDER' });
+          orderMutation.mutate();
+        }}
         pendingGateway={pendingGateway}
         confirmGatewayPending={confirmGatewayMutation.isPending}
-        onConfirmGateway={() => confirmGatewayMutation.mutate()}
+        onConfirmGateway={() => {
+          void preArmAudioOnUserGesture({ cafeName: restaurant.name, ticketCode: pendingGateway?.orderNumber || 'ORDER' });
+          confirmGatewayMutation.mutate();
+        }}
         scannerOpen={scannerOpen}
         setScannerOpen={setScannerOpen}
       />

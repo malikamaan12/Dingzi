@@ -1,6 +1,13 @@
-/* Dingzi — Service Worker (PWA Shell + High-Priority Lock-Screen Web Push) */
-const CACHE_NAME = 'dingzi-pwa-shell-v2';
-const PRECACHE_URLS = ['/manifest.webmanifest', '/icon-192.svg', '/icon-512.svg', '/favicon.svg'];
+/* dingzi — Service Worker (PWA Shell + High-Urgency Lock-Screen Web Push + 1-Tap Acknowledge) */
+const CACHE_NAME = 'dingzi-pwa-shell-v3';
+const PRECACHE_URLS = [
+  '/manifest.webmanifest',
+  '/brand/dingzi-favicon-192.png',
+  '/brand/dingzi-app-icon-512.png',
+  '/icon-192.svg',
+  '/icon-512.svg',
+  '/favicon.svg',
+];
 
 self.addEventListener('install', event => {
   self.skipWaiting();
@@ -19,6 +26,25 @@ self.addEventListener('activate', event => {
     ]),
   );
 });
+
+function resolveAckRequest(targetUrl) {
+  if (typeof targetUrl !== 'string') return null;
+  const pagerMatch = targetUrl.match(/^\/pager\/([a-f0-9-]{36})/i);
+  if (pagerMatch) {
+    return {
+      url: '/api/public/pager/' + pagerMatch[1] + '/ack',
+      body: '{}',
+    };
+  }
+  const waitlistMatch = targetUrl.match(/^\/waitlist\/([a-f0-9-]{36})/i);
+  if (waitlistMatch) {
+    return {
+      url: '/api/public/waitlist-ticket/' + waitlistMatch[1] + '/respond',
+      body: JSON.stringify({ action: 'on_my_way' }),
+    };
+  }
+  return null;
+}
 
 // High-urgency push handler: wakes locked phone screen with OS sound + vibration + persistent banner
 self.addEventListener('push', event => {
@@ -41,17 +67,21 @@ self.addEventListener('push', event => {
 
   const options = {
     body: payload.body,
-    icon: '/icon-192.svg',
-    badge: '/icon-192.svg',
+    // Raster PNG icons are required for iOS 16.4+ Web Push and Android OEM lock screens
+    icon: '/brand/dingzi-favicon-192.png',
+    badge: '/brand/dingzi-favicon-192.png',
     tag: payload.tag || 'pager-ready-alarm',
     renotify: true,
     requireInteraction: true,
     silent: false,
-    vibrate: [500, 150, 500, 150, 800, 200, 800],
-    data: { url: payload.url || '/', ticketCode: payload.ticketCode || '' },
+    vibrate: [300, 120, 300, 120, 500, 160, 600],
+    data: {
+      url: payload.url || '/',
+      ticketCode: payload.ticketCode || '',
+    },
     actions: [
-      { action: 'open', title: 'Open Pager' },
-      { action: 'ack', title: 'Stop Ringing' },
+      { action: 'open', title: 'Open Pass' },
+      { action: 'ack', title: 'On My Way · Silence' },
     ],
   };
 
@@ -70,19 +100,40 @@ self.addEventListener('push', event => {
 self.addEventListener('notificationclick', event => {
   event.notification.close();
   const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+  const ackSpec = resolveAckRequest(targetUrl);
+
+  const ackNetworkPromise = ackSpec
+    ? fetch(ackSpec.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: ackSpec.body,
+      }).catch(() => {})
+    : Promise.resolve();
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-      for (const client of windowClients) {
-        client.postMessage({ type: 'PUSH_ALARM_ACKNOWLEDGED', action: event.action });
-        if (new URL(client.url).pathname === targetUrl && 'focus' in client) {
-          return client.focus();
+    Promise.all([
+      ackNetworkPromise,
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
+        for (const client of windowClients) {
+          client.postMessage({ type: 'PUSH_ALARM_ACKNOWLEDGED', action: event.action, url: targetUrl });
         }
-      }
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(targetUrl);
-      }
-    }),
+        // If the guest tapped "On My Way · Silence" directly on the lock screen, silence without forcing browser open
+        if (event.action === 'ack') {
+          return;
+        }
+        for (const client of windowClients) {
+          if (new URL(client.url).pathname === targetUrl && 'focus' in client) {
+            return client.focus();
+          }
+        }
+        if (windowClients.length > 0 && 'navigate' in windowClients[0] && 'focus' in windowClients[0]) {
+          return windowClients[0].navigate(targetUrl).then(c => (c ? c.focus() : undefined));
+        }
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(targetUrl);
+        }
+      }),
+    ]),
   );
 });
 
@@ -94,7 +145,6 @@ self.addEventListener('fetch', event => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/objects/') || url.pathname === '/sw.js') return;
 
-  // HTML page navigations: always prefer live network, fall back to cached shell only when offline
   if (req.mode === 'navigate') {
     event.respondWith(
       fetch(req)
@@ -110,7 +160,6 @@ self.addEventListener('fetch', event => {
     return;
   }
 
-  // Hashed static assets & icons: never substitute index.html on miss or offline
   if (url.pathname.startsWith('/assets/') || PRECACHE_URLS.includes(url.pathname)) {
     event.respondWith(
       fetch(req)

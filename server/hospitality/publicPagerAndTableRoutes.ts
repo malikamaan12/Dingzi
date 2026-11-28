@@ -78,13 +78,23 @@ export function mountPublicPagerAndTableRoutes(app: Express) {
       const restaurant = await storage.getRestaurantById(ticket.restaurantId);
       if (!restaurant) return res.status(404).json({ message: 'Venue not found' });
 
+      let activeTicket = ticket;
       if (req.query.claim === '1') {
+        if (!ticket.deviceClaimedAt) {
+          const [claimed] = await db
+            .update(pagerTickets)
+            .set({ deviceClaimedAt: new Date() })
+            .where(eq(pagerTickets.id, ticket.id))
+            .returning();
+          if (claimed) activeTicket = claimed;
+        }
         publishRealtimeEvent([`branch:${restaurant.id}`], {
           type: 'pager.claimed',
           branchId: restaurant.id,
           data: {
-            ticketId: ticket.id,
-            ticketCode: ticket.ticketCode,
+            ticketId: activeTicket.id,
+            ticketCode: activeTicket.ticketCode,
+            ticket: activeTicket,
           },
         });
       }
@@ -120,7 +130,7 @@ export function mountPublicPagerAndTableRoutes(app: Express) {
         : [];
 
       res.json({
-        ticket,
+        ticket: activeTicket,
         restaurant: toPublicCafe(restaurant),
         queueAhead: Number(aheadRows[0]?.n || 0),
         order: orderRow[0] || null,
@@ -192,6 +202,68 @@ export function mountPublicPagerAndTableRoutes(app: Express) {
         return res.status(404).json({ message: 'No active pager found for that receipt or pager code.' });
       }
       res.json({ trackingToken: ticket.trackingToken, ticketCode: ticket.ticketCode, status: ticket.status });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/public/pager/:token/arm', rateLimit(30, 5 * 60 * 1000, req => req.ip || 'unknown'), async (req, res, next) => {
+    try {
+      const token = z.string().uuid().parse(req.params.token);
+      const body = z
+        .object({
+          mode: z.enum(['audio_keepalive', 'web_push', 'native_push']).default('audio_keepalive'),
+        })
+        .strict()
+        .parse(req.body || {});
+      const [existing] = await db.select().from(pagerTickets).where(eq(pagerTickets.trackingToken, token));
+      if (!existing) return res.status(404).json({ message: 'Pager ticket not found' });
+
+      const now = new Date();
+      const [updated] = await db
+        .update(pagerTickets)
+        .set({
+          deviceClaimedAt: existing.deviceClaimedAt || now,
+          pushArmed: body.mode !== 'audio_keepalive' ? true : existing.pushArmed,
+        })
+        .where(eq(pagerTickets.id, existing.id))
+        .returning();
+
+      publishRealtimeEvent([`branch:${existing.restaurantId}`, `pager:${token}`], {
+        type: 'pager.armed',
+        branchId: existing.restaurantId,
+        data: { ticket: updated, mode: body.mode },
+      });
+
+      res.json({ ticket: updated, armed: true });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/public/pager/:token/ack', rateLimit(40, 5 * 60 * 1000, req => req.ip || 'unknown'), async (req, res, next) => {
+    try {
+      const token = z.string().uuid().parse(req.params.token);
+      const [existing] = await db.select().from(pagerTickets).where(eq(pagerTickets.trackingToken, token));
+      if (!existing) return res.status(404).json({ message: 'Pager ticket not found' });
+
+      const now = new Date();
+      const [updated] = await db
+        .update(pagerTickets)
+        .set({
+          deviceClaimedAt: existing.deviceClaimedAt || now,
+          acknowledgedAt: now,
+        })
+        .where(eq(pagerTickets.id, existing.id))
+        .returning();
+
+      publishRealtimeEvent([`branch:${existing.restaurantId}`, `pager:${token}`], {
+        type: 'pager.acknowledged',
+        branchId: existing.restaurantId,
+        data: { ticket: updated },
+      });
+
+      res.json({ ticket: updated, acknowledged: true });
     } catch (e) {
       next(e);
     }
@@ -756,6 +828,20 @@ export function mountPublicPagerAndTableRoutes(app: Express) {
       const token = z.string().uuid().parse(req.params.token);
       const [entry] = await db.select().from(waitlistEntries).where(eq(waitlistEntries.trackingToken, token));
       if (!entry) return res.status(404).json({ message: 'Waitlist ticket not found' });
+      let activeEntry = entry;
+      if (req.query.claim === '1' && !entry.deviceClaimedAt) {
+        const [claimed] = await db
+          .update(waitlistEntries)
+          .set({ deviceClaimedAt: new Date() })
+          .where(eq(waitlistEntries.id, entry.id))
+          .returning();
+        if (claimed) activeEntry = claimed;
+        publishRealtimeEvent([`branch:${entry.restaurantId}`], {
+          type: 'waitlist.updated',
+          branchId: entry.restaurantId,
+          data: { entry: activeEntry },
+        });
+      }
       const restaurant = await storage.getRestaurantById(entry.restaurantId);
       if (!restaurant) return res.status(404).json({ message: 'Venue not found' });
       const [aheadRows, [zone]] = await Promise.all([
@@ -772,11 +858,42 @@ export function mountPublicPagerAndTableRoutes(app: Express) {
         entry.zoneId ? db.select().from(diningZones).where(eq(diningZones.id, entry.zoneId)) : Promise.resolve([]),
       ]);
       res.json({
-        entry,
+        entry: activeEntry,
         zone: zone || null,
         partiesAhead: Number(aheadRows[0]?.n || 0),
         restaurant: toPublicCafe(restaurant),
       });
+    } catch (e) {
+      next(e);
+    }
+  });
+
+  app.post('/api/public/waitlist-ticket/:token/arm', rateLimit(30, 5 * 60 * 1000, req => req.ip || 'unknown'), async (req, res, next) => {
+    try {
+      const token = z.string().uuid().parse(req.params.token);
+      const body = z
+        .object({
+          mode: z.enum(['audio_keepalive', 'web_push', 'native_push']).default('audio_keepalive'),
+        })
+        .strict()
+        .parse(req.body || {});
+      const [entry] = await db.select().from(waitlistEntries).where(eq(waitlistEntries.trackingToken, token));
+      if (!entry) return res.status(404).json({ message: 'Waitlist ticket not found' });
+      const now = new Date();
+      const [updated] = await db
+        .update(waitlistEntries)
+        .set({
+          deviceClaimedAt: entry.deviceClaimedAt || now,
+          pushArmed: body.mode !== 'audio_keepalive' ? true : entry.pushArmed,
+        })
+        .where(eq(waitlistEntries.id, entry.id))
+        .returning();
+      publishRealtimeEvent([`branch:${entry.restaurantId}`, `waitlist:${token}`], {
+        type: 'waitlist.updated',
+        branchId: entry.restaurantId,
+        data: { entry: updated, mode: body.mode },
+      });
+      res.json({ entry: updated, armed: true });
     } catch (e) {
       next(e);
     }
@@ -792,12 +909,13 @@ export function mountPublicPagerAndTableRoutes(app: Express) {
       const [entry] = await db.select().from(waitlistEntries).where(eq(waitlistEntries.trackingToken, token));
       if (!entry) return res.status(404).json({ message: 'Waitlist ticket not found' });
 
+      const now = new Date();
       const [updated] = await db
         .update(waitlistEntries)
         .set(
           action === 'release_spot'
-            ? { status: 'released', guestResponse: 'release_spot', closedAt: new Date() }
-            : { guestResponse: 'on_my_way' },
+            ? { status: 'released', guestResponse: 'release_spot', closedAt: now }
+            : { guestResponse: 'on_my_way', acknowledgedAt: now, deviceClaimedAt: entry.deviceClaimedAt || now },
         )
         .where(eq(waitlistEntries.id, entry.id))
         .returning();

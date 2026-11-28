@@ -9,11 +9,19 @@ import { localizedEntityText, MenuLanguageProvider, MenuLanguageSwitch, useMenuL
 import { resolveVenueConfig } from '@shared/venueConfig';
 import {
   armLockScreenAudioKeepAlive,
+  preArmAudioOnUserGesture,
+  setLockScreenAckHandler,
   startContinuousRinger,
   stopContinuousRinger,
+  subscribeLockScreenArmedState,
   subscribeRingingState,
 } from '@/lib/lockScreenRinger';
-import { subscribeGuestLockScreenPush } from '@/lib/mobileBridge';
+import {
+  autoSyncLockScreenPushIfPermitted,
+  isScopePushPreviouslyArmed,
+  reportGuestAudioKeepAliveArmed,
+  subscribeGuestLockScreenPush,
+} from '@/lib/mobileBridge';
 import { dismissGuestPass, saveGuestPass } from '@/lib/guestSession';
 import { PwaInstallBanner } from '@/components/mobile/PwaInstallBanner';
 import { DingziMark } from '@/components/staff-brand';
@@ -31,30 +39,83 @@ function GuestWaitlistContent() {
   const [, params] = useRoute('/waitlist/:token');
   const token = params?.token || '';
   const { language, dir, t, label } = useMenuLanguage();
-  const [alertsArmed, setAlertsArmed] = useState(false);
+  const [audioArmed, setAudioArmed] = useState(false);
+  const [claimedOnce, setClaimedOnce] = useState(false);
+  const [pushArmedLocal, setPushArmedLocal] = useState(() =>
+    token ? isScopePushPreviouslyArmed(`waitlist:${token}`) : false,
+  );
   const [isRinging, setIsRinging] = useState(false);
   const [confirmRelease, setConfirmRelease] = useState(false);
+  const [seenKey, setSeenKey] = useState('');
 
   useEffect(() => subscribeRingingState(setIsRinging), []);
+  useEffect(() => subscribeLockScreenArmedState(setAudioArmed), []);
 
   const query = useQuery<any>({
     enabled: Boolean(token),
     queryKey: ['/api/public/waitlist-ticket', token],
     queryFn: async () => {
-      const res = await fetch(`/api/public/waitlist-ticket/${token}`);
+      const claimQuery = !claimedOnce ? '?claim=1' : '';
+      if (!claimedOnce) setClaimedOnce(true);
+      const res = await fetch(`/api/public/waitlist-ticket/${token}${claimQuery}`);
       if (!res.ok) throw new Error('Waitlist entry not found');
       return res.json();
     },
     refetchInterval: 4000,
+    refetchIntervalInBackground: true,
   });
 
   const data = query.data;
   const entry = data?.entry;
   const restaurant = data?.restaurant;
+  const alertsArmed = audioArmed || pushArmedLocal || Boolean(entry?.pushArmed);
   const venueCfg = resolveVenueConfig(restaurant?.venueConfig);
   const readyBannerText = (
     language === 'ar' ? venueCfg.waitlistReadySubtitleAr : venueCfg.waitlistReadySubtitle
   ).replace('{mins}', String(venueCfg.waitlistHoldMins));
+
+  const statusKey = `${entry?.status || ''}:${entry?.buzzCount || 0}`;
+  useEffect(() => {
+    if (!entry) return;
+    if (seenKey && seenKey !== statusKey) {
+      if (entry.status === 'ready') {
+        startContinuousRinger({
+          cafeName: restaurant?.name || 'Host Stand',
+          ticketCode: entry.ticketCode || 'TABLE',
+          subtitle: readyBannerText,
+        });
+      } else if (['seated', 'released', 'expired'].includes(entry.status)) {
+        stopContinuousRinger();
+      }
+    }
+    setSeenKey(statusKey);
+  }, [statusKey, seenKey, entry, restaurant?.name, readyBannerText]);
+
+  useEffect(() => {
+    if (!token) return;
+    let active = true;
+    void autoSyncLockScreenPushIfPermitted(`waitlist:${token}`).then(res => {
+      if (active && res.ok) setPushArmedLocal(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    if (!token || !entry || !restaurant || audioArmed || !['waiting', 'ready'].includes(entry.status)) return;
+    const onFirstTouch = () => {
+      void armLockScreenAudioKeepAlive({ cafeName: restaurant.name, ticketCode: entry.ticketCode }).then(ok => {
+        if (ok) void reportGuestAudioKeepAliveArmed(`waitlist:${token}`);
+      });
+    };
+    window.addEventListener('pointerdown', onFirstTouch, { once: true, passive: true });
+    window.addEventListener('keydown', onFirstTouch, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', onFirstTouch);
+      window.removeEventListener('keydown', onFirstTouch);
+    };
+  }, [token, entry?.ticketCode, entry?.status, restaurant?.name, audioArmed]);
 
   useEffect(() => {
     if (!entry || !restaurant) return;
@@ -84,7 +145,11 @@ function GuestWaitlistContent() {
 
   const respondMutation = useMutation({
     mutationFn: async (action: 'on_my_way' | 'release_spot') => {
-      stopContinuousRinger();
+      stopContinuousRinger(
+        action === 'on_my_way' && restaurant && entry
+          ? { cafeName: restaurant.name, ticketCode: entry.ticketCode }
+          : undefined,
+      );
       const res = await apiRequest('POST', `/api/public/waitlist-ticket/${token}/respond`, { action });
       return res.json();
     },
@@ -93,6 +158,14 @@ function GuestWaitlistContent() {
       void queryClient.invalidateQueries({ queryKey: ['/api/public/waitlist-ticket', token] });
     },
   });
+
+  useEffect(() => {
+    if (!token) return;
+    setLockScreenAckHandler(() => {
+      respondMutation.mutate('on_my_way');
+    });
+    return () => setLockScreenAckHandler(null);
+  }, [token]);
 
   if (query.isLoading) {
     return (
@@ -151,11 +224,11 @@ function GuestWaitlistContent() {
             </div>
             <Button
               type="button"
-              onClick={() => stopContinuousRinger()}
+              onClick={() => respondMutation.mutate('on_my_way')}
               className="w-full min-h-12 rounded-2xl font-bold bg-[#17132E] text-white hover:bg-[#241E42] cursor-pointer gap-2"
             >
               <BellOff className="w-4 h-4" aria-hidden="true" />
-              <span>Stop Ringing</span>
+              <span>Stop Ringing · On My Way</span>
             </Button>
           </div>
         )}
@@ -222,20 +295,29 @@ function GuestWaitlistContent() {
                 type="button"
                 variant={alertsArmed ? 'secondary' : 'default'}
                 className={`w-full min-h-12 rounded-2xl cursor-pointer gap-2 font-semibold ${
-                  !alertsArmed && !isReady ? 'bg-[#6236FF] hover:bg-[#4B1FE0] text-white' : ''
+                  !alertsArmed && !isReady
+                    ? 'bg-[#17132E] hover:bg-[#241E42] text-white'
+                    : alertsArmed && isReady
+                      ? 'bg-[#241E42] text-white hover:bg-[#312959]'
+                      : ''
                 }`}
                 onClick={async () => {
-                  await armLockScreenAudioKeepAlive({ cafeName: restaurant.name, ticketCode: entry.ticketCode });
-                  await subscribeGuestLockScreenPush(`waitlist:${token}`);
-                  setAlertsArmed(true);
+                  const audioPromise = preArmAudioOnUserGesture({
+                    cafeName: restaurant.name,
+                    ticketCode: entry.ticketCode,
+                  });
+                  const subRes = await subscribeGuestLockScreenPush(`waitlist:${token}`);
+                  await audioPromise;
+                  if (subRes.ok) setPushArmedLocal(true);
+                  void queryClient.invalidateQueries({ queryKey: ['/api/public/waitlist-ticket', token] });
                 }}
               >
                 {alertsArmed ? (
-                  <ShieldCheck className="w-5 h-5 text-emerald-600" aria-hidden="true" />
+                  <ShieldCheck className="w-5 h-5 text-emerald-500" aria-hidden="true" />
                 ) : (
                   <Bell className="w-5 h-5" aria-hidden="true" />
                 )}
-                <span>{alertsArmed ? 'Lock-Screen Sound Armed' : 'Arm Lock-Screen Sound & Push'}</span>
+                <span>{alertsArmed ? 'Lock-Screen Ring Active' : 'Tap to Arm Lock-Screen Ring'}</span>
               </Button>
 
               <div className="grid grid-cols-2 gap-2.5">

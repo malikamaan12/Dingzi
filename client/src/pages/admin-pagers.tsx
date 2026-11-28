@@ -31,6 +31,7 @@ import { useToast } from '@/hooks/use-toast';
 import { playStaffArrivalChime } from '@/lib/pagerAudio';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
 import { LocalQrBox } from '@/components/hospitality/LocalQrBox';
+import { GuestPhoneStatusBadge } from '@/components/hospitality/GuestPhoneStatusBadge';
 import { subscribeStaffLockScreenPush } from '@/lib/mobileBridge';
 import { publicExperienceOrigin } from '@shared/menuIdentity';
 
@@ -570,6 +571,7 @@ export default function AdminPagersPage() {
                     <div className="flex flex-wrap items-center gap-1.5 text-xs">
                       <Badge variant="outline" className="uppercase">{ticket.status}</Badge>
                       <Badge variant="secondary">{ticket.source.replace('_', ' ')}</Badge>
+                      <GuestPhoneStatusBadge ticket={ticket} />
                       {(ticket.recalledCount || 0) > 0 && (
                         <Badge
                           data-testid={`badge-recalled-${ticket.ticketCode}`}

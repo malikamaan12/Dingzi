@@ -14,6 +14,7 @@ import {
   VolumeX,
 } from 'lucide-react';
 import { DingziMark } from '@/components/staff-brand';
+import { GuestPhoneStatusBadge } from '@/components/hospitality/GuestPhoneStatusBadge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
@@ -291,6 +292,7 @@ export default function AdminStationPage() {
                       <span>{ticket.customerName || 'Walk-In Guest'}</span>
                       <span>·</span>
                       <span className="uppercase font-mono">{(order?.channel || ticket.source || 'counter').replace('_', ' ')}</span>
+                      <GuestPhoneStatusBadge ticket={ticket} darkSurface />
                       {lines.length > 0 && (
                         <span className="ms-auto font-mono text-[#C8FF42] font-bold">
                           {doneLines}/{lines.length} prepped
@@ -418,6 +420,7 @@ export default function AdminStationPage() {
                   className="min-h-11 px-3.5 rounded-xl bg-[#17132E] border border-[#C8FF42] text-white font-mono text-sm font-bold inline-flex items-center gap-2 hover:bg-[#C8FF42] hover:text-[#17132E] transition-colors cursor-pointer"
                 >
                   <span>{t.ticketCode}</span>
+                  {t.acknowledgedAt && <span className="text-[11px] font-sans font-extrabold">· On My Way</span>}
                   <CheckCircle2 className="w-4 h-4" />
                 </button>
               ))}

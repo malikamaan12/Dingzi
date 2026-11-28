@@ -28,11 +28,19 @@ import { localizedEntityText, MenuLanguageProvider, MenuLanguageSwitch, useMenuL
 import { formatCurrencyForLocale, resolveVenueConfig } from '@shared/venueConfig';
 import {
   armLockScreenAudioKeepAlive,
+  preArmAudioOnUserGesture,
+  setLockScreenAckHandler,
   startContinuousRinger,
   stopContinuousRinger,
+  subscribeLockScreenArmedState,
   subscribeRingingState,
 } from '@/lib/lockScreenRinger';
-import { subscribeGuestLockScreenPush } from '@/lib/mobileBridge';
+import {
+  autoSyncLockScreenPushIfPermitted,
+  isScopePushPreviouslyArmed,
+  reportGuestAudioKeepAliveArmed,
+  subscribeGuestLockScreenPush,
+} from '@/lib/mobileBridge';
 import { dismissGuestPass, readGuestProfile, saveGuestPass, saveGuestProfile } from '@/lib/guestSession';
 import { PwaInstallBanner } from '@/components/mobile/PwaInstallBanner';
 import { DingziMark } from '@/components/staff-brand';
@@ -112,9 +120,11 @@ function VirtualPagerContent() {
     typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('preview') === '1';
   const savedProfile = readGuestProfile();
 
-  const [alertsArmed, setAlertsArmed] = useState(false);
+  const [audioArmed, setAudioArmed] = useState(false);
   const [claimedOnce, setClaimedOnce] = useState(false);
-  const [pushMode, setPushMode] = useState<'none' | 'native_push' | 'web_push' | 'audio_keepalive_only'>('none');
+  const [pushMode, setPushMode] = useState<'none' | 'native_push' | 'web_push' | 'audio_keepalive_only'>(() =>
+    token && isScopePushPreviouslyArmed(`pager:${token}`) ? 'web_push' : 'none',
+  );
   const [pushNote, setPushNote] = useState('');
   const [isRinging, setIsRinging] = useState(false);
   const [showGame, setShowGame] = useState(false);
@@ -132,6 +142,7 @@ function VirtualPagerContent() {
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => subscribeRingingState(setIsRinging), []);
+  useEffect(() => subscribeLockScreenArmedState(setAudioArmed), []);
   useEffect(() => {
     const id = window.setInterval(() => setNowMs(Date.now()), 15_000);
     return () => window.clearInterval(id);
@@ -148,6 +159,7 @@ function VirtualPagerContent() {
       return res.json();
     },
     refetchInterval: 3500,
+    refetchIntervalInBackground: true,
   });
 
   const data = pagerQuery.data;
@@ -155,10 +167,68 @@ function VirtualPagerContent() {
   const restaurant = data?.restaurant;
   const venueCfg = resolveVenueConfig(restaurant?.venueConfig);
   const readySubtitle = language === 'ar' ? venueCfg.pagerReadySubtitleAr : venueCfg.pagerReadySubtitle;
+  const alertsArmed =
+    audioArmed || pushMode === 'web_push' || pushMode === 'native_push' || Boolean(ticket?.pushArmed);
+
+  const ackMutation = useMutation({
+    mutationFn: async () => {
+      if (!token || isSilentPreview) return null;
+      const res = await apiRequest('POST', `/api/public/pager/${token}/ack`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['/api/public/pager', token] });
+    },
+  });
+
+  useEffect(() => {
+    if (!token || isSilentPreview) return;
+    setLockScreenAckHandler(() => {
+      ackMutation.mutate();
+    });
+    return () => setLockScreenAckHandler(null);
+  }, [token, isSilentPreview]);
+
+  // Auto-bind Web Push silently on mount when Notification permission is already granted
+  useEffect(() => {
+    if (!token || isSilentPreview) return;
+    let active = true;
+    void autoSyncLockScreenPushIfPermitted(`pager:${token}`).then(res => {
+      if (active && res.ok) {
+        setPushMode('web_push');
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [token, isSilentPreview]);
+
+  // Auto-arm lock-screen speaker keep-alive on the guest's very first touch anywhere on the pass
+  useEffect(() => {
+    if (!token || !ticket || !restaurant || isSilentPreview || audioArmed || ticket.status === 'collected') return;
+    const onFirstTouch = () => {
+      void armLockScreenAudioKeepAlive({ cafeName: restaurant.name, ticketCode: ticket.ticketCode }).then(ok => {
+        if (ok) void reportGuestAudioKeepAliveArmed(`pager:${token}`);
+      });
+    };
+    window.addEventListener('pointerdown', onFirstTouch, { once: true, passive: true });
+    window.addEventListener('keydown', onFirstTouch, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', onFirstTouch);
+      window.removeEventListener('keydown', onFirstTouch);
+    };
+  }, [token, ticket?.ticketCode, ticket?.status, restaurant?.name, isSilentPreview, audioArmed]);
 
   useRealtimeStream(token ? `/api/public/stream/pager/${token}` : null, event => {
     void queryClient.invalidateQueries({ queryKey: ['/api/public/pager', token] });
-    if (!isSilentPreview && (event.type === 'pager.buzzed' || event.data?.ticket?.status === 'ready')) {
+    if (isSilentPreview) return;
+    if (event.type === 'pager.acknowledged') {
+      stopContinuousRinger(
+        restaurant && ticket ? { cafeName: restaurant.name, ticketCode: ticket.ticketCode } : undefined,
+      );
+      return;
+    }
+    if (event.type === 'pager.buzzed' || event.data?.ticket?.status === 'ready') {
       startContinuousRinger({
         cafeName: restaurant?.name || 'Café',
         ticketCode: ticket?.ticketCode || event.data?.ticket?.ticketCode || 'READY',
@@ -204,15 +274,29 @@ function VirtualPagerContent() {
 
   async function handleArmLockScreen() {
     if (!ticket || !restaurant) return;
-    await armLockScreenAudioKeepAlive({ cafeName: restaurant.name, ticketCode: ticket.ticketCode });
+    // Start audio keep-alive synchronously BEFORE awaiting Push permission so iOS Safari preserves user activation
+    const audioPromise = preArmAudioOnUserGesture({ cafeName: restaurant.name, ticketCode: ticket.ticketCode });
     const subRes = await subscribeGuestLockScreenPush(`pager:${token}`);
-    setAlertsArmed(true);
+    await audioPromise;
     setPushMode(subRes.mode);
     setPushNote(subRes.reason || '');
+    void queryClient.invalidateQueries({ queryKey: ['/api/public/pager', token] });
+  }
+
+  function handleStopAndAcknowledge() {
+    stopContinuousRinger(
+      ticket && restaurant && ticket.status !== 'collected'
+        ? { cafeName: restaurant.name, ticketCode: ticket.ticketCode }
+        : undefined,
+    );
+    ackMutation.mutate();
   }
 
   const testPushMutation = useMutation({
     mutationFn: async () => {
+      if (ticket && restaurant) {
+        void preArmAudioOnUserGesture({ cafeName: restaurant.name, ticketCode: ticket.ticketCode });
+      }
       if (!alertsArmed) await handleArmLockScreen();
       startContinuousRinger({
         cafeName: restaurant?.name || 'Pager',
@@ -353,11 +437,7 @@ function VirtualPagerContent() {
             <Button
               type="button"
               data-testid="button-stop-ringing"
-              onClick={() =>
-                stopContinuousRinger(
-                  !isCollected ? { cafeName: restaurant.name, ticketCode: ticket.ticketCode } : undefined,
-                )
-              }
+              onClick={handleStopAndAcknowledge}
               className="w-full min-h-14 rounded-2xl font-bold text-base bg-[#17132E] text-white hover:bg-[#241E42] cursor-pointer gap-2"
             >
               <BellOff className="w-5 h-5" aria-hidden="true" />
@@ -446,6 +526,11 @@ function VirtualPagerContent() {
           {isReady && (
             <div className="mt-4 p-3.5 rounded-2xl bg-[#C8FF42] text-[#17132E] font-display font-extrabold text-sm">
               {readySubtitle} · {ticket.ticketCode}
+              {ticket.acknowledgedAt && (
+                <span className="block text-xs font-semibold text-[#17132E]/80 mt-0.5">
+                  Counter notified — you are on your way
+                </span>
+              )}
             </div>
           )}
 
@@ -484,18 +569,22 @@ function VirtualPagerContent() {
                 type="button"
                 variant={alertsArmed ? 'secondary' : 'default'}
                 className={`flex-1 min-h-12 rounded-2xl font-semibold cursor-pointer gap-2 ${
-                  !alertsArmed && !isReady ? 'bg-[#6236FF] hover:bg-[#4B1FE0] text-white' : ''
+                  !alertsArmed && !isReady
+                    ? 'bg-[#17132E] hover:bg-[#241E42] text-white'
+                    : alertsArmed && isReady
+                      ? 'bg-[#241E42] text-white hover:bg-[#312959]'
+                      : ''
                 }`}
                 onClick={handleArmLockScreen}
                 data-testid="button-enable-pager-alerts"
               >
                 {alertsArmed ? (
-                  <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" aria-hidden="true" />
+                  <ShieldCheck className="w-5 h-5 text-emerald-500 shrink-0" aria-hidden="true" />
                 ) : (
                   <Bell className="w-5 h-5 shrink-0" aria-hidden="true" />
                 )}
                 <span className="truncate">
-                  {alertsArmed ? 'Lock-Screen Sound Armed' : 'Arm Lock-Screen Sound & Push'}
+                  {alertsArmed ? 'Lock-Screen Ring Active' : 'Tap to Arm Lock-Screen Ring'}
                 </span>
               </Button>
               <Button
@@ -513,11 +602,13 @@ function VirtualPagerContent() {
               </Button>
             </div>
           )}
-          {alertsArmed && !isCollected && (
+          {!isCollected && (
             <p className={`text-[11px] mt-2 ${isReady ? 'text-white/75' : 'text-[#57507A]'}`}>
-              {pushMode === 'web_push' || pushMode === 'native_push'
-                ? 'Background Push + Audio Keep-Alive active — safe to lock your phone.'
-                : pushNote || 'Audio Keep-Alive + Wake Lock active.'}
+              {alertsArmed
+                ? pushMode === 'web_push' || pushMode === 'native_push' || ticket.pushArmed
+                  ? 'Push + Lock-Screen Speaker Keep-Alive active — safe to lock your phone.'
+                  : pushNote || 'Lock-Screen Speaker Keep-Alive active — safe to lock your phone.'
+                : 'Tap once before locking your phone so your speaker & vibration ring when ready.'}
             </p>
           )}
         </section>
