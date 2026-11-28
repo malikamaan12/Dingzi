@@ -17,7 +17,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { apiRequest } from '@/lib/queryClient';
 import { cafeThemeStyle } from '@/lib/cafeTheme';
-import { MenuLanguageProvider, MenuLanguageSwitch, useMenuLanguage } from '@/lib/menuLanguage';
+import { localizedEntityText, MenuLanguageProvider, MenuLanguageSwitch, useMenuLanguage } from '@/lib/menuLanguage';
+import { usePlatformConfig } from '@/lib/usePlatformConfig';
 import { PUBLIC_MENU_ORIGIN } from '@shared/menuIdentity';
 import { DingziWordmark } from '@/components/staff-brand';
 import { ActiveGuestPassesBar } from '@/components/hospitality/ActiveGuestPassesBar';
@@ -27,10 +28,12 @@ import { QrNfcScannerModal } from '@/components/qr-nfc/QrNfcScannerModal';
 type Cafe = {
   id: string;
   name: string;
+  nameAr?: string | null;
   slug?: string | null;
   theme: string;
   brandAccentHex?: string | null;
   cuisineType: string | null;
+  cuisineTypeAr?: string | null;
   logoUrl: string | null;
   orderingMode?: string;
   reservationsEnabled?: boolean;
@@ -50,8 +53,10 @@ export default function Home() {
 
 function HomeDirectoryContent() {
   const { language, dir, t, label } = useMenuLanguage();
+  const platformCfg = usePlatformConfig();
   const [, navigate] = useLocation();
   const publicOnly = window.location.origin === PUBLIC_MENU_ORIGIN;
+  const showStaffLink = !publicOnly && platformCfg.showStaffSignInLinkOnDirectory;
   const { data: cafes, isLoading, isError } = useQuery<Cafe[]>({ queryKey: ['/api/cafes'] });
 
   const [search, setSearch] = useState('');
@@ -92,8 +97,10 @@ function HomeDirectoryContent() {
       if (!q) return true;
       return (
         c.name.toLowerCase().includes(q) ||
+        (c.nameAr || '').toLowerCase().includes(q) ||
         label(c.name).toLowerCase().includes(q) ||
         (c.cuisineType || '').toLowerCase().includes(q) ||
+        (c.cuisineTypeAr || '').toLowerCase().includes(q) ||
         (c.slug || '').toLowerCase().includes(q)
       );
     });
@@ -119,7 +126,7 @@ function HomeDirectoryContent() {
           </Link>
           <div className="flex items-center gap-2 shrink-0">
             <MenuLanguageSwitch />
-            {!publicOnly && (
+            {showStaffLink && (
               <Link
                 href="/login"
                 className="hidden sm:inline-flex items-center min-h-11 text-xs sm:text-sm font-semibold px-4 rounded-xl border border-[#E5E2F2] bg-white text-[#4B1FE0] hover:bg-[#EFEAFF] transition-colors cursor-pointer"
@@ -139,18 +146,20 @@ function HomeDirectoryContent() {
         <section className="grid lg:grid-cols-12 gap-5 sm:gap-6 items-center">
           <div className="lg:col-span-7 space-y-3.5 sm:space-y-4">
             <span className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#EFEAFF] text-[#4B1FE0] text-xs font-bold">
-              {t('Menus, tables, and pickup — made dingzi.')}
+              {language === 'ar' ? platformCfg.directoryBadgeAr : platformCfg.directoryBadgeEn}
             </span>
             <h1
               style={{ letterSpacing: dir === 'rtl' ? '0' : '-0.025em' }}
               className="text-3xl min-[400px]:text-4xl sm:text-6xl font-display font-extrabold leading-[1.12] text-balance text-[#17132E]"
             >
-              {t('Scan the table.')}
+              {language === 'ar' ? platformCfg.heroTitleLine1Ar : platformCfg.heroTitleLine1En}
               <br />
-              <span className="text-[#6236FF]">{t('Skip the crowd.')}</span>
+              <span className="text-[#6236FF]">
+                {language === 'ar' ? platformCfg.heroTitleLine2Ar : platformCfg.heroTitleLine2En}
+              </span>
             </h1>
             <p className="text-[#57507A] text-sm sm:text-lg leading-relaxed max-w-xl">
-              {t("Sit easy. We'll ding your phone when it's hot.")} Browse live English &amp; Arabic menus, reserve tables, or check into a curbside pickup bay right in your browser.
+              {language === 'ar' ? platformCfg.heroSubtitleAr : platformCfg.heroSubtitleEn}
             </p>
           </div>
 
@@ -168,8 +177,12 @@ function HomeDirectoryContent() {
                   <Bell className="w-5 h-5" aria-hidden="true" />
                 </span>
                 <div className="min-w-0">
-                  <h2 className="font-bold text-base text-[#17132E]">{t('Have a Pager or Receipt Code?')}</h2>
-                  <p className="text-xs text-[#57507A]">Open your live lock-screen virtual pager in one tap.</p>
+                  <h2 className="font-bold text-base text-[#17132E]">
+                    {language === 'ar' ? platformCfg.pagerCardTitleAr : platformCfg.pagerCardTitleEn}
+                  </h2>
+                  <p className="text-xs text-[#57507A]">
+                    {language === 'ar' ? platformCfg.pagerCardSubtitleAr : platformCfg.pagerCardSubtitleEn}
+                  </p>
                 </div>
               </div>
 
@@ -182,7 +195,7 @@ function HomeDirectoryContent() {
                 >
                   {cafes.map(c => (
                     <option key={c.id} value={c.id}>
-                      {label(c.name)}
+                      {localizedEntityText(language, c.name, c.nameAr, label)}
                     </option>
                   ))}
                 </select>
@@ -294,9 +307,15 @@ function HomeDirectoryContent() {
                     <ArrowUpRight className="text-primary transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" aria-hidden="true" />
                   </div>
 
-                  <h2 className="text-2xl font-display font-bold mt-5 text-[#17132E]">{label(cafe.name)}</h2>
+                  <h2 className="text-2xl font-display font-bold mt-5 text-[#17132E]">
+                    {localizedEntityText(language, cafe.name, cafe.nameAr, label)}
+                  </h2>
                   <p className="text-[#57507A] text-sm mt-1">
-                    {cafe.cuisineType || 'Specialty coffee & hospitality'}
+                    {localizedEntityText(
+                      language,
+                      cafe.cuisineType || (language === 'ar' ? 'قهوة مختصة وضيافة عصرية' : 'Specialty coffee & hospitality'),
+                      cafe.cuisineTypeAr,
+                    )}
                   </p>
 
                   <div className="flex flex-wrap gap-1.5 mt-5 text-[11px] font-semibold">
@@ -356,8 +375,8 @@ function HomeDirectoryContent() {
         style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px))' }}
         className="mx-auto max-w-6xl border-t border-[#E5E2F2] px-4 sm:px-6 pt-6 text-sm text-[#57507A] flex flex-wrap items-center justify-between gap-4"
       >
-        <span>{t('Menus, tables, and pickup — made dingzi.')}</span>
-        {!publicOnly && (
+        <span>{language === 'ar' ? platformCfg.footerTextAr : platformCfg.footerTextEn}</span>
+        {showStaffLink && (
           <Link href="/login" className="min-h-11 inline-flex items-center text-[#4B1FE0] font-semibold hover:underline cursor-pointer">
             Staff &amp; Super-Admin Sign In
           </Link>
@@ -366,7 +385,7 @@ function HomeDirectoryContent() {
       <QrNfcScannerModal
         open={scannerOpen}
         onOpenChange={setScannerOpen}
-        venues={(cafes || []).map(c => ({ id: c.id, name: label(c.name) }))}
+        venues={(cafes || []).map(c => ({ id: c.id, name: localizedEntityText(language, c.name, c.nameAr, label) }))}
         dir={dir}
         lang={language}
         t={t}

@@ -23,7 +23,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { cafeThemeStyle } from '@/lib/cafeTheme';
-import { MenuLanguageProvider, MenuLanguageSwitch, useMenuLanguage } from '@/lib/menuLanguage';
+import { localizedEntityText, MenuLanguageProvider, MenuLanguageSwitch, useMenuLanguage } from '@/lib/menuLanguage';
+import { formatCurrencyForLocale, resolveVenueConfig } from '@shared/venueConfig';
 import {
   armLockScreenAudioKeepAlive,
   startContinuousRinger,
@@ -113,7 +114,7 @@ function VirtualPagerContent() {
   const [feedbackSaved, setFeedbackSaved] = useState<{ promptGoogleReview: boolean; googleMapsReviewUrl: string | null } | null>(null);
   const [bayId, setBayId] = useState('');
   const [vehicleColor, setVehicleColor] = useState('White');
-  const [vehicleType, setVehicleType] = useState<'Sedan' | 'SUV' | 'Pickup' | 'Coupe' | 'Other'>('SUV');
+  const [vehicleType, setVehicleType] = useState<string>('SUV');
   const [licensePlate, setLicensePlate] = useState('');
 
   useEffect(() => subscribeRingingState(setIsRinging), []);
@@ -132,6 +133,8 @@ function VirtualPagerContent() {
   const data = pagerQuery.data;
   const ticket = data?.ticket;
   const restaurant = data?.restaurant;
+  const venueCfg = resolveVenueConfig(restaurant?.venueConfig);
+  const readySubtitle = language === 'ar' ? venueCfg.pagerReadySubtitleAr : venueCfg.pagerReadySubtitle;
 
   useRealtimeStream(token ? `/api/public/stream/pager/${token}` : null, event => {
     void queryClient.invalidateQueries({ queryKey: ['/api/public/pager', token] });
@@ -139,7 +142,7 @@ function VirtualPagerContent() {
       startContinuousRinger({
         cafeName: restaurant?.name || 'Café',
         ticketCode: ticket?.ticketCode || event.data?.ticket?.ticketCode || 'READY',
-        subtitle: 'Your order is hot and ready at the pickup counter!',
+        subtitle: readySubtitle,
       });
     }
   });
@@ -168,16 +171,16 @@ function VirtualPagerContent() {
     if (seenKey && seenKey !== prevStatusKey) {
       if (ticket.status === 'ready') {
         startContinuousRinger({
-          cafeName: restaurant?.name || 'Dingzi',
+          cafeName: restaurant?.name || 'dingzi',
           ticketCode: ticket.ticketCode,
-          subtitle: 'Your order is ready for pickup!',
+          subtitle: readySubtitle,
         });
       } else if (ticket.status === 'collected' || ticket.status === 'no_show') {
         stopContinuousRinger();
       }
     }
     setSeenKey(prevStatusKey);
-  }, [prevStatusKey, seenKey, ticket, restaurant?.name]);
+  }, [prevStatusKey, seenKey, ticket, restaurant?.name, readySubtitle]);
 
   async function handleArmLockScreen() {
     if (!ticket || !restaurant) return;
@@ -283,7 +286,9 @@ function VirtualPagerContent() {
               <p className="text-xs tracking-wide text-muted-foreground font-semibold">
                 <span className="lowercase font-display font-extrabold text-[#6236FF]" dir="ltr" lang="en">dingzi</span> · {t('Virtual Pager')}
               </p>
-              <h1 className="font-bold text-lg truncate">{label(restaurant.name)}</h1>
+              <h1 className="font-bold text-lg truncate">
+                {localizedEntityText(language, restaurant.name, restaurant.nameAr, label)}
+              </h1>
             </div>
           </div>
           <MenuLanguageSwitch />
@@ -386,7 +391,7 @@ function VirtualPagerContent() {
 
           {isReady && (
             <div className="mt-4 p-3.5 rounded-2xl bg-[#C8FF42] text-[#17132E] font-display font-extrabold text-sm shadow-dz-volt">
-              {t('Ding! Your food is ready.')} · {ticket.ticketCode}
+              {readySubtitle} · {ticket.ticketCode}
             </div>
           )}
 
@@ -580,7 +585,7 @@ function VirtualPagerContent() {
                   value={vehicleColor}
                   onChange={e => setVehicleColor(e.target.value)}
                 >
-                  {['White', 'Black', 'Silver', 'Gray', 'Blue', 'Red', 'Sand', 'Green'].map(c => (
+                  {venueCfg.vehicleColors.map(c => (
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
@@ -590,9 +595,9 @@ function VirtualPagerContent() {
                 <select
                   className="manager-select w-full h-11 text-sm"
                   value={vehicleType}
-                  onChange={e => setVehicleType(e.target.value as any)}
+                  onChange={e => setVehicleType(e.target.value)}
                 >
-                  {['SUV', 'Sedan', 'Pickup', 'Coupe', 'Other'].map(v => (
+                  {venueCfg.vehicleTypes.map(v => (
                     <option key={v} value={v}>{v}</option>
                   ))}
                 </select>
@@ -640,7 +645,7 @@ function VirtualPagerContent() {
                   <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
                   <span>Thank you for your {ticket.rating || rating}-star feedback!</span>
                 </div>
-                {(feedbackSaved?.googleMapsReviewUrl || ((ticket.rating || rating) >= 4 && restaurant.googleMapsReviewUrl)) && (
+                {(feedbackSaved?.googleMapsReviewUrl || ((ticket.rating || rating) >= venueCfg.reviewPromptMinStars && restaurant.googleMapsReviewUrl)) && (
                   <div>
                     <a
                       href={feedbackSaved?.googleMapsReviewUrl || restaurant.googleMapsReviewUrl}
@@ -709,9 +714,9 @@ function VirtualPagerContent() {
                 <div className="grid grid-cols-2 gap-2">
                   {data.specials.map((item: any) => (
                     <div key={item.id} className="rounded-xl border p-2.5 text-xs space-y-1">
-                      <strong className="block truncate">{label(item.name)}</strong>
+                      <strong className="block truncate">{localizedEntityText(language, item.name, item.nameAr, label)}</strong>
                       <span className="text-muted-foreground">
-                        {Number(item.price).toFixed(2)} {restaurant.currency}
+                        {Number(item.price).toFixed(2)} {formatCurrencyForLocale(restaurant.currency, language, venueCfg.currencySymbolAr)}
                       </span>
                     </div>
                   ))}

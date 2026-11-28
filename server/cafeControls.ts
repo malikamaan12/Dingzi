@@ -2,6 +2,8 @@ import { type Express, type RequestHandler } from 'express';
 import { storage } from './storage';
 import { db } from './db';
 import { categories, restaurants, menuItems, menuItemPriceVariants, diningZones, diningTables, serviceBays, aggregatorLinks, smartTags, sessions, users, insertMenuItemSchema, insertPriceVariantSchema, cafeProfileSchema, passwordSchema } from '@shared/schema';
+import { CATEGORY_MENU_GROUPS } from '@shared/venueConfig';
+import { toPublicCafe } from './hospitality/helpers';
 import { eq, and, ne, sql } from 'drizzle-orm';
 import { isAuthenticated } from './localAuth';
 import bcrypt from './passwords';
@@ -11,8 +13,9 @@ import { getManagedCafe, mediaOwner } from './accessControl';
 import { mountPricingControls } from './pricingControls';
 import { rateLimit } from './httpSecurity';
 const profileFields = [
-  'name','slug','theme','brandAccentHex','currency','timezone','logoUrl','coverMediaUrl','coverMediaType',
-  'cuisineType','address','phone','openingHours','openTime','closeTime','orderingMode','paymentGateway','googleMapsReviewUrl',
+  'name','nameAr','slug','theme','brandAccentHex','currency','timezone','logoUrl','coverMediaUrl','coverMediaType',
+  'cuisineType','cuisineTypeAr','address','addressAr','phone','openingHours','openingHoursAr','openTime','closeTime',
+  'venueConfig','orderingMode','paymentGateway','googleMapsReviewUrl',
   'reservationsEnabled','waitlistEnabled','driveThruEnabled','pagerMiniGameEnabled',
   'slotIntervalMins','defaultTurnDurationMins','reservationDepositAmount',
 ];
@@ -162,7 +165,7 @@ export function mountCafeControls(app: Express) {
     } catch(e) { next(e); }
   });
   app.get('/api/cafes', async (_req, res, next) => {
-    try { res.json((await storage.getAllRestaurants()).filter(c => c.status === 'active' && !c.hidden).map(({ id, name, slug, theme, brandAccentHex, cuisineType, logoUrl, orderingMode, reservationsEnabled, waitlistEnabled, driveThruEnabled }) => ({ id, name, slug, theme, brandAccentHex, cuisineType, logoUrl, orderingMode, reservationsEnabled, waitlistEnabled, driveThruEnabled }))); } catch(e) { next(e); }
+    try { res.json((await storage.getAllRestaurants()).filter(c => c.status === 'active' && !c.hidden).map(({ id, name, nameAr, slug, theme, brandAccentHex, cuisineType, cuisineTypeAr, logoUrl, orderingMode, reservationsEnabled, waitlistEnabled, driveThruEnabled }) => ({ id, name, nameAr: nameAr ?? null, slug, theme, brandAccentHex, cuisineType, cuisineTypeAr: cuisineTypeAr ?? null, logoUrl, orderingMode, reservationsEnabled, waitlistEnabled, driveThruEnabled }))); } catch(e) { next(e); }
   });
   app.get('/api/menu/public/:id', async (req, res, next) => {
     try {
@@ -174,12 +177,11 @@ export function mountCafeControls(app: Express) {
       const visibleCatIds = new Set(cats.map(c => c.id));
       const items = allItems.filter(item => item.isAvailable && visibleCatIds.has(item.categoryId));
       const visibleIds = new Set(items.map(item => item.id));
-      const { name, slug, theme, brandAccentHex, currency, timezone, logoUrl, coverMediaUrl, coverMediaType, cuisineType, address, phone, openingHours, openTime, closeTime, orderingMode, paymentGateway, googleMapsReviewUrl, reservationsEnabled, waitlistEnabled, driveThruEnabled, pagerMiniGameEnabled, slotIntervalMins, defaultTurnDurationMins, reservationDepositAmount } = restaurant;
-      res.json({ restaurant: { id, name, slug, theme, brandAccentHex, currency, timezone, logoUrl, coverMediaUrl, coverMediaType, cuisineType, address, phone, openingHours, openTime, closeTime, orderingMode, paymentGateway, googleMapsReviewUrl, reservationsEnabled, waitlistEnabled, driveThruEnabled, pagerMiniGameEnabled, slotIntervalMins, defaultTurnDurationMins, reservationDepositAmount }, categories: cats, items, variants: allVariants.filter(v => visibleIds.has(v.menuItemId)) });
+      res.json({ restaurant: toPublicCafe(restaurant), categories: cats, items, variants: allVariants.filter(v => visibleIds.has(v.menuItemId)) });
     } catch (e) { next(e); }
   });
   app.put('/api/categories/:id', isAuthenticated, async (req, res, next) => {
-    try { res.json(await storage.updateCategory(req.params.id, z.object({ title: z.string().trim().min(1).optional(), isVisible: z.boolean().optional(), availableFrom: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional(), availableUntil: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional(), order: z.number().int().min(0).optional() }).parse(req.body))); } catch(e) { next(e); }
+    try { res.json(await storage.updateCategory(req.params.id, z.object({ title: z.string().trim().min(1).max(100).optional(), titleAr: z.string().trim().max(100).nullable().optional(), menuGroup: z.enum(CATEGORY_MENU_GROUPS).nullable().optional(), isVisible: z.boolean().optional(), availableFrom: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional(), availableUntil: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).nullable().optional(), order: z.number().int().min(0).optional() }).parse(req.body))); } catch(e) { next(e); }
   });
   app.get('/api/cafe-backup', isAuthenticated, async (req: any, res, next) => {
     try {

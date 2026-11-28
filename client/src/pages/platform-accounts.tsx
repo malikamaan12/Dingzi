@@ -12,6 +12,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { notifySessionChanged } from '@/lib/sessionSync';
+import { usePlatformConfig } from '@/lib/usePlatformConfig';
 import type { EffectiveStaffRole, Restaurant, User } from '@shared/schema';
 
 type Account = Omit<User, 'password'> & {
@@ -62,6 +63,7 @@ const actionLabels = {
 export default function PlatformAccounts() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const platformCfg = usePlatformConfig();
   const accounts = useQuery<Account[]>({ queryKey: ['/api/super-admin/users'] });
   const cafes = useQuery<Restaurant[]>({ queryKey: ['/api/super-admin/restaurants'] });
   const tenantsQuery = useQuery<{ tenants: TenantRecord[] }>({ queryKey: ['/api/super-admin/tenants'] });
@@ -179,7 +181,7 @@ export default function PlatformAccounts() {
     setError('');
     setForm(
       account === 'new'
-        ? { ...emptyForm }
+        ? { ...emptyForm, maxBranches: platformCfg.defaultNewTenantMaxBranches }
         : {
             ...emptyForm,
             email: account.email,

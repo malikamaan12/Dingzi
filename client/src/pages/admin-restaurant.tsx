@@ -29,19 +29,26 @@ import {
 import { cafeThemes } from '@/lib/cafeTheme';
 import { liveCafeStyle } from '@/lib/menuPalette';
 import { CategoryVectorIcon } from '@/components/menu/CategoryVectorIcon';
+import { VenueConfigStudio } from '@/components/hospitality/VenueConfigStudio';
 import { publicExperienceOrigin } from '@shared/menuIdentity';
+import { SUPPORTED_CURRENCIES, resolveVenueConfig, type VenueConfig } from '@shared/venueConfig';
 import type { Restaurant } from '@shared/schema';
 import UnsavedChanges from '@/components/unsaved-changes';
 
 const empty = {
   name: '',
+  nameAr: '',
   slug: '',
   cuisineType: '',
+  cuisineTypeAr: '',
   address: '',
+  addressAr: '',
   phone: '',
   openingHours: '',
+  openingHoursAr: '',
   openTime: '08:00',
   closeTime: '23:00',
+  venueConfig: {} as VenueConfig,
   googleMapsReviewUrl: '',
   logoUrl: '',
   coverMediaUrl: '',
@@ -57,13 +64,18 @@ type Profile = typeof empty;
 function profile(cafe: Restaurant): Profile {
   return {
     name: cafe.name,
+    nameAr: cafe.nameAr || '',
     slug: cafe.slug || '',
     cuisineType: cafe.cuisineType || '',
+    cuisineTypeAr: cafe.cuisineTypeAr || '',
     address: cafe.address || '',
+    addressAr: cafe.addressAr || '',
     phone: cafe.phone || '',
     openingHours: cafe.openingHours || '',
+    openingHoursAr: cafe.openingHoursAr || '',
     openTime: cafe.openTime || '08:00',
     closeTime: cafe.closeTime || '23:00',
+    venueConfig: cafe.venueConfig || {},
     googleMapsReviewUrl: cafe.googleMapsReviewUrl || '',
     logoUrl: cafe.logoUrl || '',
     coverMediaUrl: cafe.coverMediaUrl || '',
@@ -116,13 +128,18 @@ export default function AdminRestaurant() {
       return (
         await apiRequest('POST', '/api/restaurant', {
           name: draft.name.trim(),
+          nameAr: draft.nameAr.trim() || null,
           slug: normalizedSlug || null,
           cuisineType: draft.cuisineType,
+          cuisineTypeAr: draft.cuisineTypeAr.trim() || null,
           address: draft.address,
+          addressAr: draft.addressAr.trim() || null,
           phone: draft.phone,
           openingHours: draft.openingHours,
+          openingHoursAr: draft.openingHoursAr.trim() || null,
           openTime: draft.openTime || '08:00',
           closeTime: draft.closeTime || '23:00',
+          venueConfig: draft.venueConfig,
           googleMapsReviewUrl: draft.googleMapsReviewUrl.trim() || null,
           logoUrl: draft.logoUrl,
           coverMediaUrl: draft.coverMediaUrl,
@@ -241,7 +258,7 @@ export default function AdminRestaurant() {
 
             <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="cafe-name">Restaurant / Café Name *</Label>
+                <Label htmlFor="cafe-name">Restaurant / Café Name (EN) *</Label>
                 <Input
                   id="cafe-name"
                   required
@@ -251,47 +268,84 @@ export default function AdminRestaurant() {
                 />
               </div>
               <div>
-                <Label htmlFor="cafe-slug" className="inline-flex items-center gap-1.5">
-                  <Globe className="w-3.5 h-3.5 text-primary" />
-                  <span>Branded URL Slug (`/v/:slug`)</span>
-                </Label>
+                <Label htmlFor="cafe-name-ar">Restaurant / Café Name (Arabic)</Label>
                 <Input
-                  id="cafe-slug"
-                  value={draft.slug}
-                  onChange={e => update({ slug: e.target.value.toLowerCase() })}
-                  placeholder="urban-cafe"
-                  className="h-11 font-mono"
+                  id="cafe-name-ar"
+                  dir="rtl"
+                  value={draft.nameAr}
+                  onChange={e => update({ nameAr: e.target.value })}
+                  placeholder="الاسم بالعربية"
+                  className="h-11"
                 />
-                {draft.slug.trim() && (
-                  <span className="text-[11px] font-mono text-muted-foreground block mt-1 truncate">
-                    {publicBase}/v/{draft.slug.trim().toLowerCase()}
-                  </span>
-                )}
               </div>
             </div>
 
             <div>
-              <Label htmlFor="cafe-cuisine">Cuisine or Tagline</Label>
+              <Label htmlFor="cafe-slug" className="inline-flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 text-primary" />
+                <span>Branded URL Slug (`/v/:slug`)</span>
+              </Label>
               <Input
-                id="cafe-cuisine"
-                value={draft.cuisineType}
-                onChange={e => update({ cuisineType: e.target.value })}
-                placeholder="Specialty coffee, artisan pizza & fresh refreshments"
-                className="h-11"
+                id="cafe-slug"
+                value={draft.slug}
+                onChange={e => update({ slug: e.target.value.toLowerCase() })}
+                placeholder="urban-cafe"
+                className="h-11 font-mono"
               />
+              {draft.slug.trim() && (
+                <span className="text-[11px] font-mono text-muted-foreground block mt-1 truncate">
+                  {publicBase}/v/{draft.slug.trim().toLowerCase()}
+                </span>
+              )}
             </div>
 
-            <div>
-              <Label htmlFor="cafe-address" className="inline-flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-primary" />
-                <span>Venue Address</span>
-              </Label>
-              <Textarea
-                id="cafe-address"
-                value={draft.address}
-                onChange={e => update({ address: e.target.value })}
-                placeholder="Lusail Marina Promenade, Doha, Qatar"
-              />
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="cafe-cuisine">Cuisine or Tagline (EN)</Label>
+                <Input
+                  id="cafe-cuisine"
+                  value={draft.cuisineType}
+                  onChange={e => update({ cuisineType: e.target.value })}
+                  placeholder="Specialty coffee, artisan pizza & fresh refreshments"
+                  className="h-11"
+                />
+              </div>
+              <div>
+                <Label htmlFor="cafe-cuisine-ar">Cuisine or Tagline (Arabic)</Label>
+                <Input
+                  id="cafe-cuisine-ar"
+                  dir="rtl"
+                  value={draft.cuisineTypeAr}
+                  onChange={e => update({ cuisineTypeAr: e.target.value })}
+                  placeholder="قهوة مختصة ومخبوزات طازجة"
+                  className="h-11"
+                />
+              </div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="cafe-address" className="inline-flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 text-primary" />
+                  <span>Venue Address (EN)</span>
+                </Label>
+                <Textarea
+                  id="cafe-address"
+                  value={draft.address}
+                  onChange={e => update({ address: e.target.value })}
+                  placeholder="Lusail Marina Promenade, Doha, Qatar"
+                />
+              </div>
+              <div>
+                <Label htmlFor="cafe-address-ar">Venue Address (Arabic)</Label>
+                <Textarea
+                  id="cafe-address-ar"
+                  dir="rtl"
+                  value={draft.addressAr}
+                  onChange={e => update({ addressAr: e.target.value })}
+                  placeholder="ممشى مرسى لوسيل، الدوحة، قطر"
+                />
+              </div>
             </div>
 
             <div className="grid sm:grid-cols-2 gap-4">
@@ -335,9 +389,9 @@ export default function AdminRestaurant() {
               </p>
             </div>
 
-            <div className="grid sm:grid-cols-3 gap-4">
+            <div className="grid sm:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="cafe-hours">Guest Display Hours</Label>
+                <Label htmlFor="cafe-hours">Guest Display Hours (EN)</Label>
                 <Input
                   id="cafe-hours"
                   value={draft.openingHours}
@@ -346,6 +400,20 @@ export default function AdminRestaurant() {
                   className="h-11"
                 />
               </div>
+              <div>
+                <Label htmlFor="cafe-hours-ar">Guest Display Hours (Arabic)</Label>
+                <Input
+                  id="cafe-hours-ar"
+                  dir="rtl"
+                  value={draft.openingHoursAr}
+                  onChange={e => update({ openingHoursAr: e.target.value })}
+                  placeholder="يومياً · 8 ص – 11 م"
+                  className="h-11"
+                />
+              </div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="cafe-open-time">Opens At (24h)</Label>
                 <Input
@@ -377,7 +445,7 @@ export default function AdminRestaurant() {
                   value={draft.currency}
                   onChange={e => update({ currency: e.target.value })}
                 >
-                  {['QAR', 'SAR', 'AED', 'KWD', 'BHD', 'OMR', 'USD', 'EUR', 'GBP', 'INR'].map(c => (
+                  {SUPPORTED_CURRENCIES.map(c => (
                     <option key={c}>{c}</option>
                   ))}
                 </select>
@@ -541,6 +609,12 @@ export default function AdminRestaurant() {
               </div>
             </div>
           </section>
+
+          <VenueConfigStudio
+            value={draft.venueConfig}
+            currency={draft.currency}
+            onChange={venueConfig => update({ venueConfig })}
+          />
         </fieldset>
 
         {/* Live Guest Phone Preview */}
@@ -561,7 +635,7 @@ export default function AdminRestaurant() {
                   <Coffee className="w-8 h-8 text-primary" />
                 </span>
               )}
-              <small>DINGZI VENUE MENU</small>
+              <small>{resolveVenueConfig(draft.venueConfig).menuEyebrow}</small>
               <h2>{draft.name || 'Your restaurant'}</h2>
               <p>{draft.cuisineType || 'Fresh flavors. Seamless hospitality.'}</p>
             </div>

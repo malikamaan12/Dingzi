@@ -6,6 +6,12 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { QrNfcScannerModal } from '@/components/qr-nfc/QrNfcScannerModal';
+import { localizedEntityText, type MenuLanguage } from '@/lib/menuLanguage';
+import {
+  computeOrderTotalsWithVenueFees,
+  formatCurrencyForLocale,
+  resolveVenueConfig,
+} from '@shared/venueConfig';
 import type { PublicCafe, PublicHospitalityConfig } from '@shared/schema';
 import type { GuestCartItem } from './GuestHospitalityBar';
 
@@ -86,8 +92,8 @@ export function GuestCheckoutAndDeliveryModals({
   setBayId: (value: string) => void;
   vehColor: string;
   setVehColor: (value: string) => void;
-  vehType: 'SUV' | 'Sedan' | 'Pickup' | 'Coupe' | 'Other';
-  setVehType: (value: 'SUV' | 'Sedan' | 'Pickup' | 'Coupe' | 'Other') => void;
+  vehType: string;
+  setVehType: (value: string) => void;
   plate: string;
   setPlate: (value: string) => void;
   orderNotes: string;
@@ -102,6 +108,13 @@ export function GuestCheckoutAndDeliveryModals({
   scannerOpen: boolean;
   setScannerOpen: (open: boolean) => void;
 }) {
+  const lang = (language === 'ar' ? 'ar' : 'en') as MenuLanguage;
+  const venueCfg = resolveVenueConfig(restaurant.venueConfig);
+  const currencyDisplay = formatCurrencyForLocale(restaurant.currency, lang, venueCfg.currencySymbolAr);
+  const cafeDisplayName = localizedEntityText(lang, restaurant.name, restaurant.nameAr, label);
+  const subtotalCents = cart.reduce((sum, i) => sum + Math.round(Number(i.unitTotal) * 100) * i.quantity, 0);
+  const feeBreakdown = computeOrderTotalsWithVenueFees(subtotalCents, venueCfg);
+
   return (
     <>
       <Dialog open={deliveryOpen} onOpenChange={setDeliveryOpen}>
@@ -111,7 +124,7 @@ export function GuestCheckoutAndDeliveryModals({
             {t('Order Delivery via Partner')}
           </DialogTitle>
           <DialogDescription>
-            Choose your preferred delivery partner for {label(restaurant.name)}.
+            Choose your preferred delivery partner for {cafeDisplayName}.
           </DialogDescription>
           <div className="space-y-2.5 mt-2">
             {aggregators.map(agg => {
@@ -310,10 +323,10 @@ export function GuestCheckoutAndDeliveryModals({
                   )}
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     <select className="manager-select h-11 text-xs" value={vehColor} onChange={e => setVehColor(e.target.value)}>
-                      {['White', 'Black', 'Silver', 'Blue', 'Red', 'Sand'].map(c => <option key={c} value={c}>{c}</option>)}
+                      {venueCfg.vehicleColors.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
-                    <select className="manager-select h-11 text-xs" value={vehType} onChange={e => setVehType(e.target.value as any)}>
-                      {['SUV', 'Sedan', 'Pickup', 'Coupe'].map(v => <option key={v} value={v}>{v}</option>)}
+                    <select className="manager-select h-11 text-xs" value={vehType} onChange={e => setVehType(e.target.value)}>
+                      {venueCfg.vehicleTypes.map(v => <option key={v} value={v}>{v}</option>)}
                     </select>
                     <Input value={plate} onChange={e => setPlate(e.target.value)} placeholder="Plate #" className="h-11 text-xs col-span-2 sm:col-span-1" />
                   </div>
@@ -322,11 +335,33 @@ export function GuestCheckoutAndDeliveryModals({
 
               <Input value={orderNotes} onChange={e => setOrderNotes(e.target.value)} placeholder={t('Order Notes')} className="h-11" />
 
-              <div className="flex items-center justify-between pt-2 border-t font-bold text-base">
-                <span>{t('Estimated total')}</span>
-                <span>
-                  {totalCartAmount} {restaurant.currency}
-                </span>
+              <div className="space-y-1.5 pt-2 border-t text-sm">
+                {(venueCfg.taxPercent > 0 || venueCfg.serviceChargePercent > 0) && (
+                  <>
+                    <div className="flex items-center justify-between text-xs text-muted-foreground">
+                      <span>Subtotal</span>
+                      <span className="font-mono">{feeBreakdown.subtotal} {currencyDisplay}</span>
+                    </div>
+                    {venueCfg.serviceChargePercent > 0 && (
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>Service ({venueCfg.serviceChargePercent}%)</span>
+                        <span className="font-mono">{feeBreakdown.serviceChargeAmount} {currencyDisplay}</span>
+                      </div>
+                    )}
+                    {venueCfg.taxPercent > 0 && (
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{lang === 'ar' ? venueCfg.taxLabelAr : venueCfg.taxLabel} ({venueCfg.taxPercent}%)</span>
+                        <span className="font-mono">{feeBreakdown.taxAmount} {currencyDisplay}</span>
+                      </div>
+                    )}
+                  </>
+                )}
+                <div className="flex items-center justify-between font-bold text-base">
+                  <span>{t('Estimated total')}</span>
+                  <span className="font-mono">
+                    {totalCartAmount} {currencyDisplay}
+                  </span>
+                </div>
               </div>
 
               {orderError && <p className="text-xs text-destructive font-medium">{orderError}</p>}
@@ -351,7 +386,7 @@ export function GuestCheckoutAndDeliveryModals({
         open={scannerOpen}
         onOpenChange={setScannerOpen}
         restaurantId={restaurant.id}
-        restaurantName={label(restaurant.name)}
+        restaurantName={cafeDisplayName}
         dir={dir}
         lang={language}
         t={t}

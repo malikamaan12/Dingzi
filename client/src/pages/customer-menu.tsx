@@ -2,40 +2,40 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRoute } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import {
-  AlertTriangle,
   ArrowUpRight,
-  Check,
   Clock3,
   Coffee,
-  ExternalLink,
   Heart,
   Leaf,
   MapPin,
-  Minus,
   Phone,
-  Plus,
   Search,
-  ShoppingBag,
   SlidersHorizontal,
   Sparkles,
-  Truck,
   X,
 } from 'lucide-react';
 import GuestHospitalityBar from '@/components/hospitality/GuestHospitalityBar';
 import { ActiveGuestPassesBar } from '@/components/hospitality/ActiveGuestPassesBar';
 import { PwaInstallBanner } from '@/components/mobile/PwaInstallBanner';
 import { DingziMark } from '@/components/staff-brand';
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { cafeDate, cafeThemeStyle } from '@/lib/cafeTheme';
 import { liveCafeStyle, menuTone } from '@/lib/menuPalette';
 import { usePersistedGuestCart } from '@/lib/guestSession';
 import { useMenuAnimation, useMenuMotionPreference } from '@/lib/useMenuAnimation';
 import MenuWheel from '@/components/menu/MenuWheel';
 import MenuCategoryBar from '@/components/menu/MenuCategoryBar';
-import MenuModifiers from '@/components/menu/MenuModifiers';
+import { GuestItemDetailDialog } from '@/components/menu/GuestItemDetailDialog';
 import { MENU_GROUPS, categoryGroup, type MenuGroup } from '@/lib/menuDiscovery';
 import { matchesMenuSearch, menuSearchIndex, menuSearchQuery } from '@/lib/menuSearch';
-import { arabicMenuLabel, MenuLanguageProvider, MenuLanguageSwitch, useMenuLanguage } from '@/lib/menuLanguage';
+import {
+  arabicMenuLabel,
+  localizedEntityText,
+  MenuCustomTranslationsProvider,
+  MenuLanguageProvider,
+  MenuLanguageSwitch,
+  useMenuLanguage,
+} from '@/lib/menuLanguage';
+import { resolveVenueConfig } from '@shared/venueConfig';
 import type { MenuItem, PriceVariant, PublicHospitalityConfig, PublicMenuData } from '@shared/schema';
 import {
   customizationTotal,
@@ -143,6 +143,7 @@ function CustomerMenuContent() {
   });
 
   const restaurant = menuQuery.data?.restaurant;
+  const venueCfg = useMemo(() => resolveVenueConfig(restaurant?.venueConfig), [restaurant?.venueConfig]);
   const aggregators = hospitalityQuery.data?.aggregators || [];
   const today = useMemo(() => cafeDate(restaurant?.timezone), [restaurant?.timezone, now]);
   const available = useMemo(() => (menuQuery.data?.items || []).filter(item => item.isAvailable), [menuQuery.data?.items]);
@@ -163,17 +164,19 @@ function CustomerMenuContent() {
   }, [available]);
 
   const categoryGroups = useMemo(
-    () => new Map((menuQuery.data?.categories || []).map(c => [c.id, categoryGroup(c.title)])),
+    () => new Map((menuQuery.data?.categories || []).map(c => [c.id, categoryGroup(c.title, c.menuGroup)])),
     [menuQuery.data?.categories],
   );
 
   const searchIndexes = useMemo(() => {
-    const titles = new Map((menuQuery.data?.categories || []).map(c => [c.id, c.title]));
+    const titles = new Map((menuQuery.data?.categories || []).map(c => [c.id, `${c.title} ${c.titleAr || ''}`]));
     return new Map(
       available.map(item => {
         const title = titles.get(item.categoryId) || '';
         const options = [
-          ...(item.hasMultiplePricing ? (byItem.get(item.id) || []).map(option => option.label) : []),
+          item.nameAr || '',
+          item.descriptionAr || '',
+          ...(item.hasMultiplePricing ? (byItem.get(item.id) || []).flatMap(option => [option.label, option.labelAr || '']) : []),
           ...(item.modifierGroups || []).flatMap(group => [
             group.title,
             group.titleAr || '',
@@ -253,11 +256,12 @@ function CustomerMenuContent() {
 
   const appliedFilters = Number(group !== 'all') + Number(!!category) + Number(filter !== 'all');
   const hasDiscoverySelection = searchWords.length > 0 || !!category || group !== 'all';
+  const selectedCatObj = category ? (menuQuery.data?.categories || []).find(c => c.id === category) : undefined;
   const selectionLabel =
     [
       filter === 'saved' ? t('Saved') : filter === 'specials' ? t("Today's specials") : '',
-      category
-        ? label((menuQuery.data?.categories || []).find(c => c.id === category)?.title || '')
+      selectedCatObj
+        ? localizedEntityText(language, selectedCatObj.title, selectedCatObj.titleAr, label)
         : group === 'all'
           ? ''
           : t(MENU_GROUPS.find(g => g.id === group)!.label),
@@ -265,7 +269,7 @@ function CustomerMenuContent() {
       .filter(Boolean)
       .join(' · ') || t('Menu');
   const hasMenuError = menuQuery.isError;
-  const activeCategory = (menuQuery.data?.categories || []).find(c => c.id === activeItem?.categoryId)?.title || 'Café selection';
+  const activeCategoryObj = (menuQuery.data?.categories || []).find(c => c.id === activeItem?.categoryId);
 
   useMenuAnimation(
     menuRef,
@@ -341,8 +345,14 @@ function CustomerMenuContent() {
           ) : options.length ? (
             options.map(v => (
               <div key={v.id}>
-                <span className="guest-option-label">{label(v.label)}</span>
-                <Price price={v.price} discount={v.discount} currency={restaurant!.currency} unit={v.unit} />
+                <span className="guest-option-label">{localizedEntityText(language, v.label, v.labelAr, label)}</span>
+                <Price
+                  price={v.price}
+                  discount={v.discount}
+                  currency={restaurant!.currency}
+                  unit={v.unit}
+                  currencySymbolAr={venueCfg.currencySymbolAr}
+                />
               </div>
             ))
           ) : (
@@ -350,7 +360,15 @@ function CustomerMenuContent() {
           )}
         </div>
       );
-    return <Price price={item.price} discount={item.discount} currency={restaurant!.currency} unit={item.unit} />;
+    return (
+      <Price
+        price={item.price}
+        discount={item.discount}
+        currency={restaurant!.currency}
+        unit={item.unit}
+        currencySymbolAr={venueCfg.currencySymbolAr}
+      />
+    );
   }
 
   function cardPricing(item: MenuItem) {
@@ -365,7 +383,13 @@ function CustomerMenuContent() {
     return (
       <div className="guest-starting-price">
         <small>{t('From')}</small>
-        <Price price={lowest.price} discount={lowest.discount} currency={restaurant!.currency} unit={lowest.unit} />
+        <Price
+          price={lowest.price}
+          discount={lowest.discount}
+          currency={restaurant!.currency}
+          unit={lowest.unit}
+          currencySymbolAr={venueCfg.currencySymbolAr}
+        />
       </div>
     );
   }
@@ -393,8 +417,9 @@ function CustomerMenuContent() {
     );
 
   const orderingEnabled = restaurant.orderingMode !== 'browse_and_pager';
-  const currencyLabel =
-    language === 'ar' ? ({ QAR: 'ر.ق', SAR: 'ر.س', AED: 'د.إ' }[restaurant.currency] || restaurant.currency) : restaurant.currency;
+  const cafeDisplayName = localizedEntityText(language, restaurant.name, restaurant.nameAr, label);
+  const displayHours = localizedEntityText(language, restaurant.openingHours, restaurant.openingHoursAr);
+  const displayAddress = localizedEntityText(language, restaurant.address, restaurant.addressAr);
 
   const activeUnitTotal =
     activeItem && (!activeItem.hasMultiplePricing || activeVariant)
@@ -407,54 +432,55 @@ function CustomerMenuContent() {
   const activeMultipliedTotal = (Number(activeUnitTotal) * itemQty).toFixed(2);
 
   return (
-    <div
-      ref={menuRef}
-      className="guest-menu guest-live guest-simple"
-      lang={language}
-      dir={dir}
-      style={liveCafeStyle(restaurant.theme, restaurant.brandAccentHex)}
-      data-motion={motion.enabled ? 'on' : 'off'}
-      data-page-visible={motion.pageVisible}
-    >
-      <div className="guest-atmosphere" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-      </div>
-      <div className="guest-shell">
-        <div className="guest-navigation">
-          <header className="guest-top">
-            <div className="guest-brand">
-              {restaurant.logoUrl ? (
-                <img className="guest-brand-logo" src={restaurant.logoUrl} alt={t('{name} logo', { name: label(restaurant.name) })} />
-              ) : (
-                <span className="guest-brand-icon">
-                  <Coffee size={19} />
-                </span>
-              )}
-              <span>
-                <bdi>{label(restaurant.name)}</bdi>
-                <small>{t('THE CAFÉ MENU')}</small>
-              </span>
-            </div>
-            <div className="guest-header-actions">
-              <MenuLanguageSwitch />
-              <button className="guest-filter-trigger" onClick={() => setFiltersOpen(true)} aria-label={t('Open filters')}>
-                <SlidersHorizontal size={18} />
-                <span>{t('Filters')}</span>
-                {appliedFilters > 0 && <small>{appliedFilters}</small>}
-              </button>
-            </div>
-          </header>
-          <MenuCategoryBar
-            categories={groupCategories}
-            selected={category}
-            allLabel={group === 'all' ? t('All') : t('All {group}', { group: t(MENU_GROUPS.find(g => g.id === group)!.label) })}
-            motionEnabled={motion.enabled}
-            onSelect={chooseCategory}
-          />
+    <MenuCustomTranslationsProvider customTranslations={venueCfg.customTranslations}>
+      <div
+        ref={menuRef}
+        className="guest-menu guest-live guest-simple"
+        lang={language}
+        dir={dir}
+        style={liveCafeStyle(restaurant.theme, restaurant.brandAccentHex)}
+        data-motion={motion.enabled ? 'on' : 'off'}
+        data-page-visible={motion.pageVisible}
+      >
+        <div className="guest-atmosphere" aria-hidden="true">
+          <span />
+          <span />
+          <span />
         </div>
-        <h1 className="sr-only">{t('{name} menu', { name: label(restaurant.name) })}</h1>
+        <div className="guest-shell">
+          <div className="guest-navigation">
+            <header className="guest-top">
+              <div className="guest-brand">
+                {restaurant.logoUrl ? (
+                  <img className="guest-brand-logo" src={restaurant.logoUrl} alt={t('{name} logo', { name: cafeDisplayName })} />
+                ) : (
+                  <span className="guest-brand-icon">
+                    <Coffee size={19} />
+                  </span>
+                )}
+                <span>
+                  <bdi>{cafeDisplayName}</bdi>
+                  <small>{language === 'ar' ? venueCfg.menuEyebrowAr : venueCfg.menuEyebrow}</small>
+                </span>
+              </div>
+              <div className="guest-header-actions">
+                <MenuLanguageSwitch />
+                <button className="guest-filter-trigger" onClick={() => setFiltersOpen(true)} aria-label={t('Open filters')}>
+                  <SlidersHorizontal size={18} />
+                  <span>{t('Filters')}</span>
+                  {appliedFilters > 0 && <small>{appliedFilters}</small>}
+                </button>
+              </div>
+            </header>
+            <MenuCategoryBar
+              categories={groupCategories}
+              selected={category}
+              allLabel={group === 'all' ? t('All') : t('All {group}', { group: t(MENU_GROUPS.find(g => g.id === group)!.label) })}
+              motionEnabled={motion.enabled}
+              onSelect={chooseCategory}
+            />
+          </div>
+          <h1 className="sr-only">{t('{name} menu', { name: cafeDisplayName })}</h1>
         {hasMenuError && (
           <div className="guest-reconnecting" role="status">
             <p>{t('Reconnecting. Prices and availability may have changed.')}</p>
@@ -499,10 +525,12 @@ function CustomerMenuContent() {
               </button>
             )}
           </div>
-          <button className="guest-wheel-link" onClick={() => setWheelOpen(true)} disabled={!filtered.length || hasMenuError}>
-            <Sparkles size={16} />
-            {t("Can't decide?")}
-          </button>
+          {venueCfg.wheelEnabled && (
+            <button className="guest-wheel-link" onClick={() => setWheelOpen(true)} disabled={!filtered.length || hasMenuError}>
+              <Sparkles size={16} />
+              {t("Can't decide?")}
+            </button>
+          )}
         </div>
         <main id="guest-menu-list" className="guest-main">
           {menuQuery.isLoading ? (
@@ -518,55 +546,58 @@ function CustomerMenuContent() {
                 return items.length ? (
                   <section key={c.id} aria-labelledby={'category-' + c.id} data-tone={menuTone(c.title)}>
                     <div className="guest-category-heading">
-                      <h2 id={'category-' + c.id}>{label(c.title)}</h2>
+                      <h2 id={'category-' + c.id}>{localizedEntityText(language, c.title, c.titleAr, label)}</h2>
                       <span className="guest-section-count">{count(items.length)}</span>
                     </div>
                     <div className="guest-grid">
-                      {items.map(item => (
-                        <article className="guest-item" key={item.id} data-testid={'menu-item-' + item.id}>
-                          <div className="guest-image-open">
-                            <MenuImage item={item} category={c.title} priority={filtered.indexOf(item) < 4} />
-                          </div>
-                          <div className="guest-item-body">
-                            <div className="guest-item-badges">
-                              {item.specialDate === today && (
-                                <span>
-                                  <Sparkles size={11} />
-                                  {t('Today only')}
+                      {items.map(item => {
+                        const itemDisplayName = localizedEntityText(language, item.name, item.nameAr, label);
+                        return (
+                          <article className="guest-item" key={item.id} data-testid={'menu-item-' + item.id}>
+                            <div className="guest-image-open">
+                              <MenuImage item={item} category={c.title} priority={filtered.indexOf(item) < 4} />
+                            </div>
+                            <div className="guest-item-body">
+                              <div className="guest-item-badges">
+                                {item.specialDate === today && (
+                                  <span>
+                                    <Sparkles size={11} />
+                                    {t('Today only')}
+                                  </span>
+                                )}
+                                {!item.hasMultiplePricing && Number(item.discount) > 0 && (
+                                  <span className="offer">{t('{discount}% off', { discount: Number(item.discount) })}</span>
+                                )}
+                                {item.prepTimeMins && item.prepTimeMins > 0 ? (
+                                  <span>{t('Prep ~{mins}m', { mins: item.prepTimeMins })}</span>
+                                ) : null}
+                              </div>
+                              <h3 className="guest-card-name">
+                                <bdi>{itemDisplayName}</bdi>
+                              </h3>
+                              <div className="guest-card-bottom">
+                                <div className="guest-item-pricing">{cardPricing(item)}</div>
+                                <span className="guest-card-arrow" aria-hidden="true">
+                                  <ArrowUpRight size={17} />
                                 </span>
-                              )}
-                              {!item.hasMultiplePricing && Number(item.discount) > 0 && (
-                                <span className="offer">{t('{discount}% off', { discount: Number(item.discount) })}</span>
-                              )}
-                              {item.prepTimeMins && item.prepTimeMins > 0 ? (
-                                <span>{t('Prep ~{mins}m', { mins: item.prepTimeMins })}</span>
-                              ) : null}
+                              </div>
                             </div>
-                            <h3 className="guest-card-name">
-                              <bdi>{label(item.name)}</bdi>
-                            </h3>
-                            <div className="guest-card-bottom">
-                              <div className="guest-item-pricing">{cardPricing(item)}</div>
-                              <span className="guest-card-arrow" aria-hidden="true">
-                                <ArrowUpRight size={17} />
-                              </span>
-                            </div>
-                          </div>
-                          <button
-                            className="guest-item-open"
-                            aria-label={t('View {name}', { name: label(item.name) })}
-                            onClick={() => openItem(item)}
-                          />
-                          <button
-                            className={'guest-heart ' + (saved.includes(item.id) ? 'is-saved' : '')}
-                            aria-label={t(saved.includes(item.id) ? 'Unsave {name}' : 'Save {name}', { name: label(item.name) })}
-                            aria-pressed={saved.includes(item.id)}
-                            onClick={() => toggleSaved(item.id)}
-                          >
-                            <Heart size={15} fill={saved.includes(item.id) ? 'currentColor' : 'none'} />
-                          </button>
-                        </article>
-                      ))}
+                            <button
+                              className="guest-item-open"
+                              aria-label={t('View {name}', { name: itemDisplayName })}
+                              onClick={() => openItem(item)}
+                            />
+                            <button
+                              className={'guest-heart ' + (saved.includes(item.id) ? 'is-saved' : '')}
+                              aria-label={t(saved.includes(item.id) ? 'Unsave {name}' : 'Save {name}', { name: itemDisplayName })}
+                              aria-pressed={saved.includes(item.id)}
+                              onClick={() => toggleSaved(item.id)}
+                            >
+                              <Heart size={15} fill={saved.includes(item.id) ? 'currentColor' : 'none'} />
+                            </button>
+                          </article>
+                        );
+                      })}
                     </div>
                   </section>
                 ) : null;
@@ -614,24 +645,24 @@ function CustomerMenuContent() {
           <div className="guest-note">
             <Leaf size={17} />
             <p>
-              {t('Questions about ingredients or allergens?')}
+              {language === 'ar' ? venueCfg.allergenNoticeAr : venueCfg.allergenNotice}
               <br />
               <strong>{t('Our café team is happy to help.')}</strong>
             </p>
           </div>
         </main>
-        {(restaurant.openingHours || restaurant.address || restaurant.phone) && (
+        {(displayHours || displayAddress || restaurant.phone) && (
           <div className="guest-info">
-            {restaurant.openingHours && (
+            {displayHours && (
               <span>
                 <Clock3 size={14} />
-                <bdi>{restaurant.openingHours}</bdi>
+                <bdi>{displayHours}</bdi>
               </span>
             )}
-            {restaurant.address && (
-              <a href={'https://maps.google.com/?q=' + encodeURIComponent(restaurant.address)} target="_blank" rel="noopener noreferrer">
+            {displayAddress && (
+              <a href={'https://maps.google.com/?q=' + encodeURIComponent(restaurant.address || displayAddress)} target="_blank" rel="noopener noreferrer">
                 <MapPin size={14} />
-                <bdi>{restaurant.address}</bdi>
+                <bdi>{displayAddress}</bdi>
               </a>
             )}
             {restaurant.phone && (
@@ -644,10 +675,12 @@ function CustomerMenuContent() {
         )}
         <footer className="guest-footer pb-28">
           <span>
-            <bdi>{label(restaurant.name)}</bdi>
+            <bdi>{cafeDisplayName}</bdi>
             <small className="inline-flex items-center justify-center gap-1.5 opacity-65">
               <DingziMark size={15} variant="thermal" />
-              <span>{t('Powered by dingzi')} · {t('A little pause, a good moment.')}</span>
+              <span>
+                {t('Powered by dingzi')} · {language === 'ar' ? venueCfg.footerTaglineAr : venueCfg.footerTagline}
+              </span>
             </small>
           </span>
         </footer>
@@ -674,14 +707,15 @@ function CustomerMenuContent() {
         onReset={reset}
       />
 
-      {wheelOpen && (
+      {wheelOpen && venueCfg.wheelEnabled && (
         <MenuWheel
           items={filtered}
           theme={restaurant.theme}
           motionEnabled={motion.enabled}
+          maxSlots={venueCfg.wheelMaxItems}
           scope={
-            category
-              ? (menuQuery.data?.categories || []).find(c => c.id === category)?.title || 'Your filters'
+            selectedCatObj
+              ? localizedEntityText(language, selectedCatObj.title, selectedCatObj.titleAr, label)
               : group === 'all'
                 ? 'Your current menu filters'
                 : MENU_GROUPS.find(g => g.id === group)!.label
@@ -695,297 +729,43 @@ function CustomerMenuContent() {
         />
       )}
 
-      <Dialog open={detailOpen && !!activeItem} onOpenChange={setDetailOpen}>
-        <DialogContent
-          ref={setDetailElement}
-          onOpenAutoFocus={event => {
-            event.preventDefault();
-            detailTitleRef.current?.focus({ preventScroll: true });
-          }}
-          lang={language}
-          dir={dir}
-          closeLabel={t('Close')}
-          overlayClassName={'guest-glass-overlay ' + (!motion.enabled ? 'is-still' : '')}
-          className="guest-detail guest-glass-detail guest-compact-detail"
-          style={liveCafeStyle(restaurant.theme, restaurant.brandAccentHex)}
-          data-motion={motion.enabled ? 'on' : 'off'}
-          data-page-visible={motion.pageVisible}
-          data-tone={menuTone(activeCategory)}
-        >
-          {activeItem && (
-            <>
-              <div className="guest-detail-heading">
-                <div className="guest-detail-image">
-                  <span className="guest-detail-aura" aria-hidden="true" />
-                  <MenuImage item={activeItem} category={activeCategory} priority />
-                </div>
-                <div className="guest-detail-heading-copy">
-                  <p className="guest-kicker">{activeCategory === 'Café selection' ? t(activeCategory) : label(activeCategory)}</p>
-                  <DialogTitle ref={detailTitleRef} tabIndex={-1} className="guest-detail-title">
-                    <bdi>{label(activeItem.name)}</bdi>
-                  </DialogTitle>
-                  <div className="guest-detail-price">
-                    {activeItem.hasMultiplePricing ? (
-                      activeVariant ? (
-                        <Price
-                          price={activeVariant.price}
-                          discount={activeVariant.discount}
-                          currency={restaurant.currency}
-                          unit={activeVariant.unit}
-                        />
-                      ) : (
-                        <span>{t('Ask our team for pricing')}</span>
-                      )
-                    ) : (
-                      itemPricing(activeItem)
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="guest-detail-body" tabIndex={0} role="region" aria-label={t('Item options and details')}>
-                {hasMenuError && <p className="guest-reconnecting" role="status">{t('Reconnecting. Prices and availability may have changed.')}</p>}
-                <DialogDescription className={activeItem.description ? 'guest-detail-description' : 'sr-only'}>
-                  <bdi>{activeItem.description ? label(activeItem.description) : t('Menu item details and pricing.')}</bdi>
-                </DialogDescription>
-
-                <div className="flex flex-wrap items-center gap-2 mt-2">
-                  {activeItem.specialDate === today && (
-                    <span className="guest-detail-special !mt-0">
-                      <Sparkles size={14} />
-                      {t("Today's special")}
-                    </span>
-                  )}
-                  {activeItem.prepTimeMins ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#EFEAFF] text-[#4B1FE0] text-[11px] font-semibold">
-                      <Clock3 size={12} />
-                      {t('Prep ~{mins}m', { mins: activeItem.prepTimeMins })}
-                    </span>
-                  ) : null}
-                </div>
-
-                {activeItem.hasMultiplePricing && activeOptions.length > 0 && (
-                  <fieldset className="guest-option-picker">
-                    <legend>{t('CHOOSE YOUR OPTION')}</legend>
-                    {activeOptions.map(option => (
-                      <label key={option.id} className={activeVariant?.id === option.id ? 'selected' : ''}>
-                        <input
-                          type="radio"
-                          name="menu-price-option"
-                          value={option.id}
-                          checked={activeVariant?.id === option.id}
-                          onChange={() => setSelectedVariantId(option.id)}
-                        />
-                        <span>{label(option.label)}</span>
-                        <Price price={option.price} discount={option.discount} currency={restaurant.currency} unit={option.unit} />
-                      </label>
-                    ))}
-                  </fieldset>
-                )}
-
-                {!!activeGroups.length && (!activeItem.hasMultiplePricing || activeVariant) && (
-                  <MenuModifiers
-                    item={activeItem}
-                    currency={restaurant.currency}
-                    selected={selectedModifiers}
-                    setSelected={setSelectedModifiers}
-                  />
-                )}
-
-                {!!activeItem.tags?.length && (
-                  <div className="guest-detail-tags">
-                    {activeItem.tags.map(tag => (
-                      <span key={tag}>
-                        {['Vegetarian', 'Vegan'].includes(tag) && <Leaf size={13} />} {label(tag)}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                {!!activeItem.allergenTags?.length && (
-                  <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50/80 px-3 py-2 text-xs text-amber-950 flex items-center gap-2">
-                    <AlertTriangle size={14} className="shrink-0" />
-                    <span>
-                      <strong>{t('Allergens')}:</strong> {activeItem.allergenTags.map(label).join(', ')}
-                    </span>
-                  </div>
-                )}
-
-                {orderingEnabled && (
-                  <div className="mt-4 space-y-3 pt-3 border-t border-[#E5E2F2]">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs font-semibold text-[#17132E]">{t('Quantity')}</span>
-                      <div className="inline-flex items-center gap-2 rounded-xl border border-[#E5E2F2] bg-[#F6F5FC] p-1">
-                        <button
-                          type="button"
-                          aria-label="Decrease item quantity"
-                          disabled={itemQty <= 1}
-                          onClick={() => setItemQty(q => Math.max(1, q - 1))}
-                          className="w-11 h-11 rounded-xl bg-white border border-[#E5E2F2] grid place-items-center disabled:opacity-40 cursor-pointer"
-                        >
-                          <Minus size={15} />
-                        </button>
-                        <span className="w-8 text-center font-mono font-bold text-sm" data-testid="text-customizer-qty">
-                          {itemQty}
-                        </span>
-                        <button
-                          type="button"
-                          aria-label="Increase item quantity"
-                          disabled={itemQty >= 25}
-                          onClick={() => setItemQty(q => Math.min(25, q + 1))}
-                          className="w-11 h-11 rounded-xl bg-white border border-[#E5E2F2] grid place-items-center disabled:opacity-40 cursor-pointer"
-                        >
-                          <Plus size={15} />
-                        </button>
-                      </div>
-                    </div>
-                    <input
-                      type="text"
-                      maxLength={240}
-                      value={itemNote}
-                      onChange={e => setItemNote(e.target.value)}
-                      placeholder={t('Special instructions for kitchen (optional)')}
-                      aria-label={t('Special instructions for kitchen (optional)')}
-                      data-testid="input-customizer-note"
-                      className="w-full min-h-11 px-3.5 rounded-xl border border-[#E5E2F2] bg-[#F6F5FC] text-base sm:text-xs text-[#17132E] placeholder:text-[#57507A] focus:outline-none focus:ring-2 focus:ring-[#4B1FE0]"
-                    />
-                  </div>
-                )}
-
-                {/* Per-Item Aggregator Delivery Handoff (PRD §4.5.2) */}
-                {aggregators.length > 0 && (
-                  <div className="mt-4 pt-3 border-t border-[#E5E2F2] space-y-2">
-                    <p className="text-[11px] font-bold uppercase tracking-wider text-[#57507A] flex items-center gap-1.5">
-                      <Truck size={13} className="text-primary" />
-                      <span>{t('Order via Delivery Partner')}</span>
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {aggregators.map(agg => (
-                        <button
-                          key={agg.id}
-                          type="button"
-                          data-testid={`button-item-aggregator-${agg.platform}`}
-                          onClick={() => handleItemAggregatorClick(agg, activeItem)}
-                          className="min-h-11 px-3.5 rounded-xl border border-[#E5E2F2] bg-white hover:bg-[#EFEAFF] text-xs font-semibold text-[#17132E] hover:text-[#4B1FE0] inline-flex items-center gap-1.5 transition-colors cursor-pointer"
-                        >
-                          <span>{agg.displayName}</span>
-                          <ExternalLink size={12} />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {unavailableRequired && (
-                  <p className="guest-modifier-required" role="status">
-                    {t('Some required choices are unavailable. Please ask our team for alternatives.')}
-                  </p>
-                )}
-                <div className="guest-detail-note">
-                  <Leaf size={15} />
-                  <span>{t('For ingredients and allergens, please ask our team.')}</span>
-                </div>
-                {!orderingEnabled && !!activeGroups.length && (
-                  <p className="guest-customization-note">
-                    {t('Selections are for reference. Tell our team your choices when ordering.')}
-                  </p>
-                )}
-              </div>
-
-              <footer className="guest-selection-footer">
-                <div className="guest-selection-heading">
-                  <span>{t('Your selection')}</span>
-                  <button
-                    type="button"
-                    className={'guest-detail-save ' + (saved.includes(activeItem.id) ? 'is-saved' : '')}
-                    aria-label={t(saved.includes(activeItem.id) ? 'Saved to favorites' : 'Save to favorites')}
-                    aria-pressed={saved.includes(activeItem.id)}
-                    onClick={() => toggleSaved(activeItem.id)}
-                  >
-                    <Heart size={19} />
-                  </button>
-                </div>
-                <div className="guest-selected-choices" role="region" aria-label={t('Selected variant and toppings')} tabIndex={0}>
-                  {activeItem.hasMultiplePricing && activeVariant && (
-                    <span className="guest-selected-variant">
-                      <Check size={12} />
-                      <bdi>{label(activeVariant.label)}</bdi>
-                    </span>
-                  )}
-                  {selectedExtras.map(option => (
-                    <span className="guest-selected-extra" key={option.id}>
-                      <bdi>{language === 'ar' && option.labelAr?.trim() ? option.labelAr : label(option.label)}</bdi>
-                      {Number(option.price) > 0 && (
-                        <small>
-                          <bdi dir="ltr">+{Number(option.price).toFixed(2)}</bdi>
-                        </small>
-                      )}
-                    </span>
-                  ))}
-                  {!selectedExtras.length && !!activeGroups.length && <span className="guest-no-extras">{t('No extras selected')}</span>}
-                  {!activeItem.hasMultiplePricing && !activeGroups.length && <span className="guest-no-extras">{label(activeItem.unit)}</span>}
-                </div>
-                {missingChoices.length > 0 && (
-                  <p className="guest-selection-required" role="status">
-                    {t('Choose required options.')}
-                  </p>
-                )}
-                <div className="guest-selection-total" role="status" aria-live="polite" aria-atomic="true">
-                  <span>{t('Estimated total')}</span>
-                  {!activeItem.hasMultiplePricing || activeVariant ? (
-                    <strong>
-                      <bdi dir="ltr">{orderingEnabled ? activeMultipliedTotal : activeUnitTotal}</bdi> <small>{currencyLabel}</small>
-                    </strong>
-                  ) : (
-                    <strong className="guest-selection-no-price">{t('Ask our team for pricing')}</strong>
-                  )}
-                </div>
-
-                {orderingEnabled && (!activeItem.hasMultiplePricing || activeVariant) && (
-                  <button
-                    type="button"
-                    disabled={missingChoices.length > 0 || unavailableRequired}
-                    data-testid="button-add-item-to-cart"
-                    onClick={() => {
-                      const trimmedNote = itemNote.trim();
-                      const key = `${activeItem.id}:${activeVariant?.id || 'base'}:${selectedExtras
-                        .map(e => e.id)
-                        .sort()
-                        .join(',')}:${trimmedNote}`;
-                      setCart(prev => {
-                        const existing = prev.find(i => i.key === key);
-                        if (existing) {
-                          return prev.map(i => (i.key === key ? { ...i, quantity: i.quantity + itemQty } : i));
-                        }
-                        return [
-                          ...prev,
-                          {
-                            key,
-                            menuItemId: activeItem.id,
-                            name: activeItem.name,
-                            quantity: itemQty,
-                            variantId: activeVariant?.id || null,
-                            variantLabel: activeVariant?.label || null,
-                            modifiers: selectedModifiers,
-                            modifierSummary: selectedExtras.map(o => (language === 'ar' && o.labelAr ? o.labelAr : o.label)),
-                            unitTotal: activeUnitTotal,
-                            ...(trimmedNote ? { notes: trimmedNote } : {}),
-                          },
-                        ];
-                      });
-                      setDetailOpen(false);
-                    }}
-                    className="mt-3 w-full min-h-11 rounded-xl bg-primary hover:bg-[#4B1FE0] text-primary-foreground font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer transition-colors"
-                  >
-                    <ShoppingBag size={16} />
-                    <span>{itemQty > 1 ? t('Add {qty} to Order', { qty: itemQty }) : t('Add to Order')}</span>
-                  </button>
-                )}
-              </footer>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
-    </div>
+      <GuestItemDetailDialog
+        open={detailOpen}
+        onOpenChange={setDetailOpen}
+        setDetailElement={setDetailElement}
+        detailTitleRef={detailTitleRef}
+        motionEnabled={motion.enabled}
+        pageVisible={motion.pageVisible}
+        hasMenuError={hasMenuError}
+        restaurant={restaurant}
+        currencySymbolAr={venueCfg.currencySymbolAr}
+        activeItem={activeItem}
+        activeCategoryObj={activeCategoryObj}
+        activeOptions={activeOptions}
+        activeVariant={activeVariant}
+        setSelectedVariantId={setSelectedVariantId}
+        activeGroups={activeGroups}
+        selectedModifiers={selectedModifiers}
+        setSelectedModifiers={setSelectedModifiers}
+        selectedExtras={selectedExtras}
+        missingChoices={missingChoices}
+        unavailableRequired={unavailableRequired}
+        today={today}
+        itemQty={itemQty}
+        setItemQty={setItemQty}
+        itemNote={itemNote}
+        setItemNote={setItemNote}
+        orderingEnabled={orderingEnabled}
+        activeUnitTotal={activeUnitTotal}
+        activeMultipliedTotal={activeMultipliedTotal}
+        saved={saved}
+        toggleSaved={toggleSaved}
+        setCart={setCart}
+        aggregators={aggregators}
+        onItemAggregatorClick={handleItemAggregatorClick}
+        renderItemPricing={itemPricing}
+      />
+      </div>
+    </MenuCustomTranslationsProvider>
   );
 }

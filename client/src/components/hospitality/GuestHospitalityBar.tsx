@@ -17,8 +17,14 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { apiRequest } from '@/lib/queryClient';
 import { saveGuestPass } from '@/lib/guestSession';
-import { useMenuLanguage } from '@/lib/menuLanguage';
+import { localizedEntityText, useMenuLanguage } from '@/lib/menuLanguage';
 import { GuestCheckoutAndDeliveryModals } from './GuestCheckoutAndDeliveryModals';
+import {
+  computeOrderTotalsWithVenueFees,
+  formatCurrencyForLocale,
+  partySizeOptionsForVenue,
+  resolveVenueConfig,
+} from '@shared/venueConfig';
 import type { PublicCafe, PublicHospitalityConfig } from '@shared/schema';
 
 export interface GuestCartItem {
@@ -53,6 +59,10 @@ export default function GuestHospitalityBar({
 }: Props) {
   const { language, dir, t, label } = useMenuLanguage();
   const [, navigate] = useLocation();
+  const venueCfg = resolveVenueConfig(restaurant.venueConfig);
+  const partyOptions = partySizeOptionsForVenue(venueCfg.maxPartySize);
+  const currencyDisplay = formatCurrencyForLocale(restaurant.currency, language, venueCfg.currencySymbolAr);
+  const cafeDisplayName = localizedEntityText(language, restaurant.name, restaurant.nameAr, label);
 
   const [pagerOpen, setPagerOpen] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
@@ -97,8 +107,8 @@ export default function GuestHospitalityBar({
   // Curbside state
   const [csBayId, setCsBayId] = useState(initialBayId || '');
   const [csName, setCsName] = useState('');
-  const [csColor, setCsColor] = useState('White');
-  const [csType, setCsType] = useState<'Sedan' | 'SUV' | 'Pickup' | 'Coupe' | 'Other'>('SUV');
+  const [csColor, setCsColor] = useState(venueCfg.vehicleColors[0] || 'White');
+  const [csType, setCsType] = useState<string>(venueCfg.vehicleTypes[0] || 'SUV');
   const [csPlate, setCsPlate] = useState('');
   const [csError, setCsError] = useState('');
 
@@ -110,8 +120,8 @@ export default function GuestHospitalityBar({
   const [custPhone, setCustPhone] = useState('');
   const [tableCode, setTableCode] = useState(initialTableCode || '');
   const [bayId, setBayId] = useState(initialBayId || '');
-  const [vehColor, setVehColor] = useState('White');
-  const [vehType, setVehType] = useState<'Sedan' | 'SUV' | 'Pickup' | 'Coupe' | 'Other'>('SUV');
+  const [vehColor, setVehColor] = useState(venueCfg.vehicleColors[0] || 'White');
+  const [vehType, setVehType] = useState<string>(venueCfg.vehicleTypes[0] || 'SUV');
   const [plate, setPlate] = useState('');
   const [orderNotes, setOrderNotes] = useState('');
   const [orderError, setOrderError] = useState('');
@@ -428,9 +438,9 @@ export default function GuestHospitalityBar({
   });
 
   const totalCartItems = cart.reduce((sum, i) => sum + i.quantity, 0);
-  const totalCartAmount = cart
-    .reduce((sum, i) => sum + Number(i.unitTotal) * i.quantity, 0)
-    .toFixed(2);
+  const subtotalCents = cart.reduce((sum, i) => sum + Math.round(Number(i.unitTotal) * 100) * i.quantity, 0);
+  const feeTotals = computeOrderTotalsWithVenueFees(subtotalCents, venueCfg);
+  const totalCartAmount = feeTotals.total;
   const orderingEnabled = restaurant.orderingMode !== 'browse_and_pager';
 
   async function handleAggregatorClick(agg: any) {
@@ -565,7 +575,7 @@ export default function GuestHospitalityBar({
               </span>
             </span>
             <span className="font-mono font-bold">
-              {totalCartAmount} {restaurant.currency}
+              {totalCartAmount} {currencyDisplay}
             </span>
           </button>
         </div>
@@ -591,7 +601,7 @@ export default function GuestHospitalityBar({
             <Input
               value={lookupCode}
               onChange={e => setLookupCode(e.target.value)}
-              placeholder={t('Enter receipt or pager # (e.g. A-001)')}
+              placeholder={`${venueCfg.pagerTicketPrefix}-001`}
               className="h-12 font-mono text-base uppercase placeholder:font-sans placeholder:normal-case"
               required
             />
@@ -611,7 +621,7 @@ export default function GuestHospitalityBar({
             {t('Reserve a Table')}
           </DialogTitle>
           <DialogDescription>
-            Conflict-free instant table allocation for {label(restaurant.name)}.
+            Conflict-free instant table allocation for {cafeDisplayName}.
           </DialogDescription>
           {pendingDepositGateway ? (
             <div className="mt-3 rounded-2xl border-2 border-primary/30 bg-card p-5 space-y-4">
@@ -659,7 +669,7 @@ export default function GuestHospitalityBar({
               <div>
                 <Label className="text-xs">{t('Party Size')}</Label>
                 <select className="manager-select w-full h-11" value={resParty} onChange={e => { setResParty(Number(e.target.value)); setResSlot(''); }}>
-                  {[1, 2, 3, 4, 5, 6, 8, 10, 12].map(n => (
+                  {partyOptions.map(n => (
                     <option key={n} value={n}>{n} {n === 1 ? 'Guest' : 'Guests'}</option>
                   ))}
                 </select>
@@ -763,7 +773,7 @@ export default function GuestHospitalityBar({
               <div>
                 <Label className="text-xs">{t('Party Size')}</Label>
                 <select className="manager-select w-full h-11" value={wlParty} onChange={e => setWlParty(Number(e.target.value))}>
-                  {[1, 2, 3, 4, 5, 6, 8, 10].map(n => (
+                  {partyOptions.map(n => (
                     <option key={n} value={n}>{n}</option>
                   ))}
                 </select>
@@ -822,15 +832,15 @@ export default function GuestHospitalityBar({
               <div>
                 <Label className="text-xs">{t('Vehicle Color')}</Label>
                 <select className="manager-select w-full h-11" value={csColor} onChange={e => setCsColor(e.target.value)}>
-                  {['White', 'Black', 'Silver', 'Gray', 'Blue', 'Red', 'Sand', 'Green'].map(c => (
+                  {venueCfg.vehicleColors.map(c => (
                     <option key={c} value={c}>{c}</option>
                   ))}
                 </select>
               </div>
               <div>
                 <Label className="text-xs">{t('Vehicle Type')}</Label>
-                <select className="manager-select w-full h-11" value={csType} onChange={e => setCsType(e.target.value as any)}>
-                  {['SUV', 'Sedan', 'Pickup', 'Coupe', 'Other'].map(v => (
+                <select className="manager-select w-full h-11" value={csType} onChange={e => setCsType(e.target.value)}>
+                  {venueCfg.vehicleTypes.map(v => (
                     <option key={v} value={v}>{v}</option>
                   ))}
                 </select>

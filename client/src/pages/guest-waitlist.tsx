@@ -5,7 +5,8 @@ import { Bell, BellOff, BellRing, Check, ShieldCheck, Users, XCircle } from 'luc
 import { Button } from '@/components/ui/button';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { cafeThemeStyle } from '@/lib/cafeTheme';
-import { MenuLanguageProvider, MenuLanguageSwitch, useMenuLanguage } from '@/lib/menuLanguage';
+import { localizedEntityText, MenuLanguageProvider, MenuLanguageSwitch, useMenuLanguage } from '@/lib/menuLanguage';
+import { resolveVenueConfig } from '@shared/venueConfig';
 import {
   armLockScreenAudioKeepAlive,
   startContinuousRinger,
@@ -49,6 +50,11 @@ function GuestWaitlistContent() {
   const data = query.data;
   const entry = data?.entry;
   const restaurant = data?.restaurant;
+  const venueCfg = resolveVenueConfig(restaurant?.venueConfig);
+  const readyBannerText = (language === 'ar' ? venueCfg.waitlistReadySubtitleAr : venueCfg.waitlistReadySubtitle).replace(
+    '{mins}',
+    String(venueCfg.waitlistHoldMins),
+  );
 
   useEffect(() => {
     if (!entry || !restaurant) return;
@@ -71,7 +77,7 @@ function GuestWaitlistContent() {
       startContinuousRinger({
         cafeName: restaurant?.name || 'Host Stand',
         ticketCode: entry?.ticketCode || 'TABLE',
-        subtitle: 'Your table is ready — held for 10 minutes!',
+        subtitle: readyBannerText,
       });
     }
   });
@@ -109,7 +115,7 @@ function GuestWaitlistContent() {
               <p className="text-xs text-muted-foreground font-semibold">
                 <span className="lowercase font-display font-extrabold text-[#6236FF]" dir="ltr" lang="en">dingzi</span> · {t('Walk-In Waitlist')}
               </p>
-              <h1 className="font-bold">{label(restaurant.name)}</h1>
+              <h1 className="font-bold">{localizedEntityText(language, restaurant.name, restaurant.nameAr, label)}</h1>
             </div>
           </div>
           <MenuLanguageSwitch />
@@ -153,7 +159,7 @@ function GuestWaitlistContent() {
           <div className={`text-5xl font-black font-mono ${isReady ? 'text-[#C8FF42]' : ''}`}>{entry.ticketCode}</div>
           <p className="text-sm font-medium">
             {entry.guestName} · Party of {entry.partySize}
-            {data.zone ? ` · ${data.zone.name}` : ''}
+            {data.zone ? ` · ${language === 'ar' && data.zone.nameAr ? data.zone.nameAr : data.zone.name}` : ''}
           </p>
 
           {entry.status === 'waiting' && (
@@ -169,7 +175,7 @@ function GuestWaitlistContent() {
 
           {isReady && (
             <div className="p-3 rounded-2xl bg-[#C8FF42] text-[#17132E] text-sm font-extrabold">
-              Your table is ready! Held for 10 minutes at the host stand.
+              {readyBannerText}
             </div>
           )}
 

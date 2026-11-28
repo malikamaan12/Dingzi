@@ -3,7 +3,8 @@ import { Pause, Play } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { CategoryVectorIcon } from '@/components/menu/CategoryVectorIcon';
 import { MENU_GROUPS, type MenuGroup } from '@/lib/menuDiscovery';
-import { useMenuLanguage } from '@/lib/menuLanguage';
+import { localizedEntityText, useMenuLanguage } from '@/lib/menuLanguage';
+import { formatCurrencyForLocale } from '@shared/venueConfig';
 import type { Category, MenuItem, PublicCafe } from '@shared/schema';
 
 export function MenuImage({ item, category, priority = false }: { item: MenuItem; category: string; priority?: boolean }) {
@@ -20,10 +21,22 @@ export function MenuImage({ item, category, priority = false }: { item: MenuItem
   );
 }
 
-export function Price({ price, discount, currency, unit }: { price: string; discount: string | null; currency: string; unit: string }) {
+export function Price({
+  price,
+  discount,
+  currency,
+  unit,
+  currencySymbolAr,
+}: {
+  price: string;
+  discount: string | null;
+  currency: string;
+  unit: string;
+  currencySymbolAr?: string | null;
+}) {
   const { language, label } = useMenuLanguage();
   const off = Number(discount || 0);
-  const currencyLabel = language === 'ar' ? ({ QAR: 'ر.ق', SAR: 'ر.س', AED: 'د.إ' }[currency] || currency) : currency;
+  const currencyLabel = formatCurrencyForLocale(currency, language, currencySymbolAr);
   return (
     <div className="guest-price">
       <strong>
@@ -40,7 +53,8 @@ export function Price({ price, discount, currency, unit }: { price: string; disc
 }
 
 export function MenuCover({ cafe, motion }: { cafe: PublicCafe; motion: boolean }) {
-  const { t, label } = useMenuLanguage();
+  const { language, t, label } = useMenuLanguage();
+  const cafeDisplayName = localizedEntityText(language, cafe.name, cafe.nameAr, label);
   const video = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     if (!video.current) return;
@@ -59,10 +73,10 @@ export function MenuCover({ cafe, motion }: { cafe: PublicCafe; motion: boolean 
           loop
           controls
           preload="metadata"
-          aria-label={t('{name} welcome video', { name: label(cafe.name) })}
+          aria-label={t('{name} welcome video', { name: cafeDisplayName })}
         />
       ) : (
-        <img src={cafe.coverMediaUrl} alt={t('{name} atmosphere', { name: label(cafe.name) })} />
+        <img src={cafe.coverMediaUrl} alt={t('{name} atmosphere', { name: cafeDisplayName })} />
       )}
     </div>
   );
@@ -153,7 +167,7 @@ export function GuestMenuFiltersDialog({
               <option value="">{t('All categories')}</option>
               {groupCategories.map(c => (
                 <option key={c.id} value={c.id}>
-                  {label(c.title)}
+                  {language === 'ar' && c.titleAr?.trim() ? c.titleAr : label(c.title)}
                 </option>
               ))}
             </select>

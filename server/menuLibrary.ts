@@ -54,10 +54,12 @@ export function mountMenuLibrary(app: Express) {
             copies.push(imageUrl);
           }
           const values = { sourceItemId: item.id, publisherId: cafe.userId, sourceCafe: cafe.name, currency: cafe.currency,
-            categoryTitle: category.title, name: item.name, description: item.description, price: item.price, unit: item.unit,
+            categoryTitle: category.title, categoryTitleAr: category.titleAr,
+            name: item.name, nameAr: item.nameAr, description: item.description, descriptionAr: item.descriptionAr,
+            price: item.price, unit: item.unit,
             tags: item.tags || [], allergenTags: item.allergenTags || [], prepTimeMins: item.prepTimeMins || 10,
             sourceImageUrl: item.imageUrl, imageUrl, modifierGroups: item.modifierGroups || [],
-            variants: item.hasMultiplePricing ? variants.filter(v => v.menuItemId === item.id).map(({ label, price, unit }) => ({ label, price, unit })) : [],
+            variants: item.hasMultiplePricing ? variants.filter(v => v.menuItemId === item.id).map(({ label, labelAr, price, unit }) => ({ label, labelAr, price, unit })) : [],
             archived: false, updatedAt: new Date() };
           await tx.insert(globalMenuItems).values(values).onConflictDoUpdate({ target: globalMenuItems.sourceItemId, set: values });
         }
@@ -98,7 +100,7 @@ export function mountMenuLibrary(app: Express) {
         for (const template of templates) {
           let category = input.categoryId ? cats.find(c => c.id === input.categoryId)! : cats.find(c => normalize(c.title) === normalize(template.categoryTitle));
           if (!category) {
-            [category] = await tx.insert(categories).values({ restaurantId: cafe.id, title: template.categoryTitle, order: categoryOrder++ }).returning();
+            [category] = await tx.insert(categories).values({ restaurantId: cafe.id, title: template.categoryTitle, titleAr: template.categoryTitleAr, order: categoryOrder++ }).returning();
             cats.push(category); createdCategoryIds.push(category.id);
           }
           const key = `${category.id}:${normalize(template.name)}`;
@@ -107,7 +109,8 @@ export function mountMenuLibrary(app: Express) {
           if (template.imageUrl) { imageUrl = await media.copyForOwner(template.imageUrl, cafe.userId); copies.push(imageUrl); }
           const order = nextOrder.get(category.id) || 0;
           nextOrder.set(category.id, order + 1);
-          const [item] = await tx.insert(menuItems).values({ categoryId: category.id, name: template.name, description: template.description,
+          const [item] = await tx.insert(menuItems).values({ categoryId: category.id, name: template.name, nameAr: template.nameAr,
+            description: template.description, descriptionAr: template.descriptionAr,
             price: template.price, unit: template.unit, imageUrl, tags: template.tags, allergenTags: template.allergenTags || [],
             prepTimeMins: template.prepTimeMins || 10, modifierGroups: template.modifierGroups || [], hasMultiplePricing: template.variants.length > 0,
             discount: '0', specialDate: null, isAvailable: input.isAvailable, order }).returning();

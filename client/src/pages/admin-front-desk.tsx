@@ -24,6 +24,7 @@ import { useManagerMenu } from '@/lib/managerMenu';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
 import { formatEffectiveRoleTitle, resolveStaffCapabilities } from '@shared/rbac';
+import { resolveVenueConfig } from '@shared/venueConfig';
 import type {
   DiningTable,
   DiningZone,
@@ -113,7 +114,7 @@ export default function AdminFrontDeskPage() {
         mode: 'auto_number',
         customerName: guestName.trim() || null,
         channel,
-        estimatedPrepMins: 10,
+        estimatedPrepMins: resolveVenueConfig(cafe?.venueConfig).defaultPrepMins,
         smartTagId: coasterId || null,
       });
       return res.json();

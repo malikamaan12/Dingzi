@@ -13,6 +13,8 @@ import { mountMenuLibrary } from "./menuLibrary";
 import { mountAccessControl, getManagedCafe, mediaOwner, authUser } from './accessControl';
 import { mountPlatformControls } from './platformControls';
 import { mountHospitalityRoutes } from './hospitalityRoutes';
+import { toPublicCafe } from './hospitality/helpers';
+import { loadPlatformConfig } from './hospitality/platformSettingsRoutes';
 import { mountPushRoutes } from './pushRoutes';
 import { insertCategorySchema, registrationSchema, staffAssignments, tenants, users, restaurants } from "@shared/schema";
 import { db } from './db';
@@ -57,7 +59,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Create tenant + tenant admin user + initial branch atomically
-      const hashedPassword = await bcrypt.hash(password, 12);
+      const [hashedPassword, platformCfg] = await Promise.all([
+        bcrypt.hash(password, 12),
+        loadPlatformConfig(),
+      ]);
       const created = await db.transaction(async tx => {
         const [user] = await tx.insert(users).values({ email, password: hashedPassword, firstName, lastName, role: 'admin' }).returning();
         let activeTenantId = tenantId || null;
@@ -68,7 +73,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               name: tenantName || restaurantName,
               ownerUserId: user.id,
               status: 'active',
-              maxBranches: maxBranches ?? 1,
+              maxBranches: maxBranches ?? platformCfg.defaultNewTenantMaxBranches,
             })
             .returning();
           activeTenantId = tenant.id;
@@ -76,7 +81,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await tx.update(users).set({ tenantId: activeTenantId }).where(eq(users.id, user.id));
         const [cafe] = await tx
           .insert(restaurants)
-          .values({ userId: user.id, tenantId: activeTenantId, name: restaurantName })
+          .values({
+            userId: user.id,
+            tenantId: activeTenantId,
+            name: restaurantName,
+            currency: platformCfg.defaultCurrency,
+            timezone: platformCfg.defaultTimezone,
+          })
           .returning();
         await tx.insert(staffAssignments).values({
           userId: user.id,
@@ -384,8 +395,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!restaurant) {
         return res.status(404).json({ message: "Restaurant not found" });
       }
-      const { id, name, slug, theme, brandAccentHex, currency, timezone, logoUrl, coverMediaUrl, coverMediaType, cuisineType, address, phone, openingHours, openTime, closeTime, orderingMode, paymentGateway, googleMapsReviewUrl, reservationsEnabled, waitlistEnabled, driveThruEnabled, pagerMiniGameEnabled, slotIntervalMins, defaultTurnDurationMins, reservationDepositAmount } = restaurant;
-      res.json({ id, name, slug, theme, brandAccentHex, currency, timezone, logoUrl, coverMediaUrl, coverMediaType, cuisineType, address, phone, openingHours, openTime, closeTime, orderingMode, paymentGateway, googleMapsReviewUrl, reservationsEnabled, waitlistEnabled, driveThruEnabled, pagerMiniGameEnabled, slotIntervalMins, defaultTurnDurationMins, reservationDepositAmount });
+      res.json(toPublicCafe(restaurant));
     } catch (error) {
       console.error("Error fetching restaurant:", safeError(error));
       res.status(500).json({ message: "Failed to fetch restaurant" });

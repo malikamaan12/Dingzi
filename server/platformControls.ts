@@ -8,10 +8,12 @@ import { isSuperAdmin } from './localAuth';
 import { ObjectStorageService, signedUploadURL } from './localObjects';
 import { rateLimit } from './httpSecurity';
 import { categories, menuItems, restaurants, sessions, staffAssignments, tenants, users, insertCategorySchema, insertMenuItemSchema, cafeProfileSchema, passwordSchema, emailSchema } from '@shared/schema';
+import { SUPPORTED_CURRENCIES } from '@shared/venueConfig';
+import { loadPlatformConfig } from './hospitality/platformSettingsRoutes';
 
 const profileSchema = cafeProfileSchema.partial().extend({
   name: z.string().trim().min(1).max(150).optional(), theme: z.enum(['dingzi','e3','forest','terracotta','ocean','plum']).optional(),
-  currency: z.enum(['SAR','QAR','INR','AED','USD','EUR','GBP']).optional(),
+  currency: z.enum(SUPPORTED_CURRENCIES).optional(),
   timezone: z.string().refine(v => { try { new Intl.DateTimeFormat('en', { timeZone: v }); return true; } catch { return false; } }).optional(),
   status: z.enum(['active','suspended','pending']).optional(), hidden: z.boolean().optional(),
 }).strict();
@@ -39,7 +41,10 @@ export function mountPlatformControls(app: Express) {
         maxBranches: z.number().int().min(1).max(200).optional(),
       }).strict().refine(v => v.role === 'super_admin' ? !v.restaurantName : !!v.restaurantName,
         'Café managers need a restaurant name; super admins do not.').parse(req.body);
-      const password = await bcrypt.hash(input.password, 12);
+      const [password, platformCfg] = await Promise.all([
+        bcrypt.hash(input.password, 12),
+        loadPlatformConfig(),
+      ]);
       const result = await db.transaction(async tx => {
         let [created] = await tx.insert(users).values({ email: input.email, password, firstName: input.firstName, lastName: input.lastName, role: input.role }).returning();
         let cafe;
@@ -50,11 +55,20 @@ export function mountPlatformControls(app: Express) {
               name: input.restaurantName!,
               ownerUserId: created.id,
               status: 'active',
-              maxBranches: input.maxBranches ?? 1,
+              maxBranches: input.maxBranches ?? platformCfg.defaultNewTenantMaxBranches,
             })
             .returning();
           [created] = await tx.update(users).set({ tenantId: tenant.id }).where(eq(users.id, created.id)).returning();
-          [cafe] = await tx.insert(restaurants).values({ userId: created.id, tenantId: tenant.id, name: input.restaurantName! }).returning();
+          [cafe] = await tx
+            .insert(restaurants)
+            .values({
+              userId: created.id,
+              tenantId: tenant.id,
+              name: input.restaurantName!,
+              currency: platformCfg.defaultCurrency,
+              timezone: platformCfg.defaultTimezone,
+            })
+            .returning();
           await tx.insert(staffAssignments).values({
             userId: created.id,
             tenantId: tenant.id,
@@ -208,7 +222,7 @@ export function mountPlatformControls(app: Express) {
   });
   app.put('/api/super-admin/restaurants/:id/profile', isSuperAdmin, async (req: any, res, next) => {
     try {
-      const data = cafeProfileSchema.pick({ name: true, cuisineType: true, address: true, phone: true, openingHours: true }).partial().parse(req.body);
+      const data = cafeProfileSchema.pick({ name: true, nameAr: true, cuisineType: true, cuisineTypeAr: true, address: true, addressAr: true, phone: true, openingHours: true, openingHoursAr: true, venueConfig: true }).partial().parse(req.body);
       if (!Object.keys(data).length) return res.status(400).json({ message: 'Choose a profile field to update' });
       res.json(await storage.updateRestaurant(req.platformCafe.id, data));
     } catch(e) { next(e); }
@@ -231,7 +245,7 @@ export function mountPlatformControls(app: Express) {
     try {
       const [category] = await db.select().from(categories).where(eq(categories.id, req.params.id));
       if (!category) return res.status(404).json({ message: 'Category not found' });
-      const data = insertCategorySchema.pick({ title: true, order: true }).partial().strict().parse(req.body);
+      const data = insertCategorySchema.pick({ title: true, titleAr: true, menuGroup: true, order: true }).partial().strict().parse(req.body);
       const cats = await storage.getCategoriesByRestaurantId(category.restaurantId);
       if (data.title && cats.some(c => c.id !== category.id && c.title.toLowerCase() === data.title!.toLowerCase())) return res.status(400).json({ message: 'Category already exists' });
       res.json(await storage.updateCategory(category.id, data));

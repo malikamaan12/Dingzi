@@ -9,7 +9,8 @@ import { publishRealtimeEvent } from '../realtimeHub';
 import { deferRequestTask } from '../workerContext';
 import { dispatchPushAlertToScopes } from '../pushService';
 import { aggregatorLinks, diningTables, diningZones, guestOrders, pagerTickets, serviceBays, smartTags, tableReservations, waitlistEntries, type OrderLineItem, type SmartTag } from '@shared/schema';
-import { REBUZZ_COOLDOWN_MS, branchLocalDate, nextDailyPagerCode } from './helpers';
+import { resolveVenueConfig } from '@shared/venueConfig';
+import { branchLocalDate, nextDailyPagerCode, nextWaitlistCode } from './helpers';
 
 export function mountStaffPagerAndFloorRoutes(app: Express) {
   app.get('/api/hospitality/pagers', isAuthenticated, async (req: any, res, next) => {
@@ -50,6 +51,7 @@ export function mountStaffPagerAndFloorRoutes(app: Express) {
     try {
       const cafe = await getManagedCafe(req);
       if (!cafe) return res.status(404).json({ message: 'Set up your café first' });
+      const cfg = resolveVenueConfig(cafe.venueConfig);
       const body = z
         .object({
           mode: z.enum(['auto_number', 'pos_invoice']).default('auto_number'),
@@ -57,7 +59,7 @@ export function mountStaffPagerAndFloorRoutes(app: Express) {
           customerName: z.string().trim().max(120).nullable().optional(),
           channel: z.enum(['counter_pickup', 'dine_in', 'curbside', 'drive_thru']).optional(),
           notes: z.string().trim().max(300).nullable().optional(),
-          estimatedPrepMins: z.number().int().min(1).max(120).default(8),
+          estimatedPrepMins: z.number().int().min(1).max(180).optional(),
           bayId: z.string().uuid().optional().nullable(),
           smartTagId: z.string().uuid().optional().nullable(),
         })
@@ -83,7 +85,9 @@ export function mountStaffPagerAndFloorRoutes(app: Express) {
           targetCoaster = found;
         }
 
-        const auto = body.mode === 'auto_number' ? await nextDailyPagerCode(tx as any, cafe.id, ticketDate) : null;
+        const auto = body.mode === 'auto_number'
+          ? await nextDailyPagerCode(tx as any, cafe.id, ticketDate, cfg.pagerTicketPrefix)
+          : null;
         const ticketCode = auto ? auto.code : body.invoiceNumber!.trim().toUpperCase();
         const [created] = await tx
           .insert(pagerTickets)
@@ -97,7 +101,7 @@ export function mountStaffPagerAndFloorRoutes(app: Express) {
             status: 'waiting',
             customerName: body.customerName || null,
             notes: body.notes || null,
-            estimatedPrepMins: body.estimatedPrepMins,
+            estimatedPrepMins: body.estimatedPrepMins ?? cfg.defaultPrepMins,
             lastCoasterId: targetCoaster?.id || null,
           })
           .returning();
@@ -339,14 +343,16 @@ export function mountStaffPagerAndFloorRoutes(app: Express) {
         return res.json({ ticket: existing, paymentConfirmed: true });
       }
 
+      const cfg = resolveVenueConfig(cafe.venueConfig);
+      const cooldownMs = cfg.rebuzzCooldownSecs * 1000;
       const now = new Date();
       if (action === 'rebuzz') {
         if (existing.status !== 'ready') {
           return res.status(400).json({ message: 'Mark the ticket Ready before re-buzzing.' });
         }
-        if (existing.lastBuzzedAt && now.getTime() - new Date(existing.lastBuzzedAt).getTime() < REBUZZ_COOLDOWN_MS) {
+        if (existing.lastBuzzedAt && now.getTime() - new Date(existing.lastBuzzedAt).getTime() < cooldownMs) {
           const waitSecs = Math.ceil(
-            (REBUZZ_COOLDOWN_MS - (now.getTime() - new Date(existing.lastBuzzedAt).getTime())) / 1000,
+            (cooldownMs - (now.getTime() - new Date(existing.lastBuzzedAt).getTime())) / 1000,
           );
           return res.status(429).json({ message: `Cooldown active. Wait ${waitSecs}s before re-buzzing.` });
         }
@@ -416,7 +422,7 @@ export function mountStaffPagerAndFloorRoutes(app: Express) {
         deferRequestTask(
           dispatchPushAlertToScopes([`pager:${updated.trackingToken}`], {
             title: `${cafe.name} · Order ${updated.ticketCode} Ready!`,
-            body: 'Your order is hot and ready for pickup! Show your code at the counter.',
+            body: cfg.pagerReadySubtitle,
             tag: `pager-${updated.ticketCode}`,
             url: `/pager/${updated.trackingToken}`,
             ticketCode: updated.ticketCode,
@@ -625,9 +631,11 @@ export function mountStaffPagerAndFloorRoutes(app: Express) {
         .where(and(eq(waitlistEntries.id, req.params.id), eq(waitlistEntries.restaurantId, cafe.id)));
       if (!existing) return res.status(404).json({ message: 'Waitlist entry not found' });
 
+      const cfg = resolveVenueConfig(cafe.venueConfig);
+      const cooldownMs = cfg.rebuzzCooldownSecs * 1000;
       const now = new Date();
-      if (action === 'rebuzz' && existing.lastBuzzedAt && now.getTime() - new Date(existing.lastBuzzedAt).getTime() < REBUZZ_COOLDOWN_MS) {
-        return res.status(429).json({ message: 'Wait 20 seconds before re-buzzing this guest.' });
+      if (action === 'rebuzz' && existing.lastBuzzedAt && now.getTime() - new Date(existing.lastBuzzedAt).getTime() < cooldownMs) {
+        return res.status(429).json({ message: `Wait ${cfg.rebuzzCooldownSecs} seconds before re-buzzing this guest.` });
       }
 
       const patch: Partial<typeof waitlistEntries.$inferInsert> =
@@ -635,7 +643,7 @@ export function mountStaffPagerAndFloorRoutes(app: Express) {
           ? {
               status: 'ready',
               readyAt: existing.readyAt || now,
-              holdExpiresAt: new Date(now.getTime() + 10 * 60_000),
+              holdExpiresAt: new Date(now.getTime() + cfg.waitlistHoldMins * 60_000),
               buzzCount: existing.buzzCount + 1,
               lastBuzzedAt: now,
             }
@@ -658,7 +666,7 @@ export function mountStaffPagerAndFloorRoutes(app: Express) {
         deferRequestTask(
           dispatchPushAlertToScopes([`waitlist:${updated.trackingToken}`], {
             title: `${cafe.name} · Your Table is Ready (${updated.ticketCode})!`,
-            body: 'Please head to the host stand — your table is held for 10 minutes.',
+            body: cfg.waitlistReadySubtitle.replace('{mins}', String(cfg.waitlistHoldMins)),
             tag: `waitlist-${updated.ticketCode}`,
             url: `/waitlist/${updated.trackingToken}`,
             ticketCode: updated.ticketCode,
@@ -689,13 +697,9 @@ export function mountStaffPagerAndFloorRoutes(app: Express) {
         .strict()
         .parse(req.body);
 
+      const cfg = resolveVenueConfig(cafe.venueConfig);
       const entry = await db.transaction(async tx => {
-        const countRows = await tx
-          .select({ n: sql<number>`count(*)` })
-          .from(waitlistEntries)
-          .where(eq(waitlistEntries.restaurantId, cafe.id));
-        const seq = (Number(countRows[0]?.n || 0) % 999) + 1;
-        const code = `W-${String(seq).padStart(3, '0')}`;
+        const code = await nextWaitlistCode(tx as any, cafe.id, cfg.waitlistTicketPrefix);
         const [created] = await tx
           .insert(waitlistEntries)
           .values({

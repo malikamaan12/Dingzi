@@ -60,6 +60,7 @@ const GuestBookingPage = lazy(() => import('@/pages/guest-booking'));
 import { VenueBySlugEntry, BayQrEntry, TableQrEntry, SmartTagEntry } from '@/pages/venue-slug-entry';
 const SuperAdminDashboard = lazy(() => import('@/pages/super-admin-dashboard'));
 const SuperAdminRestaurantDetail = lazy(() => import('@/pages/super-admin-restaurant-detail'));
+const SuperAdminSettings = lazy(() => import('@/pages/super-admin-settings'));
 const CustomerMenu = lazy(() => import('@/pages/customer-menu'));
 const NotFound = lazy(() => import('@/pages/not-found'));
 
@@ -332,6 +333,7 @@ function StaffRouter() {
           </AdminLayout>
         </Route>
             <Route path="/super-admin/accounts"><AdminLayout><PlatformAccounts/></AdminLayout></Route>
+            <Route path="/super-admin/settings"><AdminLayout><SuperAdminSettings/></AdminLayout></Route>
             <Route path="/super-admin/access-history"><AdminLayout><AccessHistory/></AdminLayout></Route>
             <Route path="/super-admin/account"><AdminLayout><CafeSettings/></AdminLayout></Route>
             <Route path="/super-admin">

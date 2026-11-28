@@ -10,6 +10,7 @@ import { dispatchPushAlertToScopes } from '../pushService';
 import { withTenantRlsTransaction } from '../rlsContext';
 import { createPaymentCheckoutSession, signGatewayPayload, verifyGatewaySignature } from '../payments/gateways';
 import { aggregatorClicks, diningTables, diningZones, guestOrders, pagerTickets, serviceBays, smartTags, tableReservations, waitlistEntries } from '@shared/schema';
+import { resolveVenueConfig } from '@shared/venueConfig';
 import { branchLocalDate, busyTableIdsForWindow, countAvailableSlotAllocations, findTableAllocation, loadBranchGatewaySecrets, nextDailyPagerCode, nextWaitlistCode, resolveBranchOperatingMinutes, toPublicCafe } from './helpers';
 
 export function mountPublicPagerAndTableRoutes(app: Express) {
@@ -42,7 +43,7 @@ export function mountPublicPagerAndTableRoutes(app: Express) {
       const specials = allItems
         .filter(i => i.isAvailable && i.specialDate === today)
         .slice(0, 4)
-        .map(i => ({ id: i.id, name: i.name, price: i.price, discount: i.discount, imageUrl: i.imageUrl, unit: i.unit }));
+        .map(i => ({ id: i.id, name: i.name, nameAr: i.nameAr, price: i.price, discount: i.discount, imageUrl: i.imageUrl, unit: i.unit }));
 
       const bays = restaurant.driveThruEnabled
         ? await db
@@ -147,10 +148,11 @@ export function mountPublicPagerAndTableRoutes(app: Express) {
         .returning();
       if (!updated) return res.status(404).json({ message: 'Pager ticket not found' });
       const restaurant = await storage.getRestaurantById(updated.restaurantId);
+      const minStars = resolveVenueConfig(restaurant?.venueConfig).reviewPromptMinStars;
       res.json({
         ticket: updated,
-        promptGoogleReview: rating >= 4 && Boolean(restaurant?.googleMapsReviewUrl),
-        googleMapsReviewUrl: rating >= 4 ? restaurant?.googleMapsReviewUrl || null : null,
+        promptGoogleReview: rating >= minStars && Boolean(restaurant?.googleMapsReviewUrl),
+        googleMapsReviewUrl: rating >= minStars ? restaurant?.googleMapsReviewUrl || null : null,
       });
     } catch (e) {
       next(e);
@@ -168,7 +170,7 @@ export function mountPublicPagerAndTableRoutes(app: Express) {
           etaStatus: z.enum(['5_mins_away', 'arrived']),
           customerName: z.string().trim().max(120).optional(),
           vehicleColor: z.string().trim().min(1).max(40),
-          vehicleType: z.enum(['Sedan', 'SUV', 'Pickup', 'Coupe', 'Other']),
+          vehicleType: z.string().trim().min(1).max(40),
           licensePlate: z.string().trim().min(1).max(32),
         })
         .strict()
@@ -203,9 +205,10 @@ export function mountPublicPagerAndTableRoutes(app: Express) {
         if (!restaurant || restaurant.hidden || restaurant.status !== 'active') {
           return res.status(404).json({ message: 'Venue unavailable' });
         }
+        const cfg = resolveVenueConfig(restaurant.venueConfig);
         const ticketDate = branchLocalDate(restaurant.timezone);
         updatedTicket = await db.transaction(async tx => {
-          const { seq, code } = await nextDailyPagerCode(tx as any, restaurant.id, ticketDate);
+          const { seq, code } = await nextDailyPagerCode(tx as any, restaurant.id, ticketDate, cfg.pagerTicketPrefix);
           const [created] = await tx
             .insert(pagerTickets)
             .values({
@@ -217,6 +220,7 @@ export function mountPublicPagerAndTableRoutes(app: Express) {
               source: 'curbside',
               status: 'waiting',
               customerName: body.customerName || `Car-Side · ${bay.code}`,
+              estimatedPrepMins: cfg.defaultPrepMins,
               vehicleColor: body.vehicleColor,
               vehicleType: body.vehicleType,
               licensePlate: body.licensePlate.toUpperCase(),
@@ -255,12 +259,21 @@ export function mountPublicPagerAndTableRoutes(app: Express) {
     try {
       const restaurantId = z.string().uuid().parse(req.params.restaurantId);
       const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).parse(req.query.date);
-      const partySize = z.coerce.number().int().min(1).max(30).parse(req.query.partySize || 2);
+      const partySize = z.coerce.number().int().min(1).max(60).parse(req.query.partySize || 2);
       const zoneId = req.query.zoneId ? z.string().uuid().parse(req.query.zoneId) : undefined;
 
       const restaurant = await storage.getRestaurantById(restaurantId);
       if (!restaurant || restaurant.hidden || restaurant.status !== 'active' || !restaurant.reservationsEnabled) {
         return res.status(404).json({ message: 'Table reservations are not enabled for this branch' });
+      }
+      const cfg = resolveVenueConfig(restaurant.venueConfig);
+      if (restaurant.venueConfig?.maxPartySize && partySize > restaurant.venueConfig.maxPartySize) {
+        return res.json({
+          slots: [],
+          durationMins: restaurant.defaultTurnDurationMins,
+          openTime: restaurant.openTime,
+          closeTime: restaurant.closeTime,
+        });
       }
 
       const activeTables = await db
@@ -311,7 +324,7 @@ export function mountPublicPagerAndTableRoutes(app: Express) {
         const mm = String(displayMins % 60).padStart(2, '0');
         const slotStart = new Date(baseMidnightMs + mins * 60_000);
         const slotEnd = new Date(slotStart.getTime() + duration * 60_000);
-        const busyIds = busyTableIdsForWindow(existingBookings, slotStart, slotEnd);
+        const busyIds = busyTableIdsForWindow(existingBookings, slotStart, slotEnd, cfg.depositHoldMins * 60_000);
         const { count, requiresCombination } = countAvailableSlotAllocations(
           activeTables,
           busyIds,
@@ -346,7 +359,7 @@ export function mountPublicPagerAndTableRoutes(app: Express) {
         .object({
           guestName: z.string().trim().min(1).max(120),
           guestPhone: z.string().trim().min(5).max(40),
-          partySize: z.number().int().min(1).max(30),
+          partySize: z.number().int().min(1).max(60),
           zoneId: z.string().uuid().optional().nullable(),
           startIso: z.string().datetime({ offset: true }),
           notes: z.string().trim().max(400).optional().nullable(),
@@ -357,6 +370,10 @@ export function mountPublicPagerAndTableRoutes(app: Express) {
       const restaurant = await storage.getRestaurantById(restaurantId);
       if (!restaurant || restaurant.hidden || restaurant.status !== 'active' || !restaurant.reservationsEnabled) {
         return res.status(404).json({ message: 'Reservations are unavailable for this branch' });
+      }
+      const cfg = resolveVenueConfig(restaurant.venueConfig);
+      if (restaurant.venueConfig?.maxPartySize && body.partySize > restaurant.venueConfig.maxPartySize) {
+        return res.status(400).json({ message: `Maximum online party size for this branch is ${restaurant.venueConfig.maxPartySize}.` });
       }
 
       const startAt = new Date(body.startIso);
@@ -404,7 +421,7 @@ export function mountPublicPagerAndTableRoutes(app: Express) {
               ),
             );
 
-          const busyIds = busyTableIdsForWindow(overlapping, startAt, endAt);
+          const busyIds = busyTableIdsForWindow(overlapping, startAt, endAt, cfg.depositHoldMins * 60_000);
           const chosenTables = findTableAllocation(tables, busyIds, body.partySize, body.zoneId);
           if (!chosenTables || chosenTables.length === 0) {
             throw Object.assign(
@@ -622,7 +639,7 @@ export function mountPublicPagerAndTableRoutes(app: Express) {
         .object({
           guestName: z.string().trim().min(1).max(120),
           guestPhone: z.string().trim().max(40).optional().nullable(),
-          partySize: z.number().int().min(1).max(30),
+          partySize: z.number().int().min(1).max(60),
           zoneId: z.string().uuid().optional().nullable(),
           notes: z.string().trim().max(300).optional().nullable(),
         })
@@ -633,9 +650,13 @@ export function mountPublicPagerAndTableRoutes(app: Express) {
       if (!restaurant || restaurant.hidden || restaurant.status !== 'active' || !restaurant.waitlistEnabled) {
         return res.status(404).json({ message: 'Walk-in waitlist is currently closed for this branch' });
       }
+      const cfg = resolveVenueConfig(restaurant.venueConfig);
+      if (restaurant.venueConfig?.maxPartySize && body.partySize > restaurant.venueConfig.maxPartySize) {
+        return res.status(400).json({ message: `Maximum waitlist party size for this branch is ${restaurant.venueConfig.maxPartySize}.` });
+      }
 
       const entry = await db.transaction(async tx => {
-        const ticketCode = await nextWaitlistCode(tx as any, restaurantId);
+        const ticketCode = await nextWaitlistCode(tx as any, restaurantId, cfg.waitlistTicketPrefix);
         const [created] = await tx
           .insert(waitlistEntries)
           .values({

@@ -10,13 +10,24 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { useToast } from '@/hooks/use-toast';
 import { apiRequest } from '@/lib/queryClient';
 import { useManagerMenu, refreshCafe } from '@/lib/managerMenu';
+import { CATEGORY_MENU_GROUPS, type CategoryMenuGroupSetting } from '@shared/venueConfig';
 import type { Category } from '@shared/schema';
+
+const GROUP_LABELS: Record<CategoryMenuGroupSetting, string> = {
+  auto: 'Auto-detect from title',
+  food: 'Food & Mains',
+  snacks: 'Snacks & Starters',
+  drinks: 'Drinks & Coffee',
+  sweets: 'Sweets & Bakery',
+};
 
 export default function AdminCategories() {
   const query = useManagerMenu(), { toast } = useToast();
   const [editor, setEditor] = useState<{
     id?: string;
     title: string;
+    titleAr: string;
+    menuGroup: CategoryMenuGroupSetting;
     isVisible: boolean;
     availableFrom: string;
     availableUntil: string;
@@ -38,6 +49,8 @@ export default function AdminCategories() {
       }
       const payload = {
         title,
+        titleAr: editor.titleAr.trim() || null,
+        menuGroup: editor.menuGroup,
         isVisible: editor.isVisible,
         availableFrom: editor.availableFrom.trim() || null,
         availableUntil: editor.availableUntil.trim() || null,
@@ -104,7 +117,7 @@ export default function AdminCategories() {
           className="min-h-11 cursor-pointer"
           onClick={() => {
             setError('');
-            setEditor({ title: '', isVisible: true, availableFrom: '', availableUntil: '' });
+            setEditor({ title: '', titleAr: '', menuGroup: 'auto', isVisible: true, availableFrom: '', availableUntil: '' });
           }}
         >
           <Plus className="w-4 h-4 mr-2" aria-hidden="true" />
@@ -122,6 +135,16 @@ export default function AdminCategories() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="font-semibold">{c.title}</h2>
+                {c.titleAr && (
+                  <span dir="rtl" className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-semibold">
+                    {c.titleAr}
+                  </span>
+                )}
+                {c.menuGroup && c.menuGroup !== 'auto' && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground capitalize">
+                    {c.menuGroup}
+                  </span>
+                )}
                 {c.isVisible === false && (
                   <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
                     <EyeOff className="w-3 h-3" aria-hidden="true" /> Hidden
@@ -162,6 +185,8 @@ export default function AdminCategories() {
                   setEditor({
                     id: c.id,
                     title: c.title,
+                    titleAr: c.titleAr || '',
+                    menuGroup: ((c.menuGroup as CategoryMenuGroupSetting | null) || 'auto'),
                     isVisible: c.isVisible !== false,
                     availableFrom: c.availableFrom || '',
                     availableUntil: c.availableUntil || '',
@@ -191,16 +216,49 @@ export default function AdminCategories() {
             <DialogDescription>Configure category title, visibility, and optional time-of-day serving hours.</DialogDescription>
           </DialogHeader>
           <form onSubmit={e => { e.preventDefault(); setError(''); save.mutate(); }} className="space-y-4">
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="category-name">Category name (EN) *</Label>
+                <Input
+                  id="category-name"
+                  required
+                  maxLength={100}
+                  autoFocus
+                  value={editor?.title || ''}
+                  onChange={e => setEditor(prev => (prev ? { ...prev, title: e.target.value } : prev))}
+                />
+              </div>
+              <div>
+                <Label htmlFor="category-name-ar">Arabic title (optional)</Label>
+                <Input
+                  id="category-name-ar"
+                  dir="rtl"
+                  maxLength={100}
+                  placeholder="الاسم بالعربية"
+                  value={editor?.titleAr || ''}
+                  onChange={e => setEditor(prev => (prev ? { ...prev, titleAr: e.target.value } : prev))}
+                />
+              </div>
+            </div>
+
             <div>
-              <Label htmlFor="category-name">Category name</Label>
-              <Input
-                id="category-name"
-                required
-                maxLength={100}
-                autoFocus
-                value={editor?.title || ''}
-                onChange={e => setEditor(prev => (prev ? { ...prev, title: e.target.value } : prev))}
-              />
+              <Label htmlFor="category-group">Guest Filter Tab Assignment</Label>
+              <select
+                id="category-group"
+                className="manager-select w-full h-11 mt-1"
+                value={editor?.menuGroup || 'auto'}
+                onChange={e =>
+                  setEditor(prev =>
+                    prev ? { ...prev, menuGroup: e.target.value as CategoryMenuGroupSetting } : prev,
+                  )
+                }
+              >
+                {CATEGORY_MENU_GROUPS.map(g => (
+                  <option key={g} value={g}>
+                    {GROUP_LABELS[g]}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="grid grid-cols-2 gap-3">

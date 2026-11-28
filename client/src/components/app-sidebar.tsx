@@ -19,6 +19,7 @@ import {
   UserCog,
   Flame,
   Network,
+  SlidersHorizontal,
 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
@@ -180,6 +181,7 @@ const superAdminMenuItems = [
     icon: Building2,
   },
   { title: 'Accounts & Roles', url: '/super-admin/accounts', icon: Users },
+  { title: 'Platform CMS & Defaults', url: '/super-admin/settings', icon: SlidersHorizontal },
   { title: 'Access History', url: '/super-admin/access-history', icon: History },
   { title: 'My Account', url: '/super-admin/account', icon: Store },
 ];

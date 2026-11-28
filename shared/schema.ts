@@ -15,6 +15,12 @@ import {
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import type { ResolvedStaffCapabilities, StaffCapabilityOverrides } from "./rbac";
+import {
+  CATEGORY_MENU_GROUPS,
+  SUPPORTED_CURRENCIES,
+  venueConfigSchema,
+  type VenueConfig,
+} from "./venueConfig";
 
 // Database-backed staff sessions.
 export const sessions = pgTable(
@@ -117,6 +123,7 @@ export const restaurants = pgTable("restaurants", {
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   tenantId: varchar("tenant_id").references(() => tenants.id, { onDelete: "set null" }),
   name: text("name").notNull(),
+  nameAr: text("name_ar"),
   slug: varchar("slug", { length: 120 }),
   theme: text("theme").notNull().default("e3"),
   brandAccentHex: varchar("brand_accent_hex", { length: 7 }),
@@ -126,11 +133,15 @@ export const restaurants = pgTable("restaurants", {
   coverMediaUrl: text("cover_media_url"),
   coverMediaType: varchar("cover_media_type"),
   cuisineType: text("cuisine_type"),
+  cuisineTypeAr: text("cuisine_type_ar"),
   address: text("address"),
+  addressAr: text("address_ar"),
   phone: varchar("phone"),
   openingHours: text("opening_hours"),
+  openingHoursAr: text("opening_hours_ar"),
   openTime: varchar("open_time", { length: 5 }).notNull().default("08:00"),
   closeTime: varchar("close_time", { length: 5 }).notNull().default("23:00"),
+  venueConfig: jsonb("venue_config").$type<VenueConfig>().notNull().default(sql`'{}'::jsonb`),
   qrCodeUrl: text("qr_code_url"),
   status: varchar("status").notNull().default("active"),
   hidden: boolean("hidden").notNull().default(false),
@@ -175,12 +186,16 @@ export const restaurantsRelations = relations(restaurants, ({ one, many }) => ({
   categories: many(categories),
 }));
 
-export const insertRestaurantSchema = createInsertSchema(restaurants).omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
-  qrCodeUrl: true,
-});
+export const insertRestaurantSchema = createInsertSchema(restaurants)
+  .omit({
+    id: true,
+    createdAt: true,
+    updatedAt: true,
+    qrCodeUrl: true,
+  })
+  .extend({
+    venueConfig: venueConfigSchema.optional(),
+  });
 
 export type InsertRestaurant = z.infer<typeof insertRestaurantSchema>;
 export type Restaurant = typeof restaurants.$inferSelect;
@@ -196,6 +211,7 @@ const discountSchema = z.string().or(z.number()).refine(
 
 export const cafeProfileSchema = insertRestaurantSchema.pick({
   name: true,
+  nameAr: true,
   slug: true,
   theme: true,
   brandAccentHex: true,
@@ -205,11 +221,15 @@ export const cafeProfileSchema = insertRestaurantSchema.pick({
   coverMediaUrl: true,
   coverMediaType: true,
   cuisineType: true,
+  cuisineTypeAr: true,
   address: true,
+  addressAr: true,
   phone: true,
   openingHours: true,
+  openingHoursAr: true,
   openTime: true,
   closeTime: true,
+  venueConfig: true,
   orderingMode: true,
   paymentGateway: true,
   googleMapsReviewUrl: true,
@@ -222,18 +242,23 @@ export const cafeProfileSchema = insertRestaurantSchema.pick({
   reservationDepositAmount: true,
 }).extend({
   name: z.string().trim().min(1).max(150),
+  nameAr: z.string().trim().max(150).nullable().optional(),
   slug: z.string().trim().toLowerCase().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'Slug must use lowercase letters, numbers, and hyphens').max(120).nullable().optional(),
   theme: z.enum(['dingzi', 'e3', 'forest', 'terracotta', 'ocean', 'plum']).optional(),
   brandAccentHex: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Use a 6-digit hex color like #6236FF').nullable().optional(),
-  currency: z.enum(['SAR', 'QAR', 'INR', 'AED', 'USD', 'EUR', 'GBP']).optional(),
+  currency: z.enum(SUPPORTED_CURRENCIES).optional(),
   timezone: z.string().max(100).refine(v => { try { new Intl.DateTimeFormat('en', { timeZone: v }); return true; } catch { return false; } }).optional(),
   coverMediaType: z.enum(['image', 'video', 'gif']).nullable().optional(),
   cuisineType: z.string().trim().max(250).nullable().optional(),
+  cuisineTypeAr: z.string().trim().max(250).nullable().optional(),
   address: z.string().trim().max(1000).nullable().optional(),
+  addressAr: z.string().trim().max(1000).nullable().optional(),
   phone: z.string().trim().max(40).nullable().optional(),
   openingHours: z.string().trim().max(250).nullable().optional(),
+  openingHoursAr: z.string().trim().max(250).nullable().optional(),
   openTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use 24-hour HH:MM format').optional(),
   closeTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use 24-hour HH:MM format').optional(),
+  venueConfig: venueConfigSchema.optional(),
   orderingMode: z.enum(orderingModes).optional(),
   paymentGateway: z.enum(paymentGateways).optional(),
   googleMapsReviewUrl: z.string().trim().url('Enter a valid URL').max(500).or(z.literal('')).nullable().optional().transform(v => v === '' ? null : v),
@@ -315,6 +340,8 @@ export const categories = pgTable("categories", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   restaurantId: varchar("restaurant_id").notNull().references(() => restaurants.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
+  titleAr: text("title_ar"),
+  menuGroup: varchar("menu_group", { length: 24 }),
   isVisible: boolean("is_visible").notNull().default(true),
   availableFrom: varchar("available_from", { length: 5 }),
   availableUntil: varchar("available_until", { length: 5 }),
@@ -337,6 +364,8 @@ export const insertCategorySchema = createInsertSchema(categories).omit({
   createdAt: true,
 }).extend({
   title: z.string().trim().min(1).max(100),
+  titleAr: z.string().trim().max(100).nullable().optional(),
+  menuGroup: z.enum(CATEGORY_MENU_GROUPS).nullable().optional(),
   isVisible: z.boolean().optional(),
   availableFrom: hhmmSchema,
   availableUntil: hhmmSchema,
@@ -391,7 +420,9 @@ export const menuItems = pgTable("menu_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   categoryId: varchar("category_id").notNull().references(() => categories.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
+  nameAr: text("name_ar"),
   description: text("description"),
+  descriptionAr: text("description_ar"),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
   discount: decimal("discount", { precision: 5, scale: 2 }).default("0"),
   unit: text("unit").notNull().default("plate"),
@@ -426,6 +457,7 @@ export const menuItemPriceVariants = pgTable("menu_item_price_variants", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   menuItemId: varchar("menu_item_id").notNull().references(() => menuItems.id, { onDelete: "cascade" }),
   label: text("label").notNull(),
+  labelAr: text("label_ar"),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
   discount: decimal("discount", { precision: 5, scale: 2 }).default("0"),
   unit: text("unit").notNull(),
@@ -450,8 +482,10 @@ export const insertMenuItemSchema = createInsertSchema(menuItems).omit({
   updatedAt: true,
 }).extend({
   name: z.string().trim().min(1).max(150),
+  nameAr: z.string().trim().max(150).nullable().optional(),
   categoryId: z.string().uuid(),
   description: z.string().trim().max(2000).nullable().optional(),
+  descriptionAr: z.string().trim().max(2000).nullable().optional(),
   tags: z.array(z.string().trim().min(1).max(40)).max(10).refine(v => new Set(v.map(t => t.toLowerCase())).size === v.length, 'Tags must be unique').nullable().optional(),
   allergenTags: z.array(z.string().trim().min(1).max(40)).max(12).optional(),
   prepTimeMins: z.number().int().min(1).max(180).optional(),
@@ -473,6 +507,7 @@ export const insertPriceVariantSchema = createInsertSchema(menuItemPriceVariants
 }).extend({
   menuItemId: z.string().uuid(),
   label: z.string().trim().min(1).max(80),
+  labelAr: z.string().trim().max(80).nullable().optional(),
   price: moneySchema,
   unit: z.string().trim().min(1).max(30),
   discount: discountSchema.optional(),
@@ -482,7 +517,7 @@ export const insertPriceVariantSchema = createInsertSchema(menuItemPriceVariants
 export type InsertPriceVariant = z.infer<typeof insertPriceVariantSchema>;
 export type PriceVariant = typeof menuItemPriceVariants.$inferSelect;
 
-export type LibraryPriceVariant = { label: string; price: string; unit: string };
+export type LibraryPriceVariant = { label: string; labelAr?: string | null; price: string; unit: string };
 
 export const globalMenuItems = pgTable("global_menu_items", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -491,8 +526,11 @@ export const globalMenuItems = pgTable("global_menu_items", {
   sourceCafe: text("source_cafe").notNull(),
   currency: varchar("currency").notNull(),
   categoryTitle: text("category_title").notNull(),
+  categoryTitleAr: text("category_title_ar"),
   name: text("name").notNull(),
+  nameAr: text("name_ar"),
   description: text("description"),
+  descriptionAr: text("description_ar"),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
   unit: text("unit").notNull(),
   imageUrl: text("image_url"),
@@ -796,6 +834,7 @@ export type PublicCafe = Pick<
   Restaurant,
   | 'id'
   | 'name'
+  | 'nameAr'
   | 'slug'
   | 'theme'
   | 'brandAccentHex'
@@ -805,11 +844,15 @@ export type PublicCafe = Pick<
   | 'coverMediaUrl'
   | 'coverMediaType'
   | 'cuisineType'
+  | 'cuisineTypeAr'
   | 'address'
+  | 'addressAr'
   | 'phone'
   | 'openingHours'
+  | 'openingHoursAr'
   | 'openTime'
   | 'closeTime'
+  | 'venueConfig'
   | 'orderingMode'
   | 'paymentGateway'
   | 'googleMapsReviewUrl'

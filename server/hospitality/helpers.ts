@@ -61,10 +61,11 @@ export function reservationBlocksWindow(
   slotStartMs: number,
   slotEndMs: number,
   nowMs: number,
+  depositHoldTtlMs = DEPOSIT_HOLD_TTL_MS,
 ): boolean {
   if (res.status === 'pending_deposit') {
     const ageMs = nowMs - new Date(res.createdAt).getTime();
-    if (ageMs > DEPOSIT_HOLD_TTL_MS) return false;
+    if (ageMs > depositHoldTtlMs) return false;
   } else if (res.status !== 'confirmed' && res.status !== 'seated') {
     return false;
   }
@@ -75,13 +76,14 @@ export function busyTableIdsForWindow(
   reservations: Pick<TableReservation, 'tableId' | 'combinedTableIds' | 'status' | 'startAt' | 'endAt' | 'createdAt'>[],
   slotStart: Date,
   slotEnd: Date,
+  depositHoldTtlMs = DEPOSIT_HOLD_TTL_MS,
 ): Set<string> {
   const busy = new Set<string>();
   const startMs = slotStart.getTime();
   const endMs = slotEnd.getTime();
   const nowMs = Date.now();
   for (const r of reservations) {
-    if (!reservationBlocksWindow(r, startMs, endMs, nowMs)) continue;
+    if (!reservationBlocksWindow(r, startMs, endMs, nowMs, depositHoldTtlMs)) continue;
     busy.add(r.tableId);
     for (const id of r.combinedTableIds || []) {
       busy.add(id);
@@ -179,6 +181,7 @@ export function toPublicCafe(restaurant: Restaurant): PublicCafe {
   const {
     id,
     name,
+    nameAr,
     slug,
     theme,
     brandAccentHex,
@@ -188,11 +191,15 @@ export function toPublicCafe(restaurant: Restaurant): PublicCafe {
     coverMediaUrl,
     coverMediaType,
     cuisineType,
+    cuisineTypeAr,
     address,
+    addressAr,
     phone,
     openingHours,
+    openingHoursAr,
     openTime,
     closeTime,
+    venueConfig,
     orderingMode,
     paymentGateway,
     googleMapsReviewUrl,
@@ -207,6 +214,7 @@ export function toPublicCafe(restaurant: Restaurant): PublicCafe {
   return {
     id,
     name,
+    nameAr: nameAr ?? null,
     slug,
     theme,
     brandAccentHex,
@@ -216,11 +224,15 @@ export function toPublicCafe(restaurant: Restaurant): PublicCafe {
     coverMediaUrl,
     coverMediaType,
     cuisineType,
+    cuisineTypeAr: cuisineTypeAr ?? null,
     address,
+    addressAr: addressAr ?? null,
     phone,
     openingHours,
+    openingHoursAr: openingHoursAr ?? null,
     openTime,
     closeTime,
+    venueConfig: venueConfig || {},
     orderingMode,
     paymentGateway,
     googleMapsReviewUrl,
@@ -247,22 +259,29 @@ export function branchLocalDate(timezone = 'Asia/Qatar'): string {
   }
 }
 
-export async function nextDailyPagerCode(tx: typeof db, restaurantId: string, ticketDate: string) {
+export async function nextDailyPagerCode(
+  tx: typeof db,
+  restaurantId: string,
+  ticketDate: string,
+  prefix = 'A',
+) {
   const existing = await tx
     .select({ maxSeq: sql<number>`coalesce(max(${pagerTickets.dailySeq}), 0)` })
     .from(pagerTickets)
     .where(and(eq(pagerTickets.restaurantId, restaurantId), eq(pagerTickets.ticketDate, ticketDate)));
   const seq = Number(existing[0]?.maxSeq || 0) + 1;
-  const code = `A-${String(seq).padStart(3, '0')}`;
+  const cleanPrefix = (prefix || 'A').trim().toUpperCase();
+  const code = `${cleanPrefix}-${String(seq).padStart(3, '0')}`;
   return { seq, code };
 }
 
-export async function nextWaitlistCode(tx: typeof db, restaurantId: string) {
+export async function nextWaitlistCode(tx: typeof db, restaurantId: string, prefix = 'W') {
   const countRows = await tx
     .select({ n: sql<number>`count(*)` })
     .from(waitlistEntries)
     .where(eq(waitlistEntries.restaurantId, restaurantId));
   const seq = (Number(countRows[0]?.n || 0) % 999) + 1;
-  return `W-${String(seq).padStart(3, '0')}`;
+  const cleanPrefix = (prefix || 'W').trim().toUpperCase();
+  return `${cleanPrefix}-${String(seq).padStart(3, '0')}`;
 }
 

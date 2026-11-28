@@ -181,6 +181,33 @@ export function menuItemCount(language: MenuLanguage, count: number): string {
   if (count === 2) return 'صنفان';
   return `${number} ${count >= 3 && count <= 10 ? 'أصناف' : 'صنفاً'}`;
 }
+const CustomTranslationsContext = createContext<Readonly<Record<string, string>>>({});
+export function MenuCustomTranslationsProvider({
+  customTranslations,
+  children,
+}: {
+  customTranslations?: Record<string, string> | null;
+  children: ReactNode;
+}) {
+  const normalized = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const [k, v] of Object.entries(customTranslations || {})) {
+      if (k.trim() && v.trim()) map[k.trim().toLowerCase()] = v.trim();
+    }
+    return map;
+  }, [customTranslations]);
+  return <CustomTranslationsContext.Provider value={normalized}>{children}</CustomTranslationsContext.Provider>;
+}
+export function localizedEntityText(
+  language: MenuLanguage,
+  enText: string | null | undefined,
+  arText: string | null | undefined,
+  fallbackLabel?: (text: string) => string,
+): string {
+  if (language === 'ar' && arText && arText.trim()) return arText.trim();
+  if (!enText) return '';
+  return fallbackLabel ? fallbackLabel(enText) : enText;
+}
 const Context = createContext<{
   language: MenuLanguage; dir: 'rtl' | 'ltr'; setLanguage: (language: MenuLanguage) => void;
   t: (key: string, values?: Values) => string; label: (text: string) => string; count: (value: number) => string;
@@ -206,8 +233,15 @@ export function MenuLanguageProvider({ children }: { children: ReactNode }) {
 }
 export function useMenuLanguage() {
   const value = useContext(Context);
+  const customMap = useContext(CustomTranslationsContext);
   if (!value) throw new Error('Menu language provider is required');
-  return value;
+  return useMemo(() => {
+    if (value.language !== 'ar' || !Object.keys(customMap).length) return value;
+    return {
+      ...value,
+      label: (text: string) => customMap[text.trim().toLowerCase()] || value.label(text),
+    };
+  }, [value, customMap]);
 }
 export function MenuLanguageSwitch() {
   const { language, setLanguage } = useMenuLanguage();

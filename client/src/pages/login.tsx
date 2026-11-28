@@ -9,10 +9,12 @@ import { notifySessionChanged } from '@/lib/sessionSync';
 import { StaffBrand } from '@/components/staff-brand';
 import { StaffThemeToggle } from '@/components/staff-theme';
 import { defaultStaffHomePath } from '@/lib/roleHome';
+import { usePlatformConfig } from '@/lib/usePlatformConfig';
 
 const LAST_VENUE_STORAGE_KEY = 'dingzi-last-station-venue';
 
 export default function Login() {
+  const platformCfg = usePlatformConfig();
   const [mode, setMode] = useState<'email' | 'pin'>('email');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -108,12 +110,8 @@ export default function Login() {
         <img className="staff-login-watermark" src="/brand/dingzi-icon-color.svg" alt="" aria-hidden="true" />
         <section className="staff-login-card" aria-labelledby="staff-login-title">
           <StaffBrand />
-          <h1 id="staff-login-title">Welcome back.</h1>
-          <p className="staff-login-description">
-            Menus, tables, and pickup — made dingzi.
-            <br />
-            Sign in as Tenant Admin, Reception, or Station Staff.
-          </p>
+          <h1 id="staff-login-title">{platformCfg.loginHeadline}</h1>
+          <p className="staff-login-description">{platformCfg.loginSubtitle}</p>
 
           {/* Sign-In Method Switcher */}
           <div
@@ -313,7 +311,7 @@ export default function Login() {
             </form>
           )}
 
-          <p className="staff-login-help">Need access? Contact your Tenant Admin or dingzi platform administrator.</p>
+          <p className="staff-login-help">{platformCfg.loginHelpText}</p>
         </section>
       </main>
       <footer className="staff-login-footer">dingzi · Hospitality Operating Platform</footer>

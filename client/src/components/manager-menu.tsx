@@ -15,13 +15,22 @@ import { useManagerMenu, updateManagerMenu, refreshCafe, managerMoney, uploadMed
 import { CategoryVectorIcon } from '@/components/menu/CategoryVectorIcon';
 import { matchesMenuSearch, menuSearchIndex, menuSearchQuery } from '@/lib/menuSearch';
 import { menuModifierGroupsSchema, type MenuItem, type PriceVariant, type MenuModifierGroup } from '@shared/schema';
+import { resolveVenueConfig } from '@shared/venueConfig';
 import ModifierEditor from '@/components/menu/ModifierEditor';
 import '@/components/menu/menu-modifiers.css';
 
-type Option = Pick<PriceVariant, 'label' | 'price' | 'discount' | 'unit'>;
+type Option = {
+  label: string;
+  labelAr: string;
+  price: string;
+  discount: string | null;
+  unit: string;
+};
 type Draft = {
   name: string;
+  nameAr: string;
   description: string;
+  descriptionAr: string;
   categoryId: string;
   price: string;
   discount: string;
@@ -38,21 +47,20 @@ type Draft = {
   modifierGroups: MenuModifierGroup[];
 };
 
-const DIETARY_TAGS = ['Bestseller', 'New', 'Spicy', 'Vegetarian', 'Vegan', 'Gluten-Free'];
-const ALLERGEN_OPTIONS = ['Dairy', 'Gluten', 'Nuts', 'Peanuts', 'Eggs', 'Soy', 'Sesame', 'Shellfish'];
-
-const blank = (categoryId: string): Draft => ({
+const blank = (categoryId: string, defaultUnit = 'serving', defaultPrepMins = 10): Draft => ({
   name: '',
+  nameAr: '',
   description: '',
+  descriptionAr: '',
   categoryId,
   price: '',
   discount: '0',
-  unit: 'serving',
+  unit: defaultUnit,
   imageUrl: '',
   isAvailable: true,
   specialDate: '',
   hasMultiplePricing: false,
-  prepTimeMins: 8,
+  prepTimeMins: defaultPrepMins,
   tags: [],
   allergenTags: [],
   aggregatorOverrides: {},
@@ -74,6 +82,7 @@ export function ManagerMenu({ dashboard = false }: { dashboard?: boolean }) {
 
   const data = query.data;
   const cafe = data?.restaurant;
+  const venueCfg = resolveVenueConfig(cafe?.venueConfig);
   const categories = [...(data?.categories || [])].sort((a, b) => a.order - b.order || a.title.localeCompare(b.title));
   const items = data?.items || [];
   const today = cafeDate(cafe?.timezone);
@@ -82,13 +91,15 @@ export function ManagerMenu({ dashboard = false }: { dashboard?: boolean }) {
 
   const hasOffer = (i: MenuItem) => Number(i.discount) > 0 || (optionsByItem.get(i.id) || []).some(v => Number(v.discount) > 0);
   const searchIndexes = useMemo(() => {
-    const titles = new Map(data?.categories.map(c => [c.id, c.title]) || []);
+    const titles = new Map(data?.categories.map(c => [c.id, `${c.title} ${c.titleAr || ''}`]) || []);
     const labels = new Map<string, string[]>();
-    for (const v of data?.variants || []) labels.set(v.menuItemId, [...(labels.get(v.menuItemId) || []), v.label]);
+    for (const v of data?.variants || []) labels.set(v.menuItemId, [...(labels.get(v.menuItemId) || []), v.label, v.labelAr || '']);
     return new Map(
       (data?.items || []).map(i => [
         i.id,
         menuSearchIndex(i, titles.get(i.categoryId) || '', [
+          i.nameAr || '',
+          i.descriptionAr || '',
           ...(labels.get(i.id) || []),
           ...(i.modifierGroups || []).flatMap(g => [g.title, g.titleAr || '', ...g.options.flatMap(o => [o.label, o.labelAr || ''])]),
         ]),
@@ -173,16 +184,20 @@ export function ManagerMenu({ dashboard = false }: { dashboard?: boolean }) {
           item: {
             ...draft,
             modifierGroups: modifiers.data,
-            prepTimeMins: Math.max(1, Math.min(180, Number(draft.prepTimeMins) || 8)),
+            prepTimeMins: Math.max(1, Math.min(180, Number(draft.prepTimeMins) || venueCfg.defaultPrepMins)),
             allergenTags: draft.allergenTags,
             aggregatorOverrides: cleanedOverrides,
             name: draft.name.trim(),
+            nameAr: draft.nameAr.trim() || null,
+            descriptionAr: draft.descriptionAr.trim() || null,
             price: draft.hasMultiplePricing ? Math.min(...variants.map(v => Number(v.price))) : Number(draft.price),
             discount: draft.hasMultiplePricing ? 0 : Number(draft.discount || 0),
             specialDate: draft.specialDate || null,
             order: editor.order,
           },
-          variants: draft.hasMultiplePricing ? variants.map(v => ({ ...v, label: v.label.trim() })) : [],
+          variants: draft.hasMultiplePricing
+            ? variants.map(v => ({ ...v, label: v.label.trim(), labelAr: v.labelAr.trim() || null }))
+            : [],
         })
       ).json() as Promise<MenuItem & { variants: PriceVariant[] }>;
     },
@@ -243,7 +258,9 @@ export function ManagerMenu({ dashboard = false }: { dashboard?: boolean }) {
       order: item.order,
       draft: {
         name: item.name,
+        nameAr: item.nameAr || '',
         description: item.description || '',
+        descriptionAr: item.descriptionAr || '',
         categoryId: item.categoryId,
         price: item.price,
         discount: item.discount || '0',
@@ -252,12 +269,14 @@ export function ManagerMenu({ dashboard = false }: { dashboard?: boolean }) {
         isAvailable: item.isAvailable,
         specialDate: item.specialDate || '',
         hasMultiplePricing: item.hasMultiplePricing,
-        prepTimeMins: item.prepTimeMins || 8,
+        prepTimeMins: item.prepTimeMins || venueCfg.defaultPrepMins,
         tags: item.tags || [],
         allergenTags: item.allergenTags || [],
         aggregatorOverrides: { ...(item.aggregatorOverrides || {}) },
         modifierGroups: structuredClone(item.modifierGroups || []),
-        variants: (optionsByItem.get(item.id) || []).sort((a, b) => a.order - b.order).map(({ label, price, discount, unit }) => ({ label, price, discount, unit })),
+        variants: (optionsByItem.get(item.id) || [])
+          .sort((a, b) => a.order - b.order)
+          .map(({ label, labelAr, price, discount, unit }) => ({ label, labelAr: labelAr || '', price, discount, unit })),
       },
     });
   }
@@ -306,7 +325,11 @@ export function ManagerMenu({ dashboard = false }: { dashboard?: boolean }) {
               setFormError('');
               setEditor({
                 order: Math.max(-1, ...items.map(i => i.order)) + 1,
-                draft: blank(category === 'all' ? categories[0]?.id || '' : category),
+                draft: blank(
+                  category === 'all' ? categories[0]?.id || '' : category,
+                  venueCfg.defaultItemUnit,
+                  venueCfg.defaultPrepMins,
+                ),
               });
             }}
             data-testid="button-add-item"
@@ -503,9 +526,13 @@ export function ManagerMenu({ dashboard = false }: { dashboard?: boolean }) {
             >
               <fieldset disabled={save.isPending || uploading} className="space-y-5">
                 <div className="grid sm:grid-cols-3 gap-4">
-                  <div className="sm:col-span-2">
-                    <Label htmlFor="item-name">Item name *</Label>
+                  <div>
+                    <Label htmlFor="item-name">Item name (EN) *</Label>
                     <Input id="item-name" required maxLength={150} value={d.name} onChange={e => update({ name: e.target.value })} />
+                  </div>
+                  <div>
+                    <Label htmlFor="item-name-ar">Arabic name (optional)</Label>
+                    <Input id="item-name-ar" dir="rtl" maxLength={150} placeholder="الاسم بالعربية" value={d.nameAr} onChange={e => update({ nameAr: e.target.value })} />
                   </div>
                   <div>
                     <Label htmlFor="item-category">Category *</Label>
@@ -526,13 +553,23 @@ export function ManagerMenu({ dashboard = false }: { dashboard?: boolean }) {
                 </div>
 
                 <div className="grid sm:grid-cols-3 gap-4">
-                  <div className="sm:col-span-2">
-                    <Label htmlFor="item-description">Description</Label>
+                  <div>
+                    <Label htmlFor="item-description">Description (EN)</Label>
                     <Textarea
                       id="item-description"
                       value={d.description}
                       onChange={e => update({ description: e.target.value })}
                       placeholder="Ingredients, taste, serving details…"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="item-description-ar">Arabic description (optional)</Label>
+                    <Textarea
+                      id="item-description-ar"
+                      dir="rtl"
+                      value={d.descriptionAr}
+                      onChange={e => update({ descriptionAr: e.target.value })}
+                      placeholder="المكونات وطريقة التقديم…"
                     />
                   </div>
                   <div>
@@ -546,7 +583,7 @@ export function ManagerMenu({ dashboard = false }: { dashboard?: boolean }) {
                       min={1}
                       max={180}
                       value={d.prepTimeMins}
-                      onChange={e => update({ prepTimeMins: Number(e.target.value) || 8 })}
+                      onChange={e => update({ prepTimeMins: Number(e.target.value) || venueCfg.defaultPrepMins })}
                     />
                     <p className="text-[11px] text-muted-foreground mt-1">Used for Virtual Pager countdown &amp; prep-time SLA.</p>
                   </div>
@@ -566,7 +603,7 @@ export function ManagerMenu({ dashboard = false }: { dashboard?: boolean }) {
                             hasMultiplePricing,
                             variants:
                               hasMultiplePricing && !d.variants.length
-                                ? [{ label: '', price: d.price || '', discount: d.discount, unit: d.unit }]
+                                ? [{ label: '', labelAr: '', price: d.price || '', discount: d.discount, unit: d.unit }]
                                 : d.variants,
                           })
                         }
@@ -577,66 +614,79 @@ export function ManagerMenu({ dashboard = false }: { dashboard?: boolean }) {
                   {d.hasMultiplePricing ? (
                     <div className="mt-4 space-y-3">
                       {d.variants.map((v, index) => (
-                        <div className="manager-option" key={index}>
-                          <div>
-                            <Label htmlFor={`option-label-${index}`}>Option {index + 1}</Label>
-                            <Input
-                              id={`option-label-${index}`}
-                              required
-                              value={v.label}
-                              onChange={e => updateOption(index, 'label', e.target.value)}
-                              placeholder="Single / Double"
-                            />
+                        <div className="space-y-2 rounded-xl border p-3" key={index}>
+                          <div className="manager-option">
+                            <div>
+                              <Label htmlFor={`option-label-${index}`}>Option {index + 1} (EN)</Label>
+                              <Input
+                                id={`option-label-${index}`}
+                                required
+                                value={v.label}
+                                onChange={e => updateOption(index, 'label', e.target.value)}
+                                placeholder="Single / Double"
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor={`option-price-${index}`}>Price *</Label>
+                              <Input
+                                id={`option-price-${index}`}
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                required
+                                value={v.price}
+                                onChange={e => updateOption(index, 'price', e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor={`option-discount-${index}`}>Discount %</Label>
+                              <Input
+                                id={`option-discount-${index}`}
+                                type="number"
+                                min="0"
+                                max="100"
+                                step="0.01"
+                                value={v.discount || ''}
+                                onChange={e => updateOption(index, 'discount', e.target.value)}
+                              />
+                            </div>
+                            <div>
+                              <Label htmlFor={`option-unit-${index}`}>Unit</Label>
+                              <Input
+                                id={`option-unit-${index}`}
+                                required
+                                value={v.unit}
+                                onChange={e => updateOption(index, 'unit', e.target.value)}
+                              />
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              aria-label={`Remove price option ${index + 1}`}
+                              onClick={() => update({ variants: d.variants.filter((_, n) => n !== index) })}
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
                           </div>
                           <div>
-                            <Label htmlFor={`option-price-${index}`}>Price *</Label>
+                            <Label htmlFor={`option-label-ar-${index}`} className="text-xs">Option {index + 1} Arabic Label (optional)</Label>
                             <Input
-                              id={`option-price-${index}`}
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              required
-                              value={v.price}
-                              onChange={e => updateOption(index, 'price', e.target.value)}
+                              id={`option-label-ar-${index}`}
+                              dir="rtl"
+                              value={v.labelAr}
+                              onChange={e => updateOption(index, 'labelAr', e.target.value)}
+                              placeholder="صغير / كبير"
+                              className="h-9"
                             />
                           </div>
-                          <div>
-                            <Label htmlFor={`option-discount-${index}`}>Discount %</Label>
-                            <Input
-                              id={`option-discount-${index}`}
-                              type="number"
-                              min="0"
-                              max="100"
-                              step="0.01"
-                              value={v.discount || ''}
-                              onChange={e => updateOption(index, 'discount', e.target.value)}
-                            />
-                          </div>
-                          <div>
-                            <Label htmlFor={`option-unit-${index}`}>Unit</Label>
-                            <Input
-                              id={`option-unit-${index}`}
-                              required
-                              value={v.unit}
-                              onChange={e => updateOption(index, 'unit', e.target.value)}
-                            />
-                          </div>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            aria-label={`Remove price option ${index + 1}`}
-                            onClick={() => update({ variants: d.variants.filter((_, n) => n !== index) })}
-                          >
-                            <X className="w-4 h-4" />
-                          </Button>
                         </div>
                       ))}
                       <Button
                         type="button"
                         variant="outline"
                         disabled={d.variants.length >= 3}
-                        onClick={() => update({ variants: [...d.variants, { label: '', price: '', discount: '0', unit: 'cup' }] })}
+                        onClick={() => update({ variants: [...d.variants, { label: '', labelAr: '', price: '', discount: '0', unit: venueCfg.defaultItemUnit }] })}
                       >
                         <Plus className="w-4 h-4 mr-2" />
                         Add price option ({d.variants.length}/3)
@@ -736,7 +786,7 @@ export function ManagerMenu({ dashboard = false }: { dashboard?: boolean }) {
                   <div>
                     <Label>Dietary &amp; Feature Tags</Label>
                     <div className="flex flex-wrap gap-2 mt-2">
-                      {DIETARY_TAGS.map(t => (
+                      {Array.from(new Set([...venueCfg.dietaryTagOptions, ...d.tags])).map(t => (
                         <Button
                           type="button"
                           key={t}
@@ -757,7 +807,7 @@ export function ManagerMenu({ dashboard = false }: { dashboard?: boolean }) {
                       Allergen Warnings
                     </Label>
                     <div className="flex flex-wrap gap-2 mt-2">
-                      {ALLERGEN_OPTIONS.map(a => (
+                      {Array.from(new Set([...venueCfg.allergenOptions, ...d.allergenTags])).map(a => (
                         <Button
                           type="button"
                           key={a}

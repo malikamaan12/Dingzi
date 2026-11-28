@@ -13,6 +13,7 @@ import { dispatchPushAlertToScopes } from '../pushService';
 import { createPaymentCheckoutSession, verifyGatewaySignature } from '../payments/gateways';
 import { customizationTotal, missingModifierGroups, reconcileModifierSelections, selectedModifierOptions, type MenuModifierSelections } from '@shared/menuCustomization';
 import { aggregatorLinks, diningTables, diningZones, guestOrders, pagerTickets, restaurants, serviceBays, smartTags, tableReservations, waitlistEntries, type OrderLineItem, type SmartTag } from '@shared/schema';
+import { computeOrderTotalsWithVenueFees, resolveVenueConfig } from '@shared/venueConfig';
 import { branchLocalDate, loadBranchGatewaySecrets, nextDailyPagerCode, toPublicCafe } from './helpers';
 
 export function mountPublicGuestOrdersRoutes(app: Express) {
@@ -336,7 +337,7 @@ export function mountPublicGuestOrdersRoutes(app: Express) {
       tableCode: z.string().trim().max(40).optional().nullable(),
       bayId: z.string().uuid().optional().nullable(),
       vehicleColor: z.string().trim().max(40).optional().nullable(),
-      vehicleType: z.enum(['Sedan', 'SUV', 'Pickup', 'Coupe', 'Other']).optional().nullable(),
+      vehicleType: z.string().trim().min(1).max(40).optional().nullable(),
       licensePlate: z.string().trim().max(32).optional().nullable(),
       notes: z.string().trim().max(500).optional().nullable(),
       idempotencyKey: z.string().trim().min(8).max(120).optional(),
@@ -398,8 +399,9 @@ export function mountPublicGuestOrdersRoutes(app: Express) {
         allItems.filter(i => i.isAvailable && visibleCats.has(i.categoryId)).map(i => [i.id, i]),
       );
 
+      const cfg = resolveVenueConfig(restaurant.venueConfig);
       let totalCents = 0;
-      let maxPrepMins = 8;
+      let maxPrepMins = cfg.defaultPrepMins;
       const computedLines: OrderLineItem[] = [];
 
       for (const entry of payload.items) {
@@ -432,7 +434,7 @@ export function mountPublicGuestOrdersRoutes(app: Express) {
         const unitCents = Math.round(Number(unitTotal) * 100);
         const lineCents = unitCents * entry.quantity;
         totalCents += lineCents;
-        maxPrepMins = Math.max(maxPrepMins, menuItem.prepTimeMins || 10);
+        maxPrepMins = Math.max(maxPrepMins, menuItem.prepTimeMins || cfg.defaultPrepMins);
 
         computedLines.push({
           menuItemId: menuItem.id,
@@ -455,14 +457,14 @@ export function mountPublicGuestOrdersRoutes(app: Express) {
         if (!bay) return res.status(400).json({ message: 'Selected parking bay does not belong to this branch' });
       }
 
-      const totalFormatted = (totalCents / 100).toFixed(2);
+      const feeTotals = computeOrderTotalsWithVenueFees(totalCents, cfg);
       const isOnlineCheckout = restaurant.orderingMode === 'full_online_checkout';
       const gateway: 'skipcash' | 'sadad' =
         restaurant.paymentGateway === 'sadad' ? 'sadad' : 'skipcash';
       const ticketDate = branchLocalDate(restaurant.timezone);
 
       const created = await db.transaction(async tx => {
-        const { seq, code } = await nextDailyPagerCode(tx as any, restaurant.id, ticketDate);
+        const { seq, code } = await nextDailyPagerCode(tx as any, restaurant.id, ticketDate, cfg.pagerTicketPrefix);
         const orderNumber = `ORD-${ticketDate.slice(5).replace('-', '')}-${String(seq).padStart(3, '0')}`;
         const [order] = await tx
           .insert(guestOrders)
@@ -483,8 +485,8 @@ export function mountPublicGuestOrdersRoutes(app: Express) {
             licensePlate: payload.licensePlate?.toUpperCase() || null,
             notes: payload.notes || null,
             currency: restaurant.currency,
-            subtotal: totalFormatted,
-            total: totalFormatted,
+            subtotal: feeTotals.subtotal,
+            total: feeTotals.total,
             lineItems: computedLines,
           })
           .returning();
@@ -576,11 +578,12 @@ export function mountPublicGuestOrdersRoutes(app: Express) {
         return { order, pager: existingPager, alreadyPaid: true };
       }
       const [restaurant] = await tx
-        .select({ timezone: restaurants.timezone })
+        .select({ timezone: restaurants.timezone, venueConfig: restaurants.venueConfig })
         .from(restaurants)
         .where(eq(restaurants.id, order.restaurantId));
+      const cfg = resolveVenueConfig(restaurant?.venueConfig);
       const ticketDate = branchLocalDate(restaurant?.timezone);
-      const { seq, code } = await nextDailyPagerCode(tx as any, order.restaurantId, ticketDate);
+      const { seq, code } = await nextDailyPagerCode(tx as any, order.restaurantId, ticketDate, cfg.pagerTicketPrefix);
 
       const [updatedOrder] = await tx
         .update(guestOrders)
@@ -606,7 +609,7 @@ export function mountPublicGuestOrdersRoutes(app: Express) {
           status: 'waiting',
           customerName: order.customerName,
           notes: order.notes,
-          estimatedPrepMins: 12,
+          estimatedPrepMins: cfg.defaultPrepMins,
           vehicleColor: order.vehicleColor,
           vehicleType: order.vehicleType,
           licensePlate: order.licensePlate,

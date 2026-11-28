@@ -6,8 +6,10 @@ import { mountSmartTagsAndAnalyticsRoutes } from './hospitality/smartTagsAndAnal
 import { mountOrdersTeamAndTenantRoutes } from './hospitality/ordersTeamAndTenantRoutes';
 import { mountTeamAndRbacRoutes } from './hospitality/teamAndRbacRoutes';
 import { mountTenantBranchesAndPortfolioRoutes } from './hospitality/tenantBranchesAndPortfolioRoutes';
+import { mountPlatformSettingsRoutes } from './hospitality/platformSettingsRoutes';
 
 export function mountHospitalityRoutes(app: Express) {
+  mountPlatformSettingsRoutes(app);
   mountPublicGuestOrdersRoutes(app);
   mountPublicPagerAndTableRoutes(app);
   mountStaffPagerAndFloorRoutes(app);

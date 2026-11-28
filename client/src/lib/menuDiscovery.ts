@@ -7,7 +7,10 @@ export const MENU_GROUPS = [
 ] as const;
 export type MenuGroup = typeof MENU_GROUPS[number]['id'];
 
-export function categoryGroup(title: string): Exclude<MenuGroup, 'all'> {
+export function categoryGroup(title: string, explicitGroup?: string | null): Exclude<MenuGroup, 'all'> {
+  if (explicitGroup && (explicitGroup === 'food' || explicitGroup === 'snacks' || explicitGroup === 'drinks' || explicitGroup === 'sweets')) {
+    return explicitGroup;
+  }
   if (/coffee|tea\b|matcha|karak|juice|mocktail|cocktail|slush|drink|beverage|smoothie|shake|lemonade|قهوة|شاي|مشروب|عصير/i.test(title)) return 'drinks';
   if (/dessert|sweet|ice.?cream|soft serve|cake|pastr|waffle|pancake|حلو|آيس/i.test(title)) return 'sweets';
   if (/snack|fries|nugget|popcorn|spiral|potato|corn|side|مقبل|بطاط|ذرة/i.test(title)) return 'snacks';

@@ -12,11 +12,11 @@ export default function MenuCategoryBar({ categories, selected, allLabel, motion
   motionEnabled: boolean;
   onSelect: (id: string | null) => void;
 }) {
-  const { dir, label, t } = useMenuLanguage();
+  const { language, dir, label, t } = useMenuLanguage();
   const rtl = dir === 'rtl';
   const rail = useRef<HTMLElement>(null);
   const [edges, setEdges] = useState({ before: false, after: false });
-  const categoryKey = categories.map(category => category.id + ':' + category.title).join('|');
+  const categoryKey = categories.map(category => category.id + ':' + category.title + ':' + (category.titleAr || '')).join('|');
 
   useEffect(() => {
     const element = rail.current;
@@ -64,7 +64,7 @@ export default function MenuCategoryBar({ categories, selected, allLabel, motion
     {(edges.before || edges.after) && <button className="guest-category-prev" aria-label={t('Previous categories')} disabled={!edges.before} onClick={() => move(-1)}>{rtl ? <ChevronRight size={18}/> : <ChevronLeft size={18}/>}</button>}
     <nav ref={rail} className="guest-category-bar" aria-label={t('Menu categories')}>
       <button aria-pressed={!selected} onClick={event => choose(null, event.currentTarget)}><span aria-hidden="true"><Sparkles size={14} /></span><span className="guest-category-label">{allLabel}</span></button>
-      {categories.map(category => <button key={category.id} data-tone={menuTone(category.title)} aria-pressed={selected === category.id} onClick={event => choose(category.id, event.currentTarget)}><span aria-hidden="true"><CategoryVectorIcon title={category.title} size={15} /></span><span className="guest-category-label">{label(category.title)}</span></button>)}
+      {categories.map(category => <button key={category.id} data-tone={menuTone(category.title)} aria-pressed={selected === category.id} onClick={event => choose(category.id, event.currentTarget)}><span aria-hidden="true"><CategoryVectorIcon title={category.title} size={15} /></span><span className="guest-category-label">{language === 'ar' && category.titleAr?.trim() ? category.titleAr : label(category.title)}</span></button>)}
     </nav>
     {(edges.before || edges.after) && <button className="guest-category-next" aria-label={t('More categories')} disabled={!edges.after} onClick={() => move(1)}>{rtl ? <ChevronLeft size={18}/> : <ChevronRight size={18}/>}</button>}
   </div>;

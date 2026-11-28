@@ -5,6 +5,7 @@ import { db } from '../db';
 import { storage } from '../storage';
 import { isAuthenticated, isSuperAdmin } from '../localAuth';
 import { authUser, getAccessibleBranches, getManagedCafe } from '../accessControl';
+import { loadPlatformConfig } from './platformSettingsRoutes';
 import {
   aggregatorClicks,
   categories,
@@ -213,8 +214,9 @@ export function mountTenantBranchesAndPortfolioRoutes(app: Express) {
         .strict()
         .parse(req.body);
 
+      const platformCfg = await loadPlatformConfig();
       const created = await db.transaction(async tx => {
-        const effectiveMax = Math.max(body.maxBranches ?? 1, body.restaurantIds?.length || 1);
+        const effectiveMax = Math.max(body.maxBranches ?? platformCfg.defaultNewTenantMaxBranches, body.restaurantIds?.length || 1);
         const [tenant] = await tx
           .insert(tenants)
           .values({

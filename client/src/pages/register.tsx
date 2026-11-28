@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { ArrowLeft, Building2 } from "lucide-react";
@@ -8,10 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { usePlatformConfig } from "@/lib/usePlatformConfig";
 
 export default function Register() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const platformCfg = usePlatformConfig();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -20,7 +22,14 @@ export default function Register() {
   const [lastName, setLastName] = useState("");
   const [restaurantName, setRestaurantName] = useState("");
   const [tenantName, setTenantName] = useState("");
-  const [maxBranches, setMaxBranches] = useState(1);
+  const [maxBranches, setMaxBranches] = useState(platformCfg.defaultNewTenantMaxBranches);
+  const [touchedQuota, setTouchedQuota] = useState(false);
+
+  useEffect(() => {
+    if (!touchedQuota) {
+      setMaxBranches(platformCfg.defaultNewTenantMaxBranches);
+    }
+  }, [platformCfg.defaultNewTenantMaxBranches, touchedQuota]);
 
   const registerMutation = useMutation({
     mutationFn: async () => {
@@ -132,7 +141,10 @@ export default function Register() {
                     min={1}
                     max={200}
                     value={maxBranches}
-                    onChange={e => setMaxBranches(Number(e.target.value) || 1)}
+                    onChange={e => {
+                      setTouchedQuota(true);
+                      setMaxBranches(Number(e.target.value) || 1);
+                    }}
                     data-testid="input-max-branches"
                   />
                 </div>

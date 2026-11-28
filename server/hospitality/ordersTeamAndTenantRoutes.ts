@@ -16,6 +16,7 @@ import {
   pagerTickets,
   type OrderLineItem,
 } from '@shared/schema';
+import { computeOrderTotalsWithVenueFees, resolveVenueConfig } from '@shared/venueConfig';
 import { branchLocalDate, nextDailyPagerCode } from './helpers';
 
 export function mountOrdersTeamAndTenantRoutes(app: Express) {
@@ -78,8 +79,9 @@ export function mountOrdersTeamAndTenantRoutes(app: Express) {
       ]);
       const itemMap = new Map(allItems.map(i => [i.id, i]));
 
+      const cfg = resolveVenueConfig(cafe.venueConfig);
       let totalCents = 0;
-      let maxPrepMins = 6;
+      let maxPrepMins = cfg.defaultPrepMins;
       const computedLines: OrderLineItem[] = [];
 
       for (const entry of body.items) {
@@ -99,7 +101,7 @@ export function mountOrdersTeamAndTenantRoutes(app: Express) {
         const unitCents = Math.round(Number(unitTotal) * 100);
         const lineCents = unitCents * entry.quantity;
         totalCents += lineCents;
-        maxPrepMins = Math.max(maxPrepMins, menuItem.prepTimeMins || 8);
+        maxPrepMins = Math.max(maxPrepMins, menuItem.prepTimeMins || cfg.defaultPrepMins);
 
         computedLines.push({
           menuItemId: menuItem.id,
@@ -114,14 +116,14 @@ export function mountOrdersTeamAndTenantRoutes(app: Express) {
         });
       }
 
-      const totalFormatted = (totalCents / 100).toFixed(2);
+      const feeTotals = computeOrderTotalsWithVenueFees(totalCents, cfg);
       const ticketDate = branchLocalDate(cafe.timezone);
 
       const created = await withTenantRlsTransaction(
         { userId: req.user.id, role: req.effectiveStaffRole, tenantId: cafe.tenantId, branchId: cafe.id },
         async tx => {
-          const { seq, code } = await nextDailyPagerCode(tx as any, cafe.id, ticketDate);
-          const orderNumber = `POS-${ticketDate.slice(5).replace('-', '')}-${String(seq).padStart(3, '0')}`;
+          const { seq, code } = await nextDailyPagerCode(tx as any, cafe.id, ticketDate, cfg.pagerTicketPrefix);
+          const orderNumber = `${cfg.posOrderPrefix}-${ticketDate.slice(5).replace('-', '')}-${String(seq).padStart(3, '0')}`;
           const [order] = await tx
             .insert(guestOrders)
             .values({
@@ -137,8 +139,8 @@ export function mountOrdersTeamAndTenantRoutes(app: Express) {
               tableCode: body.tableCode || null,
               notes: body.notes || null,
               currency: cafe.currency,
-              subtotal: totalFormatted,
-              total: totalFormatted,
+              subtotal: feeTotals.subtotal,
+              total: feeTotals.total,
               lineItems: computedLines,
               paidAt: body.paymentStatus === 'paid' ? new Date() : null,
             })
