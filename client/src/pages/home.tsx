@@ -19,7 +19,7 @@ import { apiRequest } from '@/lib/queryClient';
 import { cafeThemeStyle } from '@/lib/cafeTheme';
 import { localizedEntityText, MenuLanguageProvider, MenuLanguageSwitch, useMenuLanguage } from '@/lib/menuLanguage';
 import { usePlatformConfig } from '@/lib/usePlatformConfig';
-import { PUBLIC_MENU_ORIGIN } from '@shared/menuIdentity';
+import { isPublicMenuOrigin } from '@shared/menuIdentity';
 import { DingziWordmark } from '@/components/staff-brand';
 import { ActiveGuestPassesBar } from '@/components/hospitality/ActiveGuestPassesBar';
 import { PwaInstallBanner } from '@/components/mobile/PwaInstallBanner';
@@ -55,7 +55,7 @@ function HomeDirectoryContent() {
   const { language, dir, t, label } = useMenuLanguage();
   const platformCfg = usePlatformConfig();
   const [, navigate] = useLocation();
-  const publicOnly = window.location.origin === PUBLIC_MENU_ORIGIN;
+  const publicOnly = isPublicMenuOrigin(window.location.origin);
   const showStaffLink = !publicOnly && platformCfg.showStaffSignInLinkOnDirectory;
   const { data: cafes, isLoading, isError } = useQuery<Cafe[]>({ queryKey: ['/api/cafes'] });
 
@@ -175,76 +175,79 @@ function HomeDirectoryContent() {
             </div>
           </div>
 
-          {cafes && cafes.length > 0 && (
-            <form
-              onSubmit={e => {
-                e.preventDefault();
-                if (pagerCode.trim()) lookupPager.mutate();
-              }}
-              data-testid="form-home-pager-lookup"
-              className="lg:col-span-5 rounded-3xl bg-[#17132E] text-white border border-[#241E42] p-5 sm:p-6 shadow-xl space-y-3.5"
-            >
-              <div className="flex items-center gap-3">
-                <span className="w-10 h-10 rounded-xl bg-[#C8FF42] text-[#17132E] grid place-items-center shrink-0">
-                  <Bell className="w-5 h-5" aria-hidden="true" />
-                </span>
-                <div className="min-w-0">
-                  <h2 className="font-bold text-base text-white">
-                    {language === 'ar' ? platformCfg.pagerCardTitleAr : platformCfg.pagerCardTitleEn}
-                  </h2>
-                  <p className="text-xs text-white/70">
-                    {language === 'ar' ? platformCfg.pagerCardSubtitleAr : platformCfg.pagerCardSubtitleEn}
-                  </p>
-                </div>
+          <form
+            onSubmit={e => {
+              e.preventDefault();
+              if (pagerCode.trim() && cafes?.length) lookupPager.mutate();
+            }}
+            data-testid="form-home-pager-lookup"
+            className="lg:col-span-5 rounded-3xl bg-[#17132E] text-white border border-[#241E42] p-5 sm:p-6 shadow-xl space-y-3.5"
+          >
+            <div className="flex items-center gap-3">
+              <span className="w-10 h-10 rounded-xl bg-[#C8FF42] text-[#17132E] grid place-items-center shrink-0">
+                <Bell className="w-5 h-5" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <h2 className="font-bold text-base text-white">
+                  {language === 'ar' ? platformCfg.pagerCardTitleAr : platformCfg.pagerCardTitleEn}
+                </h2>
+                <p className="text-xs text-white/75">
+                  {language === 'ar' ? platformCfg.pagerCardSubtitleAr : platformCfg.pagerCardSubtitleEn}
+                </p>
               </div>
+            </div>
 
-              <div className="grid sm:grid-cols-2 gap-2.5">
-                <select
-                  aria-label={t('Select venue')}
-                  value={selectedVenueId || cafes[0]?.id || ''}
-                  onChange={e => setSelectedVenueId(e.target.value)}
-                  className="min-h-11 rounded-xl border border-white/15 bg-[#241E42] px-3 text-base sm:text-sm font-medium text-white"
-                >
-                  {cafes.map(c => (
-                    <option key={c.id} value={c.id}>
+            <div className="grid sm:grid-cols-2 gap-2.5">
+              <select
+                aria-label={t('Select venue')}
+                value={selectedVenueId || cafes?.[0]?.id || ''}
+                onChange={e => setSelectedVenueId(e.target.value)}
+                disabled={!cafes?.length}
+                className="min-h-11 rounded-xl border border-[#3B3269] !bg-[#241E42] px-3 text-base sm:text-sm font-medium !text-white focus:outline-none focus:ring-2 focus:ring-[#C8FF42]"
+              >
+                {cafes?.length ? (
+                  cafes.map(c => (
+                    <option key={c.id} value={c.id} className="bg-[#17132E] text-white">
                       {localizedEntityText(language, c.name, c.nameAr, label)}
                     </option>
-                  ))}
-                </select>
-                <Input
-                  value={pagerCode}
-                  onChange={e => setPagerCode(e.target.value)}
-                  placeholder={t('Enter receipt or pager # (e.g. A-001)')}
-                  data-testid="input-home-pager-code"
-                  className="min-h-11 rounded-xl border-white/15 bg-[#241E42] text-white font-mono uppercase placeholder:text-white/55 placeholder:font-sans placeholder:normal-case"
-                  required
-                />
-              </div>
+                  ))
+                ) : (
+                  <option value="">Loading venues…</option>
+                )}
+              </select>
+              <Input
+                value={pagerCode}
+                onChange={e => setPagerCode(e.target.value)}
+                placeholder={t('Enter receipt or pager # (e.g. A-001)')}
+                data-testid="input-home-pager-code"
+                className="min-h-11 rounded-xl border-[#3B3269] !bg-[#241E42] !text-white font-mono uppercase placeholder:!text-white/60 placeholder:font-sans placeholder:normal-case focus-visible:ring-[#C8FF42]"
+                required
+              />
+            </div>
 
-              {pagerError && <p className="text-xs text-[#FF4D6D] font-semibold">{pagerError}</p>}
+            {pagerError && <p className="text-xs text-[#FF4D6D] font-semibold">{pagerError}</p>}
 
-              <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-2">
-                <Button
-                  type="submit"
-                  data-testid="button-home-pager-submit"
-                  disabled={!pagerCode.trim() || lookupPager.isPending}
-                  className="w-full min-h-11 rounded-xl bg-[#6236FF] hover:bg-[#4B1FE0] text-white font-semibold cursor-pointer"
-                >
-                  {lookupPager.isPending ? 'Locating…' : t('Track Pager')}
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setScannerOpen(true)}
-                  data-testid="button-home-scan-qr-nfc"
-                  className="w-full min-h-11 rounded-xl border-white/20 bg-[#241E42] text-white hover:bg-[#312959] font-semibold cursor-pointer gap-2"
-                >
-                  <QrCode className="w-4 h-4 text-[#C8FF42]" />
-                  <span>{t('Scan QR / NFC')}</span>
-                </Button>
-              </div>
-            </form>
-          )}
+            <div className="grid grid-cols-1 min-[380px]:grid-cols-2 gap-2">
+              <Button
+                type="submit"
+                data-testid="button-home-pager-submit"
+                disabled={!pagerCode.trim() || !cafes?.length || lookupPager.isPending}
+                className="w-full min-h-11 rounded-xl bg-[#6236FF] hover:bg-[#4B1FE0] text-white font-semibold cursor-pointer"
+              >
+                {lookupPager.isPending ? 'Locating…' : t('Track Pager')}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setScannerOpen(true)}
+                data-testid="button-home-scan-qr-nfc"
+                className="w-full min-h-11 rounded-xl border-[#3B3269] !bg-[#241E42] !text-white hover:!bg-[#312959] font-semibold cursor-pointer gap-2"
+              >
+                <QrCode className="w-4 h-4 text-[#C8FF42]" />
+                <span>{t('Scan QR / NFC')}</span>
+              </Button>
+            </div>
+          </form>
         </section>
 
         {/* Search & Capability Filter Bar */}
@@ -304,15 +307,28 @@ function HomeDirectoryContent() {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {isLoading ? (
-              <p role="status" className="text-sm text-[#57507A]">
-                Loading venues…
-              </p>
+              [0, 1, 2].map(idx => (
+                <div
+                  key={idx}
+                  role={idx === 0 ? 'status' : undefined}
+                  aria-label={idx === 0 ? 'Loading venues' : undefined}
+                  className="rounded-3xl border border-[#E5E2F2] bg-white p-6 space-y-4 animate-pulse"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="w-14 h-14 rounded-2xl bg-[#F6F5FC]" />
+                    <div className="w-24 h-6 rounded-full bg-[#EFEAFF]" />
+                  </div>
+                  <div className="h-6 w-2/3 rounded-lg bg-[#F6F5FC]" />
+                  <div className="h-4 w-full rounded-lg bg-[#F6F5FC]" />
+                  <div className="h-11 w-36 rounded-xl bg-[#EFEAFF] mt-2" />
+                </div>
+              ))
             ) : isError ? (
               <p role="alert" className="text-sm text-destructive">
                 Could not load venues. Please refresh.
               </p>
             ) : filteredCafes.length ? (
-              filteredCafes.map(cafe => {
+              filteredCafes.map((cafe, idx) => {
                 const baseHref = cafe.slug ? `/v/${cafe.slug}` : `/menu/${cafe.id}`;
                 const orderAhead = Boolean(cafe.orderingMode && cafe.orderingMode !== 'browse_and_pager');
                 return (
@@ -323,17 +339,18 @@ function HomeDirectoryContent() {
                   >
                     <Link href={baseHref} className="block p-5 sm:p-6 cursor-pointer flex-1">
                       <div className="flex items-start justify-between gap-3">
-                        {cafe.logoUrl ? (
-                          <img
-                            src={cafe.logoUrl}
-                            alt={`${label(cafe.name)} logo`}
-                            className="h-12 w-24 rounded-xl object-contain object-left rtl:object-right"
-                          />
-                        ) : (
-                          <span className="w-12 h-12 rounded-2xl bg-primary/12 text-primary grid place-items-center">
-                            <Coffee className="h-6 w-6" aria-hidden="true" />
-                          </span>
-                        )}
+                        <span className="w-14 h-14 rounded-2xl bg-[#F6F5FC] border border-[#E5E2F2] grid place-items-center overflow-hidden shrink-0">
+                          {cafe.logoUrl ? (
+                            <img
+                              src={cafe.logoUrl}
+                              alt={`${label(cafe.name)} logo`}
+                              loading={idx < 3 ? 'eager' : 'lazy'}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <Coffee className="h-6 w-6 text-primary" aria-hidden="true" />
+                          )}
+                        </span>
 
                         <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#EFEAFF] text-[#4B1FE0]">
                           {orderAhead ? (

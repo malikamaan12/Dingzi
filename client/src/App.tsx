@@ -5,7 +5,8 @@ import { useManagerMenu } from '@/lib/managerMenu';
 import './staff-theme.css';
 import { StaffThemeProvider, StaffThemeToggle } from '@/components/staff-theme';
 import './manager.css';
-import { PUBLIC_MENU_ORIGIN, MANAGEMENT_ORIGIN } from '@shared/menuIdentity';
+import { PUBLIC_MENU_ORIGIN, MANAGEMENT_ORIGIN, isPublicMenuOrigin } from '@shared/menuIdentity';
+import { DingziMark } from '@/components/staff-brand';
 const CafeSettings = lazy(() => import('@/pages/cafe-settings'));
 import { Switch, Route, Redirect, useLocation } from "wouter";
 import { useSessionSync } from '@/lib/sessionSync';
@@ -191,6 +192,7 @@ function AdminLayout({ children }: { children: React.ReactNode }) {
 function Router() {
   const [location] = useLocation();
   const isGuestSurface =
+    isPublicMenuOrigin(window.location.origin) ||
     window.location.origin === PUBLIC_MENU_ORIGIN ||
     location.startsWith('/menu/') ||
     location.startsWith('/v/') ||
@@ -373,7 +375,20 @@ export default function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <SidebarProvider style={style as React.CSSProperties}>
-          <AppErrorBoundary><Suspense fallback={<div className="p-8" role="status">Loading café application…</div>}><Router /></Suspense></AppErrorBoundary>
+          <AppErrorBoundary>
+            <Suspense
+              fallback={
+                <div className="min-h-dvh grid place-items-center bg-[#F6F5FC] text-[#17132E] p-6" role="status">
+                  <div className="flex flex-col items-center gap-3">
+                    <DingziMark size={44} />
+                    <span className="text-xs font-semibold text-[#57507A]">Loading experience…</span>
+                  </div>
+                </div>
+              }
+            >
+              <Router />
+            </Suspense>
+          </AppErrorBoundary>
         </SidebarProvider>
         <Toaster />
       </TooltipProvider>

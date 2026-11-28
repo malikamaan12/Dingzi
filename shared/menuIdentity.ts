@@ -14,6 +14,12 @@ export const MANAGEMENT_ORIGIN = (
   'https://pager-staff.example.workers.dev'
 ).replace(/\/+$/, '');
 
+export function isPublicMenuOrigin(origin?: string): boolean {
+  const normalized = (origin || '').replace(/\/+$/, '');
+  if (!normalized) return false;
+  return normalized === PUBLIC_MENU_ORIGIN || /^https?:\/\/[^/]*-menu\./i.test(normalized);
+}
+
 export function permanentMenuUrl(restaurantId: string): string {
   if (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(restaurantId)) {
     throw new Error('A saved restaurant is required for its menu QR.');
