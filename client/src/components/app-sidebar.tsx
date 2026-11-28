@@ -43,151 +43,167 @@ import { useToast } from '@/hooks/use-toast';
 import { useEffect, useState } from 'react';
 import { StaffBrand } from '@/components/staff-brand';
 
-const ALL_ROLE_ACCESS: EffectiveStaffRole[] = [
-  'super_admin',
-  'tenant_owner',
-  'branch_manager',
-  'host_cashier',
-  'prep_barista',
-];
-const MANAGER_ROLES: EffectiveStaffRole[] = ['super_admin', 'tenant_owner', 'branch_manager'];
-
-const adminMenuItems: {
+type NavItem = {
   title: string;
   url: string;
   icon: any;
+  group: 'Live Service' | 'Menu & Floor' | 'Venue Setup';
   roles: EffectiveStaffRole[];
   testId?: string;
-}[] = [
+};
+
+const MANAGER_ROLES: EffectiveStaffRole[] = ['super_admin', 'tenant_owner', 'branch_manager'];
+
+const adminMenuItems: NavItem[] = [
+  // Group 1: Live Service
   {
     title: "Portfolio Overview",
     url: "/admin/portfolio",
     icon: Network,
+    group: 'Live Service',
     roles: ['super_admin', 'tenant_owner'],
     testId: "link-portfolio-dashboard",
   },
   {
-    title: "Dashboard",
+    title: "Branch Overview",
     url: "/admin",
     icon: LayoutDashboard,
+    group: 'Live Service',
     roles: MANAGER_ROLES,
     testId: "link-dashboard",
   },
   {
-    title: "Host & Cashier Desk",
+    title: "Front Desk",
     url: "/admin/front-desk",
     icon: Store,
+    group: 'Live Service',
     roles: ['super_admin', 'tenant_owner', 'branch_manager', 'host_cashier'],
     testId: "link-front-desk",
   },
   {
-    title: "Order Prep Station",
-    url: "/admin/station",
-    icon: Flame,
-    roles: ALL_ROLE_ACCESS,
-    testId: "link-prep-station",
-  },
-  {
-    title: "Live Pagers & Queue",
-    url: "/admin/pagers",
-    icon: BellRing,
-    roles: ALL_ROLE_ACCESS,
-  },
-  {
-    title: "Orders & Receipts",
+    title: "Counter Orders",
     url: "/admin/orders",
     icon: Receipt,
-    roles: ALL_ROLE_ACCESS,
+    group: 'Live Service',
+    roles: ['super_admin', 'tenant_owner', 'branch_manager', 'host_cashier', 'prep_barista'],
   },
   {
-    title: "Tables & Waitlist",
+    title: "Tables & Seating",
     url: "/admin/tables",
     icon: CalendarDays,
+    group: 'Live Service',
     roles: ['super_admin', 'tenant_owner', 'branch_manager', 'host_cashier'],
   },
   {
-    title: "Drive-Thru & Bays",
+    title: "Curbside Cars",
     url: "/admin/drive-thru",
     icon: Car,
-    roles: ALL_ROLE_ACCESS,
+    group: 'Live Service',
+    roles: ['super_admin', 'tenant_owner', 'branch_manager', 'host_cashier', 'prep_barista'],
   },
   {
-    title: "Ordering & Delivery",
-    url: "/admin/delivery",
-    icon: Truck,
-    roles: MANAGER_ROLES,
+    title: "Kitchen Prep",
+    url: "/admin/station",
+    icon: Flame,
+    group: 'Live Service',
+    roles: ['super_admin', 'tenant_owner', 'branch_manager', 'prep_barista'],
+    testId: "link-prep-station",
   },
   {
-    title: "SLA Analytics",
-    url: "/admin/analytics",
-    icon: BarChart3,
-    roles: MANAGER_ROLES,
+    title: "Pager Queue",
+    url: "/admin/pagers",
+    icon: BellRing,
+    group: 'Live Service',
+    roles: ['super_admin', 'tenant_owner', 'branch_manager', 'prep_barista'],
   },
   {
-    title: "Team & Branches",
-    url: "/admin/team",
-    icon: UserCog,
-    roles: MANAGER_ROLES,
+    title: "Customer QR Screen",
+    url: "/admin/counter-display",
+    icon: Monitor,
+    group: 'Live Service',
+    roles: ['super_admin', 'tenant_owner', 'branch_manager', 'host_cashier'],
+    testId: "link-counter-qr-screen",
   },
+
+  // Group 2: Menu & Floor
   {
-    title: "Mobile App & Push",
-    url: "/admin/mobile-app",
-    icon: Smartphone,
-    roles: ALL_ROLE_ACCESS,
-  },
-  {
-    title: "Café Profile & Theme",
-    url: "/admin/restaurant",
-    icon: Store,
+    title: "Menu Items",
+    url: "/admin/menu",
+    icon: UtensilsCrossed,
+    group: 'Menu & Floor',
     roles: MANAGER_ROLES,
   },
   {
     title: "Categories",
     url: "/admin/categories",
     icon: FolderOpen,
-    roles: MANAGER_ROLES,
-  },
-  {
-    title: "Menu Items",
-    url: "/admin/menu",
-    icon: UtensilsCrossed,
-    roles: MANAGER_ROLES,
-  },
-  {
-    title: "Account & Backup",
-    url: "/admin/settings",
-    icon: Store,
+    group: 'Menu & Floor',
     roles: MANAGER_ROLES,
   },
   {
     title: "Global Menu Library",
     url: "/admin/library",
     icon: LibraryBig,
+    group: 'Menu & Floor',
     roles: MANAGER_ROLES,
   },
   {
-    title: "Counter QR Screen",
-    url: "/admin/counter-display",
-    icon: Monitor,
-    roles: ['super_admin', 'tenant_owner', 'branch_manager', 'host_cashier'],
-    testId: "link-counter-qr-screen",
-  },
-  {
-    title: "QR & NFC Studio",
+    title: "QR & NFC Tags",
     url: "/admin/qr-code",
     icon: QrCode,
-    roles: ['super_admin', 'tenant_owner', 'branch_manager', 'host_cashier'],
+    group: 'Menu & Floor',
+    roles: MANAGER_ROLES,
     testId: "link-qr-code",
+  },
+
+  // Group 3: Venue Setup
+  {
+    title: "Venue Profile & Rules",
+    url: "/admin/restaurant",
+    icon: Store,
+    group: 'Venue Setup',
+    roles: MANAGER_ROLES,
+  },
+  {
+    title: "Team & PINs",
+    url: "/admin/team",
+    icon: UserCog,
+    group: 'Venue Setup',
+    roles: MANAGER_ROLES,
+  },
+  {
+    title: "Online & Delivery",
+    url: "/admin/delivery",
+    icon: Truck,
+    group: 'Venue Setup',
+    roles: MANAGER_ROLES,
+  },
+  {
+    title: "Reports & Analytics",
+    url: "/admin/analytics",
+    icon: BarChart3,
+    group: 'Venue Setup',
+    roles: MANAGER_ROLES,
+  },
+  {
+    title: "Push & Mobile Alerts",
+    url: "/admin/mobile-app",
+    icon: Smartphone,
+    group: 'Venue Setup',
+    roles: MANAGER_ROLES,
+  },
+  {
+    title: "Account & Backup",
+    url: "/admin/settings",
+    icon: Store,
+    group: 'Venue Setup',
+    roles: MANAGER_ROLES,
   },
 ];
 
 const superAdminMenuItems = [
   { title: "Global Menu Library", url: "/admin/library", icon: LibraryBig },
-  {
-    title: "Restaurants",
-    url: "/super-admin",
-    icon: Building2,
-  },
+  { title: "Restaurants", url: "/super-admin", icon: Building2 },
   { title: 'Accounts & Roles', url: '/super-admin/accounts', icon: Users },
   { title: 'Platform CMS & Defaults', url: '/super-admin/settings', icon: SlidersHorizontal },
   { title: 'Access History', url: '/super-admin/access-history', icon: History },
@@ -219,41 +235,104 @@ export function AppSidebar({ user }: AppSidebarProps) {
   const effectiveRole: EffectiveStaffRole =
     user?.staffRole || (isSuperAdmin ? 'super_admin' : 'branch_manager');
   const hasMultiBranchAccess = (user?.accessibleBranches?.length || 0) > 1;
+
   const filteredAdminItems = adminMenuItems.filter(item => {
     if (item.url === '/admin/portfolio') {
       return effectiveRole === 'tenant_owner' || effectiveRole === 'super_admin' || hasMultiBranchAccess;
     }
-    if (item.url === '/admin/tables' && effectiveRole === 'host_cashier' && user?.capabilities?.canManageTables === false) {
-      return false;
+    if (effectiveRole === 'host_cashier') {
+      if (item.url === '/admin/tables' && user?.capabilities?.canManageTables === false) return false;
+      if (item.url === '/admin/orders' && user?.capabilities?.canSettlePos === false) return false;
     }
     return item.roles.includes(effectiveRole);
   });
-  const menuItems = isSuperAdmin ? superAdminMenuItems : filteredAdminItems;
+
   const sidebarTitle = formatEffectiveRoleTitle(effectiveRole, user?.capabilities) || STAFF_ROLE_LABELS[effectiveRole];
+  const groupsOrder: NavItem['group'][] = ['Live Service', 'Menu & Floor', 'Venue Setup'];
 
   return (
     <Sidebar className="staff-sidebar">
       <SidebarContent>
         <div className="staff-sidebar-brand"><StaffBrand compact/></div>
-        <SidebarGroup>
-          <SidebarGroupLabel className="staff-nav-label">
-            {sidebarTitle}
-          </SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {menuItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild isActive={location === item.url} data-testid={(item as any).testId || `link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                    <Link href={item.url}>
-                      <item.icon />
-                      <span>{item.title}</span>
-                    </Link>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+
+        {isSuperAdmin ? (
+          <SidebarGroup>
+            <SidebarGroupLabel className="staff-nav-label">
+              {sidebarTitle}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {superAdminMenuItems.map(item => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild isActive={location === item.url} data-testid={`link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                      <Link href={item.url}>
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : effectiveRole === 'host_cashier' || effectiveRole === 'prep_barista' ? (
+          /* Clean Single-Group Desk Menu for Reception, Cashiers & Prep */
+          <SidebarGroup>
+            <SidebarGroupLabel className="staff-nav-label">
+              {sidebarTitle}
+            </SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {filteredAdminItems.map(item => (
+                  <SidebarMenuItem key={item.url}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={location === item.url}
+                      data-testid={item.testId || `link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                    >
+                      <Link href={item.url}>
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ) : (
+          /* Scannable 3-Group Menu for Managers & Tenant Owners */
+          groupsOrder.map(groupName => {
+            const groupItems = filteredAdminItems.filter(i => i.group === groupName);
+            if (!groupItems.length) return null;
+            return (
+              <SidebarGroup key={groupName}>
+                <SidebarGroupLabel className="staff-nav-label">
+                  {groupName}
+                </SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    {groupItems.map(item => (
+                      <SidebarMenuItem key={item.url}>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={location === item.url}
+                          data-testid={item.testId || `link-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                        >
+                          <Link href={item.url}>
+                            <item.icon />
+                            <span>{item.title}</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    ))}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            );
+          })
+        )}
+
         {isSuperAdmin && user?.cafeContext && (
           <SidebarGroup>
             <SidebarGroupLabel className="px-4 text-primary font-bold truncate">

@@ -8,9 +8,9 @@ import {
   History,
   LayoutDashboard,
   LibraryBig,
+  Monitor,
   Network,
   Receipt,
-  Smartphone,
   Store,
   Users,
   UtensilsCrossed,
@@ -37,21 +37,22 @@ export function MobileStaffBottomNav() {
       ]
     : role === 'prep_barista'
       ? [
-          { label: 'Station', url: '/admin/station', icon: Flame },
-          { label: 'Pagers', url: '/admin/pagers', icon: BellRing },
+          { label: 'Kitchen', url: '/admin/station', icon: Flame },
+          { label: 'Queue', url: '/admin/pagers', icon: BellRing },
           { label: 'Curbside', url: '/admin/drive-thru', icon: Car },
           { label: 'Orders', url: '/admin/orders', icon: Receipt },
-          { label: 'App & Push', url: '/admin/mobile-app', icon: Smartphone },
         ]
       : role === 'host_cashier'
         ? [
-            { label: 'Reception', url: '/admin/front-desk', icon: Store },
-            { label: 'Pagers', url: '/admin/pagers', icon: BellRing },
+            { label: 'Desk', url: '/admin/front-desk', icon: Store },
+            ...(user?.capabilities?.canSettlePos !== false
+              ? [{ label: 'Orders', url: '/admin/orders', icon: Receipt }]
+              : []),
             ...(user?.capabilities?.canManageTables !== false
               ? [{ label: 'Tables', url: '/admin/tables', icon: CalendarDays }]
               : []),
-            { label: 'Orders', url: '/admin/orders', icon: Receipt },
             { label: 'Curbside', url: '/admin/drive-thru', icon: Car },
+            { label: 'QR Screen', url: '/admin/counter-display', icon: Monitor },
           ]
         : hasMultiBranchPortfolio
           ? [

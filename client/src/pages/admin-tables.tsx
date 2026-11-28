@@ -5,9 +5,9 @@ import {
   CalendarDays,
   Check,
   Clock,
-  ExternalLink,
   Plus,
   QrCode,
+  SlidersHorizontal,
   Trash2,
   Users,
 } from 'lucide-react';
@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { apiRequest, queryClient } from '@/lib/queryClient';
+import { useAuth } from '@/hooks/useAuth';
 import { useManagerMenu } from '@/lib/managerMenu';
 import { useToast } from '@/hooks/use-toast';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
@@ -23,10 +24,17 @@ import { NfcEncodeDialog, type NfcEncodeTarget } from '@/components/qr-nfc/NfcEn
 import { publicExperienceOrigin } from '@shared/menuIdentity';
 
 export default function AdminTablesPage() {
+  const { user } = useAuth();
   const { toast } = useToast();
   const menuQuery = useManagerMenu();
   const cafe = menuQuery.data?.restaurant;
 
+  const isManager =
+    user?.role === 'super_admin' ||
+    user?.staffRole === 'tenant_owner' ||
+    user?.staffRole === 'branch_manager';
+
+  const [showFloorSetup, setShowFloorSetup] = useState(false);
   const [zoneName, setZoneName] = useState('');
   const [zoneNameAr, setZoneNameAr] = useState('');
   const [tableZoneId, setTableZoneId] = useState('');
@@ -62,7 +70,7 @@ export default function AdminTablesPage() {
       const res = await apiRequest('POST', '/api/hospitality/zones', {
         name: zoneName.trim(),
         nameAr: zoneNameAr.trim() || null,
-        order: (floorQuery.data?.zones.length || 0),
+        order: floorQuery.data?.zones.length || 0,
       });
       return res.json();
     },
@@ -113,7 +121,7 @@ export default function AdminTablesPage() {
     onSuccess: (_d, vars) => {
       void queryClient.invalidateQueries({ queryKey: ['/api/hospitality/floor'] });
       if (vars.action === 'ready' || vars.action === 'rebuzz') {
-        toast({ title: 'Guest waitlist pager buzzed (10-min hold started)' });
+        toast({ title: 'Guest notified table is ready' });
       }
     },
     onError: (e: Error) => toast({ title: 'Action blocked', description: e.message, variant: 'destructive' }),
@@ -133,27 +141,27 @@ export default function AdminTablesPage() {
   const waitlist = (floorQuery.data?.waitlist || []).filter(w => ['waiting', 'ready'].includes(w.status));
   const zoneById = new Map(zones.map(z => [z.id, z]));
   const tableById = new Map(tables.map(t => [t.id, t]));
+  const seatedTableIds = new Set(reservations.filter(r => r.status === 'seated').map(r => r.tableId));
 
   return (
-    <div className="space-y-6 max-w-[1400px]">
-      <div className="flex flex-wrap items-center justify-between gap-4">
+    <div className="space-y-6 max-w-6xl">
+      <header className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b">
         <div>
-          <p className="manager-eyebrow">HOST STAND &amp; FLOOR INVENTORY</p>
-          <h1 className="text-2xl sm:text-3xl font-bold">Tables, Reservations &amp; Walk-In Waitlist</h1>
-          <p className="text-sm text-muted-foreground">
-            Manage floor zones, permanent table QRs, conflict-free bookings, and virtual walk-in waitlist paging.
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Tables &amp; Seating</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Notify waiting guests, seat reservations, and view floor tables.
           </p>
         </div>
         {cafe && (
-          <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-2 w-full sm:w-auto">
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
             <Button
               type="button"
               variant="outline"
-              className="min-h-11 cursor-pointer gap-2"
+              className="min-h-11 rounded-xl cursor-pointer gap-2 flex-1 sm:flex-none"
               onClick={() =>
                 setQrModal({
                   venueName: cafe.name,
-                  title: 'Host Stand Walk-In Waitlist',
+                  title: 'Walk-In Waitlist QR',
                   code: 'WAITLIST',
                   qrUrl: `${publicBase}/menu/${cafe.id}?action=waitlist`,
                   nfcUrl: `${publicBase}/menu/${cafe.id}?action=waitlist`,
@@ -161,44 +169,36 @@ export default function AdminTablesPage() {
                 })
               }
             >
-              <QrCode className="w-4 h-4" />
-              Host Stand Waitlist QR / NFC
+              <QrCode className="w-4 h-4 text-[#6236FF]" />
+              <span>Waitlist QR</span>
             </Button>
-            <Button
-              type="button"
-              variant="outline"
-              className="min-h-11 cursor-pointer gap-2"
-              onClick={() =>
-                setQrModal({
-                  venueName: cafe.name,
-                  title: 'Advance Table Booking',
-                  code: 'RESERVE',
-                  qrUrl: `${publicBase}/menu/${cafe.id}?action=reserve`,
-                  nfcUrl: `${publicBase}/menu/${cafe.id}?action=reserve`,
-                  accentHex: cafe.brandAccentHex,
-                })
-              }
-            >
-              <CalendarDays className="w-4 h-4" />
-              Table Booking QR / NFC
-            </Button>
+            {isManager && (
+              <Button
+                type="button"
+                variant={showFloorSetup ? 'default' : 'outline'}
+                onClick={() => setShowFloorSetup(v => !v)}
+                className="min-h-11 rounded-xl cursor-pointer gap-2 flex-1 sm:flex-none"
+              >
+                <SlidersHorizontal className="w-4 h-4" />
+                <span>{showFloorSetup ? 'Done Editing Floor' : 'Edit Floor & Zones'}</span>
+              </Button>
+            )}
           </div>
         )}
-      </div>
+      </header>
 
       {/* Live Walk-In Waitlist & Upcoming Reservations */}
       <div className="grid lg:grid-cols-12 gap-5">
-        <section className="lg:col-span-6 manager-panel p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="font-bold text-lg flex items-center gap-2">
-              <Users className="w-5 h-5 text-primary" />
-              Live Walk-In Waitlist ({waitlist.length})
-            </h2>
-          </div>
+        <section className="lg:col-span-6 rounded-2xl border bg-card p-5 space-y-4">
+          <h2 className="font-bold text-base flex items-center gap-2">
+            <Users className="w-5 h-5 text-[#6236FF]" />
+            <span>Walk-In Waitlist ({waitlist.length})</span>
+          </h2>
+
           {waitlist.length === 0 ? (
-            <p className="text-sm text-muted-foreground py-6 text-center">No walk-in parties waiting right now.</p>
+            <p className="text-sm text-muted-foreground py-6 text-center">No walk-in guests waiting right now.</p>
           ) : (
-            <div className="space-y-3">
+            <div className="divide-y rounded-xl border">
               {waitlist.map(entry => {
                 const holdSecsLeft = entry.holdExpiresAt
                   ? Math.max(0, Math.ceil((new Date(entry.holdExpiresAt).getTime() - now) / 1000))
@@ -206,17 +206,22 @@ export default function AdminTablesPage() {
                 const holdLabel =
                   holdSecsLeft !== null
                     ? holdSecsLeft > 0
-                      ? `Hold ${Math.floor(holdSecsLeft / 60)}:${String(holdSecsLeft % 60).padStart(2, '0')}`
+                      ? `${Math.floor(holdSecsLeft / 60)}:${String(holdSecsLeft % 60).padStart(2, '0')} left`
                       : 'Hold expired'
                     : null;
                 return (
-                  <div key={entry.id} className="rounded-2xl border p-4 bg-card flex flex-wrap items-center justify-between gap-3">
-                    <div className="space-y-1">
+                  <div key={entry.id} className="p-3.5 flex flex-wrap items-center justify-between gap-3">
+                    <div className="space-y-0.5">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-mono font-black text-lg">{entry.ticketCode}</span>
-                        <Badge variant={entry.status === 'ready' ? 'default' : 'secondary'}>{entry.status}</Badge>
+                        <span className="font-mono font-black text-base">{entry.ticketCode}</span>
+                        <span className="font-semibold text-sm">{entry.guestName}</span>
+                        <Badge variant="outline" className="text-xs">
+                          {entry.partySize} {entry.partySize === 1 ? 'guest' : 'guests'}
+                        </Badge>
                         {entry.guestResponse === 'on_my_way' && (
-                          <Badge className="bg-[#C8FF42] text-[#17132E] hover:bg-[#C8FF42] font-extrabold border-0">On My Way!</Badge>
+                          <Badge className="bg-[#C8FF42] text-[#17132E] hover:bg-[#C8FF42] font-bold border-0">
+                            On Their Way
+                          </Badge>
                         )}
                         {holdLabel && (
                           <span className="inline-flex items-center gap-1 text-xs font-mono px-2 py-0.5 rounded bg-muted">
@@ -225,16 +230,16 @@ export default function AdminTablesPage() {
                           </span>
                         )}
                       </div>
-                      <p className="text-sm font-medium">
-                        {entry.guestName} · Party of {entry.partySize}
-                        {entry.zoneId && zoneById.get(entry.zoneId) ? ` · ${zoneById.get(entry.zoneId).name}` : ''}
-                      </p>
+                      {entry.zoneId && zoneById.get(entry.zoneId) && (
+                        <p className="text-xs text-muted-foreground">{zoneById.get(entry.zoneId).name}</p>
+                      )}
                     </div>
+
                     <div className="flex flex-wrap items-center gap-2">
                       <Button
                         type="button"
                         size="sm"
-                        className="min-h-10 cursor-pointer gap-1 bg-[#C8FF42] hover:bg-[#b8f52c] text-[#17132E] font-extrabold border-0"
+                        className="min-h-11 rounded-xl cursor-pointer gap-1 bg-[#C8FF42] hover:bg-[#b8f52c] text-[#17132E] font-bold border-0"
                         onClick={() =>
                           waitlistAction.mutate({
                             id: entry.id,
@@ -243,13 +248,12 @@ export default function AdminTablesPage() {
                         }
                       >
                         <BellRing className="w-3.5 h-3.5" />
-                        {entry.status === 'ready' ? `Re-buzz (${entry.buzzCount})` : 'Table Ready (10m)'}
+                        {entry.status === 'ready' ? 'Ring Again' : 'Table Ready'}
                       </Button>
                       <Button
                         type="button"
                         size="sm"
-                        variant="secondary"
-                        className="min-h-10 cursor-pointer gap-1"
+                        className="min-h-11 rounded-xl bg-[#6236FF] hover:bg-[#4B1FE0] text-white cursor-pointer gap-1"
                         onClick={() => waitlistAction.mutate({ id: entry.id, action: 'seated' })}
                       >
                         <Check className="w-3.5 h-3.5" />
@@ -259,19 +263,11 @@ export default function AdminTablesPage() {
                         type="button"
                         size="sm"
                         variant="ghost"
-                        className="text-muted-foreground hover:text-destructive cursor-pointer"
+                        className="min-h-11 text-muted-foreground hover:text-destructive cursor-pointer"
                         onClick={() => waitlistAction.mutate({ id: entry.id, action: 'expired' })}
                       >
-                        Expire
+                        Remove
                       </Button>
-                      <a
-                        href={`/waitlist/${entry.trackingToken}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="min-h-11 md:min-h-9 px-3 rounded-xl border text-xs font-medium text-primary hover:bg-muted inline-flex items-center gap-1.5"
-                      >
-                        Pass <ExternalLink className="w-3.5 h-3.5" />
-                      </a>
                     </div>
                   </div>
                 );
@@ -280,37 +276,42 @@ export default function AdminTablesPage() {
           )}
         </section>
 
-        <section className="lg:col-span-6 manager-panel p-5 space-y-4">
-          <h2 className="font-bold text-lg flex items-center gap-2">
-            <CalendarDays className="w-5 h-5 text-primary" />
-            Active Table Reservations ({reservations.length})
+        <section className="lg:col-span-6 rounded-2xl border bg-card p-5 space-y-4">
+          <h2 className="font-bold text-base flex items-center gap-2">
+            <CalendarDays className="w-5 h-5 text-[#6236FF]" />
+            <span>Reservations ({reservations.length})</span>
           </h2>
+
           {reservations.length === 0 ? (
             <p className="text-sm text-muted-foreground py-6 text-center">No upcoming reservations scheduled.</p>
           ) : (
-            <div className="space-y-3">
+            <div className="divide-y rounded-xl border">
               {reservations.map(res => {
                 const table = tableById.get(res.tableId);
                 return (
-                  <div key={res.id} className="rounded-2xl border p-4 bg-card flex flex-wrap items-center justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-sm px-2 py-0.5 rounded bg-primary/10 text-primary">
+                  <div key={res.id} className="p-3.5 flex flex-wrap items-center justify-between gap-3">
+                    <div className="space-y-0.5">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono font-bold text-xs px-2 py-0.5 rounded bg-[#EFEAFF] text-[#4B1FE0]">
                           {table?.tableCode || 'Table'}
                         </span>
                         <span className="font-semibold text-sm">{res.guestName}</span>
-                        <Badge variant="outline">Party of {res.partySize}</Badge>
+                        <Badge variant="outline" className="text-xs">
+                          {res.partySize} {res.partySize === 1 ? 'guest' : 'guests'}
+                        </Badge>
                       </div>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(res.startAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })} · {res.guestPhone}
+                      <p className="text-xs text-muted-foreground font-mono">
+                        {new Date(res.startAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
+                        {res.guestPhone ? ` · ${res.guestPhone}` : ''}
                       </p>
                     </div>
+
                     <div className="flex items-center gap-2">
                       {res.status === 'confirmed' && (
                         <Button
                           type="button"
                           size="sm"
-                          className="min-h-10 cursor-pointer"
+                          className="min-h-11 rounded-xl bg-[#6236FF] hover:bg-[#4B1FE0] text-white cursor-pointer"
                           onClick={() => reservationStatus.mutate({ id: res.id, status: 'seated' })}
                         >
                           Seat Party
@@ -321,17 +322,17 @@ export default function AdminTablesPage() {
                           type="button"
                           size="sm"
                           variant="secondary"
-                          className="min-h-10 cursor-pointer"
+                          className="min-h-11 rounded-xl cursor-pointer"
                           onClick={() => reservationStatus.mutate({ id: res.id, status: 'completed' })}
                         >
-                          Complete Turn
+                          Finish Table
                         </Button>
                       )}
                       <Button
                         type="button"
                         size="sm"
                         variant="ghost"
-                        className="text-destructive cursor-pointer"
+                        className="min-h-11 text-muted-foreground hover:text-destructive cursor-pointer"
                         onClick={() => reservationStatus.mutate({ id: res.id, status: 'no_show' })}
                       >
                         No-Show
@@ -345,140 +346,166 @@ export default function AdminTablesPage() {
         </section>
       </div>
 
-      {/* Zones & Tables Setup */}
-      <div className="grid lg:grid-cols-12 gap-5">
-        <form
-          onSubmit={e => {
-            e.preventDefault();
-            addZone.mutate();
-          }}
-          className="lg:col-span-5 manager-panel p-5 space-y-4"
-        >
-          <h2 className="font-bold text-base">1. Dining Zones</h2>
-          <div className="grid sm:grid-cols-2 gap-2">
-            <div>
-              <Label className="text-xs">Zone Name (English) *</Label>
-              <Input value={zoneName} onChange={e => setZoneName(e.target.value)} placeholder="Indoor Lounge" required className="h-10" />
-            </div>
-            <div>
-              <Label className="text-xs">Arabic Label</Label>
-              <Input value={zoneNameAr} onChange={e => setZoneNameAr(e.target.value)} placeholder="الصالة الداخلية" className="h-10" />
-            </div>
-          </div>
-          <Button type="submit" size="sm" className="cursor-pointer gap-1" disabled={!zoneName.trim() || addZone.isPending}>
-            <Plus className="w-4 h-4" />
-            Add Zone
-          </Button>
+      {/* Clean Visual Floor Overview (Read-only for Reception, QR accessible in 1 tap) */}
+      <section className="rounded-2xl border bg-card p-5 space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="font-bold text-base">Floor Tables ({tables.length})</h2>
+          <span className="text-xs text-muted-foreground">Tap QR to show or print a table’s menu code</span>
+        </div>
 
-          <div className="space-y-1.5 pt-2">
-            {zones.map(z => (
-              <div key={z.id} className="flex items-center justify-between rounded-xl border px-3 py-2 text-sm">
-                <span>
-                  <strong>{z.name}</strong> {z.nameAr ? <small className="text-muted-foreground">({z.nameAr})</small> : null}
-                </span>
-                <button
-                  type="button"
-                  aria-label={`Delete zone ${z.name}`}
-                  onClick={() => deleteZone.mutate(z.id)}
-                  className="w-11 h-11 rounded-xl grid place-items-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
+        {tables.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-4">No floor tables configured yet.</p>
+        ) : (
+          <div className="grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {tables.map(t => {
+              const isSeated = seatedTableIds.has(t.id);
+              return (
+                <div
+                  key={t.id}
+                  className={`rounded-2xl border p-3.5 flex items-center justify-between gap-2 ${
+                    isSeated ? 'border-[#6236FF] bg-[#EFEAFF]/40' : 'bg-background'
+                  }`}
                 >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              </div>
-            ))}
-          </div>
-        </form>
-
-        <form
-          onSubmit={e => {
-            e.preventDefault();
-            addTable.mutate();
-          }}
-          className="lg:col-span-7 manager-panel p-5 space-y-4"
-        >
-          <h2 className="font-bold text-base">2. Floor Tables &amp; Dine-In Table QRs</h2>
-          <div className="grid sm:grid-cols-5 gap-2 items-end">
-            <div>
-              <Label className="text-xs">Zone *</Label>
-              <select
-                className="manager-select w-full h-10 text-sm"
-                value={tableZoneId || zones[0]?.id || ''}
-                onChange={e => setTableZoneId(e.target.value)}
-                required
-              >
-                {zones.length === 0 && <option value="">Add a zone first</option>}
-                {zones.map(z => (
-                  <option key={z.id} value={z.id}>{z.name}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label className="text-xs">Table Code *</Label>
-              <Input value={tableCode} onChange={e => setTableCode(e.target.value)} placeholder="T-01" required className="h-10 font-mono" />
-            </div>
-            <div>
-              <Label className="text-xs">Min / Max Covers</Label>
-              <div className="flex gap-1">
-                <Input type="number" min={1} max={30} value={minCovers} onChange={e => setMinCovers(Number(e.target.value))} className="h-10" />
-                <Input type="number" min={1} max={30} value={maxCovers} onChange={e => setMaxCovers(Number(e.target.value))} className="h-10" />
-              </div>
-            </div>
-            <label className="flex items-center gap-2 h-10 px-2 rounded-lg border text-xs cursor-pointer">
-              <input type="checkbox" checked={isCombinable} onChange={e => setIsCombinable(e.target.checked)} className="accent-primary" />
-              <span>Combinable</span>
-            </label>
-            <Button type="submit" className="h-10 cursor-pointer gap-1" disabled={!zones.length || !tableCode.trim() || addTable.isPending}>
-              <Plus className="w-4 h-4" />
-              Add Table
-            </Button>
-          </div>
-
-          <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-2 pt-2">
-            {tables.map(t => (
-              <div key={t.id} className="rounded-xl border p-3 text-xs flex items-center justify-between gap-2">
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <strong className="font-mono text-sm">{t.tableCode}</strong>
-                    {t.isCombinable && <Badge variant="outline" className="text-xs">Combinable</Badge>}
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <strong className="font-mono text-base">{t.tableCode}</strong>
+                      <Badge variant={isSeated ? 'default' : 'secondary'} className="text-[11px]">
+                        {isSeated ? 'Seated' : 'Open'}
+                      </Badge>
+                    </div>
+                    <span className="text-xs text-muted-foreground block mt-0.5">
+                      {zoneById.get(t.zoneId)?.name || 'Main Floor'} · {t.minCovers}–{t.maxCovers} seats
+                    </span>
                   </div>
-                  <span className="text-muted-foreground block mt-0.5">
-                    {zoneById.get(t.zoneId)?.name || 'Zone'} · {t.minCovers}–{t.maxCovers} seats
-                  </span>
+                  <div className="flex items-center gap-1.5">
+                    {cafe && (
+                      <button
+                        type="button"
+                        aria-label={`Table ${t.tableCode} QR`}
+                        onClick={() =>
+                          setQrModal({
+                            venueName: cafe.name,
+                            title: `Table ${t.tableCode} Menu`,
+                            code: t.tableCode,
+                            qrUrl: `${publicBase}/table/${t.qrToken}`,
+                            nfcUrl: `${publicBase}/table/${t.qrToken}`,
+                            accentHex: cafe.brandAccentHex,
+                          })
+                        }
+                        className="w-11 h-11 rounded-xl border hover:bg-muted grid place-items-center cursor-pointer"
+                      >
+                        <QrCode className="w-4 h-4 text-[#6236FF]" />
+                      </button>
+                    )}
+                    {isManager && showFloorSetup && (
+                      <button
+                        type="button"
+                        aria-label={`Delete table ${t.tableCode}`}
+                        onClick={() => deleteTable.mutate(t.id)}
+                        className="w-11 h-11 rounded-xl text-muted-foreground hover:text-destructive hover:bg-destructive/10 grid place-items-center cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {cafe && (
-                    <button
-                      type="button"
-                      aria-label={`Table ${t.tableCode} QR & NFC`}
-                      onClick={() =>
-                        setQrModal({
-                          venueName: cafe.name,
-                          title: `Table ${t.tableCode} Dine-In Menu`,
-                          code: t.tableCode,
-                          qrUrl: `${publicBase}/table/${t.qrToken}`,
-                          nfcUrl: `${publicBase}/table/${t.qrToken}`,
-                          accentHex: cafe.brandAccentHex,
-                        })
-                      }
-                      className="w-11 h-11 rounded-xl border hover:bg-muted grid place-items-center cursor-pointer"
-                    >
-                      <QrCode className="w-4 h-4 text-primary" />
-                    </button>
-                  )}
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      {/* Manager-Only Collapsible Floor & Zone Setup */}
+      {isManager && showFloorSetup && (
+        <div className="grid lg:grid-cols-12 gap-5 pt-2">
+          <form
+            onSubmit={e => {
+              e.preventDefault();
+              addZone.mutate();
+            }}
+            className="lg:col-span-5 rounded-2xl border bg-card p-5 space-y-4"
+          >
+            <h2 className="font-bold text-base">Add Dining Zone</h2>
+            <div className="grid sm:grid-cols-2 gap-2.5">
+              <div>
+                <Label className="text-xs">Zone Name (English) *</Label>
+                <Input value={zoneName} onChange={e => setZoneName(e.target.value)} placeholder="Indoor Lounge" required className="min-h-11 mt-1" />
+              </div>
+              <div>
+                <Label className="text-xs">Arabic Label</Label>
+                <Input value={zoneNameAr} onChange={e => setZoneNameAr(e.target.value)} placeholder="الصالة الداخلية" className="min-h-11 mt-1" />
+              </div>
+            </div>
+            <Button type="submit" size="sm" className="min-h-11 rounded-xl cursor-pointer gap-1" disabled={!zoneName.trim() || addZone.isPending}>
+              <Plus className="w-4 h-4" />
+              Add Zone
+            </Button>
+
+            <div className="space-y-1.5 pt-2">
+              {zones.map(z => (
+                <div key={z.id} className="flex items-center justify-between rounded-xl border px-3 py-2 text-sm">
+                  <span>
+                    <strong>{z.name}</strong> {z.nameAr ? <small className="text-muted-foreground">({z.nameAr})</small> : null}
+                  </span>
                   <button
                     type="button"
-                    aria-label={`Delete table ${t.tableCode}`}
-                    onClick={() => deleteTable.mutate(t.id)}
-                    className="w-11 h-11 rounded-xl text-muted-foreground hover:text-destructive hover:bg-destructive/10 grid place-items-center cursor-pointer"
+                    aria-label={`Delete zone ${z.name}`}
+                    onClick={() => deleteZone.mutate(z.id)}
+                    className="w-11 h-11 rounded-xl grid place-items-center text-muted-foreground hover:text-destructive hover:bg-destructive/10 cursor-pointer"
                   >
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
+              ))}
+            </div>
+          </form>
+
+          <form
+            onSubmit={e => {
+              e.preventDefault();
+              addTable.mutate();
+            }}
+            className="lg:col-span-7 rounded-2xl border bg-card p-5 space-y-4"
+          >
+            <h2 className="font-bold text-base">Add Table to Floor</h2>
+            <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-2.5 items-end">
+              <div>
+                <Label className="text-xs">Zone *</Label>
+                <select
+                  className="manager-select w-full min-h-11 text-sm mt-1"
+                  value={tableZoneId || zones[0]?.id || ''}
+                  onChange={e => setTableZoneId(e.target.value)}
+                  required
+                >
+                  {zones.length === 0 && <option value="">Add a zone first</option>}
+                  {zones.map(z => (
+                    <option key={z.id} value={z.id}>{z.name}</option>
+                  ))}
+                </select>
               </div>
-            ))}
-          </div>
-        </form>
-      </div>
+              <div>
+                <Label className="text-xs">Table Code *</Label>
+                <Input value={tableCode} onChange={e => setTableCode(e.target.value)} placeholder="T-05" required className="min-h-11 font-mono mt-1" />
+              </div>
+              <div>
+                <Label className="text-xs">Min / Max Seats</Label>
+                <div className="flex gap-1 mt-1">
+                  <Input type="number" min={1} max={30} value={minCovers} onChange={e => setMinCovers(Number(e.target.value))} className="min-h-11" />
+                  <Input type="number" min={1} max={30} value={maxCovers} onChange={e => setMaxCovers(Number(e.target.value))} className="min-h-11" />
+                </div>
+              </div>
+              <Button type="submit" className="min-h-11 rounded-xl cursor-pointer gap-1" disabled={!zones.length || !tableCode.trim() || addTable.isPending}>
+                <Plus className="w-4 h-4" />
+                Add Table
+              </Button>
+            </div>
+            <label className="inline-flex items-center gap-2 text-xs cursor-pointer">
+              <input type="checkbox" checked={isCombinable} onChange={e => setIsCombinable(e.target.checked)} className="accent-primary" />
+              <span>Allow combining with adjacent tables for larger groups</span>
+            </label>
+          </form>
+        </div>
+      )}
 
       <NfcEncodeDialog target={qrModal} onClose={() => setQrModal(null)} />
     </div>

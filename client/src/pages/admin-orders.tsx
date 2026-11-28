@@ -8,6 +8,7 @@ import {
   Minus,
   Plus,
   Printer,
+  QrCode,
   Receipt,
   RotateCcw,
   Search,
@@ -189,57 +190,51 @@ export default function AdminOrdersPage() {
     .toFixed(2);
 
   return (
-    <div className="space-y-6 max-w-[1400px]">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <div className="space-y-6 max-w-6xl">
+      <header className="flex flex-wrap items-center justify-between gap-4 pb-2 border-b">
         <div>
-          <p className="manager-eyebrow">COMMERCE LEDGER &amp; COUNTER POS</p>
-          <h1 className="text-2xl sm:text-3xl font-bold">Orders &amp; Receipts Console</h1>
-          <p className="text-sm text-muted-foreground">
-            Track live dine-in, counter, and curbside orders, settle Pay-at-Venue tickets, print receipts, or ring up a counter POS order.
+          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">Counter Orders &amp; Bills</h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            Ring up walk-in orders, collect cash or card on unpaid bills, and print receipts.
           </p>
         </div>
         <Button
           type="button"
           onClick={() => setPosOpen(true)}
           data-testid="button-open-pos-order"
-          className="w-full sm:w-auto min-h-11 rounded-xl bg-[#6236FF] hover:bg-[#4B1FE0] text-white cursor-pointer gap-2"
+          className="w-full sm:w-auto min-h-11 px-5 rounded-xl bg-[#6236FF] hover:bg-[#4B1FE0] text-white font-semibold cursor-pointer gap-2"
         >
           <Plus className="w-4 h-4" />
-          <span>New Counter POS Order</span>
+          <span>New Counter Order</span>
         </Button>
-      </div>
+      </header>
 
-      {/* KPI Strip */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3" role="status" aria-live="polite">
-        <div className="manager-panel p-4">
-          <span className="text-xs text-muted-foreground font-medium">Total Orders</span>
-          <strong className="block text-xl sm:text-2xl font-mono mt-1">{orders.length}</strong>
+      {/* Clean 3-Stat Strip */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3" role="status" aria-live="polite">
+        <div className="rounded-2xl border bg-card p-4">
+          <span className="text-xs text-muted-foreground font-medium">Unpaid Bills</span>
+          <strong className="block text-2xl font-mono mt-1">{unpaidVenueCount}</strong>
         </div>
-        <div className="manager-panel p-4">
-          <span className="text-xs text-muted-foreground font-medium">Settled Revenue</span>
-          <strong className="block text-xl sm:text-2xl font-mono mt-1 text-primary truncate">
+        <div className="rounded-2xl border bg-card p-4">
+          <span className="text-xs text-muted-foreground font-medium">Paid Total</span>
+          <strong className="block text-2xl font-mono mt-1 text-primary truncate">
             {paidTotal} {ordersQuery.data?.currency || cafe?.currency || 'QAR'}
           </strong>
         </div>
-        <div className="manager-panel p-4">
-          <span className="text-xs text-muted-foreground font-medium">Awaiting Venue Payment</span>
-          <strong className="block text-xl sm:text-2xl font-mono mt-1">{unpaidVenueCount}</strong>
-        </div>
-        <div className="manager-panel p-4">
-          <span className="text-xs text-muted-foreground font-medium">Branch Commerce Mode</span>
-          <strong className="block text-xs sm:text-sm font-mono mt-2 uppercase break-words">{(cafe?.orderingMode || 'browse_and_pager').replace(/_/g, ' ')}</strong>
+        <div className="rounded-2xl border bg-card p-4">
+          <span className="text-xs text-muted-foreground font-medium">Total Orders</span>
+          <strong className="block text-2xl font-mono mt-1">{orders.length}</strong>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="manager-panel p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+      {/* Simple Plain-Language Filters */}
+      <div className="rounded-2xl border bg-card p-3.5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div className="flex flex-nowrap sm:flex-wrap overflow-x-auto no-scrollbar pb-1 gap-2">
           {(
             [
-              ['all', 'All Payments'],
-              ['pay_at_venue', 'Pay at Venue'],
+              ['all', 'All Orders'],
+              ['pay_at_venue', `Unpaid (${unpaidVenueCount})`],
               ['paid', 'Paid'],
-              ['pending_online', 'Pending Online'],
               ['refunded', 'Refunded'],
             ] as const
           ).map(([id, label]) => (
@@ -247,7 +242,7 @@ export default function AdminOrdersPage() {
               key={id}
               type="button"
               onClick={() => setStatusFilter(id)}
-              className={`px-3.5 min-h-11 shrink-0 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+              className={`px-4 min-h-11 shrink-0 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
                 statusFilter === id
                   ? 'bg-[#6236FF] text-white'
                   : 'bg-muted/60 text-muted-foreground hover:text-foreground'
@@ -357,6 +352,26 @@ export default function AdminOrdersPage() {
                     )}
                   </div>
 
+                  {ticket && ['waiting', 'preparing', 'ready'].includes(ticket.status) && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        setHandoffTicket({
+                          id: ticket.id,
+                          ticketCode: ticket.ticketCode,
+                          trackingToken: ticket.trackingToken,
+                          customerName: order.customerName,
+                        })
+                      }
+                      className="min-h-11 rounded-xl cursor-pointer gap-1.5"
+                    >
+                      <QrCode className="w-4 h-4 text-[#6236FF]" />
+                      <span>Guest QR</span>
+                    </Button>
+                  )}
+
                   {isPayAtVenue && (
                     <Button
                       type="button"
@@ -367,7 +382,7 @@ export default function AdminOrdersPage() {
                       className="min-h-11 rounded-xl bg-[#6236FF] hover:bg-[#4B1FE0] text-white cursor-pointer gap-1.5"
                     >
                       <CreditCard className="w-4 h-4" />
-                      <span>Confirm Paid</span>
+                      <span>Mark Paid</span>
                     </Button>
                   )}
 
