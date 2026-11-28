@@ -564,15 +564,15 @@ function VirtualPagerContent() {
 
           {/* Integrated 1-Tap Sound & Lock-Screen Bar */}
           {!isCollected && (
-            <div className="mt-5 pt-4 border-t border-current/10 flex flex-col min-[390px]:flex-row gap-2 text-start">
+            <div className="mt-5 pt-4 border-t border-current/10 flex flex-col min-[460px]:flex-row gap-2 text-start">
               <Button
                 type="button"
                 variant={alertsArmed ? 'secondary' : 'default'}
-                className={`flex-1 min-h-12 rounded-2xl font-semibold cursor-pointer gap-2 ${
+                className={`w-full min-[460px]:flex-1 min-w-0 min-h-12 rounded-2xl font-semibold cursor-pointer gap-2 ${
                   !alertsArmed && !isReady
                     ? 'bg-[#17132E] hover:bg-[#241E42] text-white'
                     : alertsArmed && isReady
-                      ? 'bg-[#241E42] text-white hover:bg-[#312959]'
+                      ? 'bg-[#241E42] text-white hover:bg-[#312959] border border-white/15'
                       : ''
                 }`}
                 onClick={handleArmLockScreen}
@@ -593,7 +593,7 @@ function VirtualPagerContent() {
                 onClick={() => testPushMutation.mutate()}
                 disabled={testPushMutation.isPending}
                 data-testid="button-test-pager-ring"
-                className={`min-h-12 px-3.5 rounded-2xl font-semibold cursor-pointer gap-1.5 shrink-0 ${
+                className={`w-full min-[460px]:w-auto min-h-11 min-[460px]:min-h-12 px-4 rounded-2xl font-semibold cursor-pointer gap-1.5 shrink-0 ${
                   isReady ? 'border-white/25 bg-[#241E42] text-white hover:bg-[#312959]' : ''
                 }`}
               >
