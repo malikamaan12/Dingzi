@@ -57,6 +57,7 @@ import { MobileStaffBottomNav } from '@/components/mobile/MobileStaffBottomNav';
 const VirtualPagerPage = lazy(() => import('@/pages/virtual-pager'));
 const GuestWaitlistPage = lazy(() => import('@/pages/guest-waitlist'));
 const GuestBookingPage = lazy(() => import('@/pages/guest-booking'));
+const ClearQrScreenPage = lazy(() => import('@/pages/clear-qr-screen'));
 import { VenueBySlugEntry, BayQrEntry, TableQrEntry, SmartTagEntry } from '@/pages/venue-slug-entry';
 const SuperAdminDashboard = lazy(() => import('@/pages/super-admin-dashboard'));
 const SuperAdminRestaurantDetail = lazy(() => import('@/pages/super-admin-restaurant-detail'));
@@ -193,6 +194,7 @@ function Router() {
     window.location.origin === PUBLIC_MENU_ORIGIN ||
     location.startsWith('/menu/') ||
     location.startsWith('/v/') ||
+    location.startsWith('/screen/') ||
     location.startsWith('/pager/') ||
     location.startsWith('/waitlist/') ||
     location.startsWith('/booking/') ||
@@ -204,6 +206,7 @@ function Router() {
     <Switch>
       <Route path="/menu/:id" component={CustomerMenu}/>
       <Route path="/v/:slug" component={VenueBySlugEntry}/>
+      <Route path="/screen/:slugOrId" component={ClearQrScreenPage}/>
       <Route path="/pager/:token" component={VirtualPagerPage}/>
       <Route path="/waitlist/:token" component={GuestWaitlistPage}/>
       <Route path="/booking/:token" component={GuestBookingPage}/>
@@ -327,6 +330,7 @@ function StaffRouter() {
         <Route path="/admin/analytics"><AdminLayout><AdminAnalytics /></AdminLayout></Route>
         <Route path="/admin/team"><AdminLayout><AdminTeam /></AdminLayout></Route>
         <Route path="/admin/mobile-app"><AdminLayout><AdminMobileApp /></AdminLayout></Route>
+        <Route path="/admin/counter-display" component={ClearQrScreenPage} />
         <Route path="/admin/qr-code">
           <AdminLayout>
             <AdminQRCode />

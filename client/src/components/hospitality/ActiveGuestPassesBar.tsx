@@ -1,11 +1,14 @@
+import { useEffect, useRef } from 'react';
 import { Link } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight, BellRing, CalendarCheck2, Clock, Sparkles, UtensilsCrossed, Users, X } from 'lucide-react';
 import { dismissGuestPass, useSavedGuestPasses, type SavedGuestPass } from '@/lib/guestSession';
+import { startContinuousRinger } from '@/lib/lockScreenRinger';
 import { useMenuLanguage } from '@/lib/menuLanguage';
 
 function SinglePassChip({ pass, showVenueName }: { pass: SavedGuestPass; showVenueName: boolean }) {
   const { t, label } = useMenuLanguage();
+  const prevStateRef = useRef<string>('');
 
   const statusQuery = useQuery<any>({
     queryKey: ['/api/public/pass-live', pass.kind, pass.trackingToken],
@@ -32,6 +35,23 @@ function SinglePassChip({ pass, showVenueName }: { pass: SavedGuestPass; showVen
       : pass.kind === 'waitlist'
         ? payload?.entry?.status
         : payload?.reservation?.status;
+  const buzzCount = pass.kind === 'pager' ? payload?.ticket?.buzzCount || 0 : payload?.entry?.buzzCount || 0;
+  const stateSignature = status ? `${status}:${buzzCount}` : '';
+
+  useEffect(() => {
+    if (!stateSignature) return;
+    if (prevStateRef.current && prevStateRef.current !== stateSignature && status === 'ready') {
+      startContinuousRinger({
+        cafeName: pass.restaurantName || 'dingzi',
+        ticketCode: pass.code,
+        subtitle:
+          pass.kind === 'waitlist'
+            ? 'Your table is ready — head to the host stand!'
+            : 'Head to the pickup counter to collect your fresh order.',
+      });
+    }
+    prevStateRef.current = stateSignature;
+  }, [stateSignature, status, pass.restaurantName, pass.code, pass.kind]);
 
   if (status && ['collected', 'no_show', 'cancelled', 'released', 'completed'].includes(status)) {
     return null;

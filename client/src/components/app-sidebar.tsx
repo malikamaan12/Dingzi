@@ -18,6 +18,7 @@ import {
   Receipt,
   UserCog,
   Flame,
+  Monitor,
   Network,
   SlidersHorizontal,
 } from "lucide-react";
@@ -165,10 +166,17 @@ const adminMenuItems: {
     roles: MANAGER_ROLES,
   },
   {
+    title: "Counter QR Screen",
+    url: "/admin/counter-display",
+    icon: Monitor,
+    roles: ['super_admin', 'tenant_owner', 'branch_manager', 'host_cashier'],
+    testId: "link-counter-qr-screen",
+  },
+  {
     title: "QR & NFC Studio",
     url: "/admin/qr-code",
     icon: QrCode,
-    roles: MANAGER_ROLES,
+    roles: ['super_admin', 'tenant_owner', 'branch_manager', 'host_cashier'],
     testId: "link-qr-code",
   },
 ];

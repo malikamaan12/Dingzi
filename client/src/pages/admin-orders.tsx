@@ -23,6 +23,7 @@ import { useManagerMenu } from '@/lib/managerMenu';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
 import { useToast } from '@/hooks/use-toast';
 import { DingziMark } from '@/components/staff-brand';
+import { CounterPagerQrModal, type IssuedPagerHandoff } from '@/components/qr-nfc/CounterPagerQrModal';
 import type { GuestOrder, PagerTicket } from '@shared/schema';
 
 export default function AdminOrdersPage() {
@@ -35,6 +36,7 @@ export default function AdminOrdersPage() {
   const [channelFilter, setChannelFilter] = useState<'all' | 'counter_pickup' | 'dine_in' | 'curbside' | 'drive_thru'>('all');
   const [search, setSearch] = useState('');
   const [receiptOrder, setReceiptOrder] = useState<GuestOrder | null>(null);
+  const [handoffTicket, setHandoffTicket] = useState<IssuedPagerHandoff | null>(null);
 
   // Counter POS Order Modal State
   const [posOpen, setPosOpen] = useState(false);
@@ -90,9 +92,17 @@ export default function AdminOrdersPage() {
       setPosLines({});
       void queryClient.invalidateQueries({ queryKey: ['/api/hospitality/orders'] });
       void queryClient.invalidateQueries({ queryKey: ['/api/hospitality/pagers'] });
+      if (data.pager?.trackingToken) {
+        setHandoffTicket({
+          id: data.pager.id,
+          ticketCode: data.pager.ticketCode,
+          trackingToken: data.pager.trackingToken,
+          customerName: data.order?.customerName || data.pager.customerName,
+        });
+      }
       toast({
         title: `Created ${data.order.orderNumber} · Pager ${data.pager.ticketCode}`,
-        description: 'Ticket released directly to the live order & pager queue.',
+        description: 'Ask the customer to scan their private QR so only their phone rings when ready.',
       });
     },
     onError: (e: Error) => toast({ title: 'Could not create order', description: e.message, variant: 'destructive' }),
@@ -604,6 +614,12 @@ export default function AdminOrdersPage() {
           </form>
         </DialogContent>
       </Dialog>
+
+      <CounterPagerQrModal
+        venueName={cafe?.name || 'dingzi'}
+        ticket={handoffTicket}
+        onClose={() => setHandoffTicket(null)}
+      />
     </div>
   );
 }

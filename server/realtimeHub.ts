@@ -11,6 +11,7 @@ export type RealtimeChannelScope =
 export interface RealtimePayload {
   type:
     | 'pager.created'
+    | 'pager.claimed'
     | 'pager.updated'
     | 'pager.buzzed'
     | 'order.created'

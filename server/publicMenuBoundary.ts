@@ -2,7 +2,7 @@
 const uuid = '[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}';
 const slug = '[a-z0-9]+(?:-[a-z0-9]+)*';
 const guestPage = new RegExp(
-  `^/(?:menu/${uuid}|v/${slug}|pager/${uuid}|waitlist/${uuid}|booking/${uuid}|bay/${uuid}|table/${uuid}|tag/${uuid})/?$`,
+  `^/(?:menu/${uuid}|v/${slug}|screen/${slug}|screen/${uuid}|pager/${uuid}|waitlist/${uuid}|booking/${uuid}|bay/${uuid}|table/${uuid}|tag/${uuid})/?$`,
   'i',
 );
 const legacyPublicApi = new RegExp(

@@ -7,6 +7,7 @@ import {
   Car,
   CheckCircle2,
   CreditCard,
+  Monitor,
   Plus,
   QrCode,
   Receipt,
@@ -14,6 +15,7 @@ import {
   Wifi,
 } from 'lucide-react';
 import { DingziMark } from '@/components/staff-brand';
+import { CounterPagerQrModal, type IssuedPagerHandoff } from '@/components/qr-nfc/CounterPagerQrModal';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -52,6 +54,7 @@ export default function AdminFrontDeskPage() {
   const [guestName, setGuestName] = useState('');
   const [channel, setChannel] = useState<'counter_pickup' | 'dine_in' | 'curbside'>('counter_pickup');
   const [coasterId, setCoasterId] = useState('');
+  const [handoffTicket, setHandoffTicket] = useState<IssuedPagerHandoff | null>(null);
 
   // Quick Walk-In Waitlist Form State
   const [wlName, setWlName] = useState('');
@@ -120,13 +123,24 @@ export default function AdminFrontDeskPage() {
       return res.json();
     },
     onSuccess: data => {
+      const usedCoaster = Boolean(coasterId);
       setGuestName('');
       setCoasterId('');
       void queryClient.invalidateQueries({ queryKey: ['/api/hospitality/pagers'] });
       void queryClient.invalidateQueries({ queryKey: ['/api/hospitality/smart-tags'] });
+      if (!usedCoaster && data.ticket?.trackingToken) {
+        setHandoffTicket({
+          id: data.ticket.id,
+          ticketCode: data.ticket.ticketCode,
+          trackingToken: data.ticket.trackingToken,
+          customerName: data.ticket.customerName,
+        });
+      }
       toast({
         title: `Issued Pager ${data.ticket.ticketCode}`,
-        description: coasterId ? 'Bound to NFC/QR coaster and live in queue.' : 'Live virtual pager issued.',
+        description: usedCoaster
+          ? 'Bound to NFC/QR coaster and live in queue.'
+          : 'Show the private QR so only this customer’s phone rings when ready.',
       });
     },
     onError: (e: Error) => toast({ title: 'Could not issue pager', description: e.message, variant: 'destructive' }),
@@ -280,6 +294,12 @@ export default function AdminFrontDeskPage() {
                 </Link>
               </Button>
             )}
+            <Button asChild variant="outline" className="min-h-11 rounded-2xl border-white/20 bg-[#241E42] text-white hover:bg-[#312959] cursor-pointer gap-1.5">
+              <Link href="/admin/counter-display" data-testid="button-frontdesk-counter-screen">
+                <Monitor className="w-4 h-4" />
+                <span>Counter QR Screen</span>
+              </Link>
+            </Button>
             <Button asChild variant="outline" className="min-h-11 rounded-2xl border-white/20 bg-[#241E42] text-white hover:bg-[#312959] cursor-pointer gap-1.5">
               <Link href="/admin/pagers">
                 <BellRing className="w-4 h-4" />
@@ -737,6 +757,11 @@ export default function AdminFrontDeskPage() {
           </div>
         )}
       </div>
+      <CounterPagerQrModal
+        venueName={cafe?.name || 'dingzi'}
+        ticket={handoffTicket}
+        onClose={() => setHandoffTicket(null)}
+      />
     </div>
   );
 }

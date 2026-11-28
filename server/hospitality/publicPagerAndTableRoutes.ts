@@ -14,6 +14,61 @@ import { resolveVenueConfig } from '@shared/venueConfig';
 import { branchLocalDate, busyTableIdsForWindow, countAvailableSlotAllocations, findTableAllocation, loadBranchGatewaySecrets, nextDailyPagerCode, nextWaitlistCode, resolveBranchOperatingMinutes, toPublicCafe } from './helpers';
 
 export function mountPublicPagerAndTableRoutes(app: Express) {
+  // Public Clear QR Display Screen payload (zero private trackingTokens exposed; safe for counter/entrance tablets)
+  app.get('/api/public/screen/:slugOrId', async (req, res, next) => {
+    try {
+      const raw = String(req.params.slugOrId || '').trim().toLowerCase();
+      if (!raw || raw.length > 120) return res.status(404).json({ message: 'Display screen not found' });
+      const isUuid = z.string().uuid().safeParse(raw).success;
+      const all = await storage.getAllRestaurants();
+      const restaurant = all.find(r =>
+        isUuid ? r.id.toLowerCase() === raw || r.slug?.toLowerCase() === raw : r.slug?.toLowerCase() === raw,
+      );
+      if (!restaurant || restaurant.hidden || restaurant.status !== 'active') {
+        return res.status(404).json({ message: 'Venue display unavailable' });
+      }
+
+      const [tags, readyTickets] = await Promise.all([
+        db
+          .select({
+            id: smartTags.id,
+            tagCode: smartTags.tagCode,
+            label: smartTags.label,
+            targetType: smartTags.targetType,
+            hardwareKind: smartTags.hardwareKind,
+            token: smartTags.token,
+          })
+          .from(smartTags)
+          .where(
+            and(
+              eq(smartTags.restaurantId, restaurant.id),
+              eq(smartTags.isActive, true),
+              inArray(smartTags.targetType, ['venue_menu', 'waitlist_join', 'reservations']),
+            ),
+          )
+          .orderBy(asc(smartTags.tagCode)),
+        db
+          .select({
+            id: pagerTickets.id,
+            ticketCode: pagerTickets.ticketCode,
+            readyAt: pagerTickets.readyAt,
+          })
+          .from(pagerTickets)
+          .where(and(eq(pagerTickets.restaurantId, restaurant.id), eq(pagerTickets.status, 'ready')))
+          .orderBy(desc(pagerTickets.readyAt))
+          .limit(12),
+      ]);
+
+      res.json({
+        restaurant: toPublicCafe(restaurant),
+        tags,
+        readyTickets,
+      });
+    } catch (e) {
+      next(e);
+    }
+  });
+
   app.get('/api/public/pager/:token', async (req, res, next) => {
     try {
       const token = z.string().uuid().parse(req.params.token);
@@ -22,6 +77,17 @@ export function mountPublicPagerAndTableRoutes(app: Express) {
 
       const restaurant = await storage.getRestaurantById(ticket.restaurantId);
       if (!restaurant) return res.status(404).json({ message: 'Venue not found' });
+
+      if (req.query.claim === '1') {
+        publishRealtimeEvent([`branch:${restaurant.id}`], {
+          type: 'pager.claimed',
+          branchId: restaurant.id,
+          data: {
+            ticketId: ticket.id,
+            ticketCode: ticket.ticketCode,
+          },
+        });
+      }
 
       const [aheadRows, orderRow, bayRow, allItems] = await Promise.all([
         db

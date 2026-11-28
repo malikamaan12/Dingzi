@@ -103,8 +103,11 @@ function VirtualPagerContent() {
   const [, params] = useRoute('/pager/:token');
   const token = params?.token || '';
   const { language, dir, t, label } = useMenuLanguage();
+  const isSilentPreview =
+    typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('preview') === '1';
 
   const [alertsArmed, setAlertsArmed] = useState(false);
+  const [claimedOnce, setClaimedOnce] = useState(false);
   const [pushMode, setPushMode] = useState<'none' | 'native_push' | 'web_push' | 'audio_keepalive_only'>('none');
   const [pushNote, setPushNote] = useState('');
   const [isRinging, setIsRinging] = useState(false);
@@ -123,7 +126,9 @@ function VirtualPagerContent() {
     enabled: Boolean(token),
     queryKey: ['/api/public/pager', token],
     queryFn: async () => {
-      const res = await fetch(`/api/public/pager/${token}`);
+      const claimQuery = !isSilentPreview && !claimedOnce ? '?claim=1' : '';
+      if (!isSilentPreview && !claimedOnce) setClaimedOnce(true);
+      const res = await fetch(`/api/public/pager/${token}${claimQuery}`);
       if (!res.ok) throw new Error('Pager ticket not found');
       return res.json();
     },
@@ -138,7 +143,7 @@ function VirtualPagerContent() {
 
   useRealtimeStream(token ? `/api/public/stream/pager/${token}` : null, event => {
     void queryClient.invalidateQueries({ queryKey: ['/api/public/pager', token] });
-    if (event.type === 'pager.buzzed' || event.data?.ticket?.status === 'ready') {
+    if (!isSilentPreview && (event.type === 'pager.buzzed' || event.data?.ticket?.status === 'ready')) {
       startContinuousRinger({
         cafeName: restaurant?.name || 'Café',
         ticketCode: ticket?.ticketCode || event.data?.ticket?.ticketCode || 'READY',
@@ -152,7 +157,7 @@ function VirtualPagerContent() {
   const [copiedLink, setCopiedLink] = useState(false);
 
   useEffect(() => {
-    if (!ticket || !restaurant) return;
+    if (!ticket || !restaurant || isSilentPreview) return;
     if (['waiting', 'preparing', 'ready'].includes(ticket.status)) {
       saveGuestPass({
         kind: 'pager',
@@ -164,10 +169,10 @@ function VirtualPagerContent() {
     } else if (['collected', 'no_show'].includes(ticket.status)) {
       dismissGuestPass('pager', token);
     }
-  }, [ticket, restaurant, token]);
+  }, [ticket, restaurant, token, isSilentPreview]);
 
   useEffect(() => {
-    if (!ticket) return;
+    if (!ticket || isSilentPreview) return;
     if (seenKey && seenKey !== prevStatusKey) {
       if (ticket.status === 'ready') {
         startContinuousRinger({
@@ -180,7 +185,7 @@ function VirtualPagerContent() {
       }
     }
     setSeenKey(prevStatusKey);
-  }, [prevStatusKey, seenKey, ticket, restaurant?.name, readySubtitle]);
+  }, [prevStatusKey, seenKey, ticket, restaurant?.name, readySubtitle, isSilentPreview]);
 
   async function handleArmLockScreen() {
     if (!ticket || !restaurant) return;
@@ -372,6 +377,21 @@ function VirtualPagerContent() {
           {ticket.customerName && (
             <p className={`text-sm font-medium ${isReady ? 'text-white/80' : 'text-muted-foreground'}`}>{ticket.customerName}</p>
           )}
+          <div className="mt-2.5 flex justify-center">
+            <span
+              data-testid="badge-private-1to1-pager"
+              className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold ${
+                isReady ? 'bg-white/12 text-white/90' : 'bg-[#F6F5FC] text-[#57507A] border border-[#E5E2F2]'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5 text-[#6236FF] shrink-0" aria-hidden="true" />
+              <span>
+                {language === 'ar'
+                  ? `تنبيه خاص ١-لـ-١ · سيرن هذا الهاتف فقط للطلب ${ticket.ticketCode}`
+                  : `Private 1-to-1 Pager · Only this phone rings for ${ticket.ticketCode}`}
+              </span>
+            </span>
+          </div>
 
           {!isReady && !isCollected && (
             <div className="mt-4 space-y-2.5">

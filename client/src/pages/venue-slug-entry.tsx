@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useRoute, useLocation } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, QrCode, UtensilsCrossed, Wifi } from 'lucide-react';
+import { ArrowLeft, QrCode, RefreshCw, UtensilsCrossed, Wifi } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { DingziWordmark } from '@/components/staff-brand';
 import { saveGuestPass } from '@/lib/guestSession';
@@ -188,6 +188,8 @@ function SmartTagEntryContent() {
       ? 'nfc'
       : 'qr';
   const countedInitialRef = useRef(false);
+  const [standbySecsLeft, setStandbySecsLeft] = useState(180);
+  const pairingArmed = standbySecsLeft > 0;
 
   const query = useQuery<SmartTagPayload>({
     enabled: Boolean(token),
@@ -199,11 +201,19 @@ function SmartTagEntryContent() {
       if (!res.ok) throw new Error('Smart QR/NFC tag not found');
       return res.json();
     },
-    refetchInterval: q => (q.state.data?.coasterStatus === 'idle' ? 3500 : false),
+    refetchInterval: q => (q.state.data?.coasterStatus === 'idle' && pairingArmed ? 3500 : false),
   });
 
+  useEffect(() => {
+    if (query.data?.coasterStatus !== 'idle' || !pairingArmed) return;
+    const id = window.setInterval(() => {
+      setStandbySecsLeft(prev => (prev > 0 ? prev - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [query.data?.coasterStatus, pairingArmed]);
+
   useRealtimeStream(
-    query.data?.coasterStatus === 'idle' ? `/api/public/stream/coaster/${token}` : null,
+    query.data?.coasterStatus === 'idle' && pairingArmed ? `/api/public/stream/coaster/${token}` : null,
     async () => {
       try {
         const res = await fetch(`/api/public/tag/${token}?src=poll`);
@@ -269,12 +279,33 @@ function SmartTagEntryContent() {
 
           <div className="space-y-2" role="status" aria-live="polite">
             <h1 className="text-2xl font-display font-extrabold text-white" data-testid="text-coaster-standby-title">
-              {t('Smart Pager Coaster Ready')}
+              {pairingArmed ? t('Smart Pager Coaster Ready') : t('Coaster Pairing Paused')}
             </h1>
             <p className="text-sm text-white/80 leading-relaxed">
-              {t('Keep this screen open — it connects automatically the moment the barista links your order, or explore the menu below.')}
+              {pairingArmed
+                ? t('Keep this screen open — it connects automatically the moment the barista links your order, or explore the menu below.')
+                : t('Standby timed out so another guest’s future order never rings your phone. Tap reconnect below if you are still at the counter.')}
             </p>
+            {pairingArmed && (
+              <p className="text-xs font-mono text-[#C8FF42]">
+                1-to-1 counter pairing active ({Math.floor(standbySecsLeft / 60)}:{String(standbySecsLeft % 60).padStart(2, '0')})
+              </p>
+            )}
           </div>
+
+          {!pairingArmed && (
+            <Button
+              type="button"
+              onClick={() => {
+                setStandbySecsLeft(180);
+                void query.refetch();
+              }}
+              className="w-full min-h-12 rounded-2xl bg-[#C8FF42] text-[#17132E] hover:bg-[#b8f230] font-extrabold cursor-pointer gap-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Reconnect Coaster Pairing</span>
+            </Button>
+          )}
 
           <Link href={`/menu/${restaurant.id}`}>
             <Button

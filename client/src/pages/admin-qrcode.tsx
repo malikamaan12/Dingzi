@@ -21,6 +21,7 @@ import { useToast } from '@/hooks/use-toast';
 import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useRealtimeStream } from '@/lib/useRealtimeStream';
 import PermanentMenuQR from '@/components/permanent-menu-qr';
+import { QrMechanismExplainer } from '@/components/qr-nfc/QrMechanismExplainer';
 import { NfcEncodeDialog, type NfcEncodeTarget } from '@/components/qr-nfc/NfcEncodeDialog';
 import { QrNfcScannerModal } from '@/components/qr-nfc/QrNfcScannerModal';
 import { downloadDualQrNfcPlaqueSvg, exportNdefBatchCsv } from '@/lib/qrNfcEngine';
@@ -52,8 +53,12 @@ const HARDWARE_LABELS: Record<SmartTagHardwareKind, string> = {
 };
 
 export default function AdminQRCode() {
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const { toast } = useToast();
+  const canManageDestructive =
+    user?.role === 'super_admin' ||
+    user?.staffRole === 'tenant_owner' ||
+    user?.staffRole === 'branch_manager';
 
   const [tagCode, setTagCode] = useState('');
   const [label, setLabel] = useState('');
@@ -241,6 +246,37 @@ export default function AdminQRCode() {
 
       {cafe ? (
         <>
+          <QrMechanismExplainer
+            cafeId={cafe.id}
+            cafeName={cafe.name}
+            cafeSlug={cafe.slug}
+            canManageTags={canManageDestructive}
+            onBulkCoasters={() => bulkCoasters.mutate()}
+            onQuickCreatePreset={preset => {
+              const existing = tags.find(t => t.tagCode.toUpperCase() === preset.tagCode.toUpperCase());
+              const nextCode = existing ? `${preset.tagCode}-${tags.length + 1}` : preset.tagCode;
+              setTagCode(nextCode);
+              setLabel(preset.label);
+              setTargetType(preset.targetType);
+              setHardwareKind('dual_qr_nfc');
+              apiRequest('POST', '/api/hospitality/smart-tags', {
+                tagCode: nextCode,
+                label: preset.label,
+                hardwareKind: 'dual_qr_nfc',
+                targetType: preset.targetType,
+                tableId: preset.targetType === 'dining_table' ? tables[0]?.id || null : null,
+                bayId: null,
+              })
+                .then(() => {
+                  void queryClient.invalidateQueries({ queryKey: ['/api/hospitality/smart-tags'] });
+                  toast({ title: `Created ${nextCode} (${preset.label})` });
+                })
+                .catch((err: Error) => {
+                  toast({ title: 'Could not create preset tag', description: err.message, variant: 'destructive' });
+                });
+            }}
+          />
+
           <PermanentMenuQR key={cafe.id} restaurant={cafe} />
 
           {/* Smart Tag & Reusable Coaster Fleet Studio */}
@@ -592,25 +628,27 @@ export default function AdminQRCode() {
                             <span>Open Tag</span>
                             <ExternalLink className="w-3.5 h-3.5" />
                           </a>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              aria-label={`Rotate token for ${tag.tagCode}`}
-                              title="Rotate secret URL token (invalidates old sticker)"
-                              onClick={() => updateTag.mutate({ id: tag.id, patch: { rotateToken: true } })}
-                              className="w-11 h-11 rounded-xl border hover:bg-muted grid place-items-center text-muted-foreground hover:text-foreground cursor-pointer"
-                            >
-                              <RefreshCw className="w-4 h-4" />
-                            </button>
-                            <button
-                              type="button"
-                              aria-label={`Delete ${tag.tagCode}`}
-                              onClick={() => deleteTag.mutate(tag.id)}
-                              className="w-11 h-11 rounded-xl border hover:bg-destructive/10 grid place-items-center text-muted-foreground hover:text-destructive cursor-pointer"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
+                          {canManageDestructive && (
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                aria-label={`Rotate token for ${tag.tagCode}`}
+                                title="Rotate secret URL token (invalidates old sticker)"
+                                onClick={() => updateTag.mutate({ id: tag.id, patch: { rotateToken: true } })}
+                                className="w-11 h-11 rounded-xl border hover:bg-muted grid place-items-center text-muted-foreground hover:text-foreground cursor-pointer"
+                              >
+                                <RefreshCw className="w-4 h-4" />
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={`Delete ${tag.tagCode}`}
+                                onClick={() => deleteTag.mutate(tag.id)}
+                                className="w-11 h-11 rounded-xl border hover:bg-destructive/10 grid place-items-center text-muted-foreground hover:text-destructive cursor-pointer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </article>
